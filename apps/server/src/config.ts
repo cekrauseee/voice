@@ -1,4 +1,12 @@
-export class ConfigError extends Error {}
+/** A configuration problem, with what to do about it. */
+export class ConfigError extends Error {
+  readonly hint: string;
+
+  constructor(message: string, hint: string) {
+    super(message);
+    this.hint = hint;
+  }
+}
 
 export interface Config {
   apiKey: string;
@@ -12,12 +20,12 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const apiKey = env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new ConfigError("OPENAI_API_KEY is not set. Add your key to apps/server/.env.");
+    throw new ConfigError("OPENAI_API_KEY is not set", "add your key to apps/server/.env");
   }
 
   const port = Number(env.PORT ?? 8787);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new ConfigError(`PORT must be a port number, got "${env.PORT}".`);
+    throw new ConfigError(`PORT is not a port number: ${env.PORT}`, "set PORT to 0-65535");
   }
 
   return {

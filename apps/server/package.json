@@ -11,6 +11,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@voice/log": "workspace:*",
     "openai": "^7.55.0",
     "ws": "^8.22.2"
   },
