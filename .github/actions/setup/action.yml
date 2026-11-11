@@ -11,9 +11,10 @@ runs:
         cache: pnpm
     - run: pnpm install --frozen-lockfile
       shell: bash
-    - name: Select the newest Xcode 27
+    - name: Select the newest Xcode
       shell: bash
       run: |
-        xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1)"
-        if [ -n "$xcode" ]; then sudo xcode-select --switch "$xcode/Contents/Developer"; fi
+        ls -d /Applications/Xcode_*.app
+        xcode="$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -n 1)"
+        sudo xcode-select --switch "$xcode/Contents/Developer"
         swift --version
