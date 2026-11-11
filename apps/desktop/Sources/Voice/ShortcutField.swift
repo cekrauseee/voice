@@ -25,9 +25,7 @@ struct ShortcutField: View {
         if monitor == nil { begin() } else { end() }
       } label: {
         if monitor == nil {
-          HStack(spacing: 3) {
-            ForEach(shortcut.keyCaps, id: \.self) { KeyCap(label: $0) }
-          }
+          KeyCaps(labels: shortcut.keyCaps)
         } else {
           Text("Press shortcut").foregroundStyle(.secondary)
         }

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Builds the app, runs it, and prints its log until it quits or this script is interrupted.
 set -eu
 cd "$(dirname "$0")/.."
@@ -10,7 +10,9 @@ quit() {
 }
 
 quit
-log stream --level info --style compact --predicate 'subsystem == "eu.cekrause.voice"' &
+# The app's log, reduced to the time and the message.
+log stream --level info --style compact --predicate 'subsystem == "eu.cekrause.voice"' \
+  > >(sed -lnE 's/^[0-9-]+ ([0-9:]+)\.[0-9]+ +[A-Za-z]+ +Voice\[[^]]*\] \[[^]]*\] /\1  /p') &
 logs=$!
 trap 'quit; kill "$logs" 2>/dev/null' EXIT
 trap 'exit 130' INT TERM

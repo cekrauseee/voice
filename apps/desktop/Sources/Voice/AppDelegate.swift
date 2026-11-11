@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private lazy var controller = DictationController(settings: settings)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
-  private lazy var settingsWindow = SettingsWindow(settings: settings)
+  private lazy var settingsWindow = AppWindow(
+    title: "Settings", content: SettingsView(settings: settings))
+  private lazy var onboardingWindow = AppWindow(
+    title: "Voice",
+    content: OnboardingView(settings: settings) { [weak self] in self?.finishOnboarding() })
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,11 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     pill.start()
 
-    if !Permissions.isAccessibilityGranted {
-      logger.info("Waiting for Accessibility access")
-      Permissions.promptForAccessibility()
-    }
+    if !Permissions.isAccessibilityGranted { logger.info("Waiting for Accessibility access") }
     startHotkeys()
+    if !settings.hasOnboarded { onboardingWindow.show() }
   }
 
   /// The shortcuts need Accessibility access, so this keeps trying until it is granted.
@@ -80,6 +82,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
     NSMenuItem(title: title, action: action, keyEquivalent: key)
+  }
+
+  private func finishOnboarding() {
+    settings.hasOnboarded = true
+    onboardingWindow.close()
   }
 
   @objc private func openSettings() {
