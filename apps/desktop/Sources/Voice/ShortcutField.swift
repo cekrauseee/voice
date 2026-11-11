@@ -26,12 +26,16 @@ struct ShortcutField: View {
       } label: {
         if monitor == nil {
           KeyCaps(labels: shortcut.keyCaps)
+            .transition(.blurReplace)
         } else {
           Text("Press shortcut").foregroundStyle(.secondary)
+            .transition(.blurReplace)
         }
       }
       .buttonStyle(.plain)
     }
+    .animation(.smooth(duration: 0.25), value: monitor == nil)
+    .animation(.smooth(duration: 0.25), value: shortcut)
     .onDisappear(perform: end)
   }
 

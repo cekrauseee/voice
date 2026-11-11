@@ -6,9 +6,11 @@ import VoiceCore
 @MainActor @Observable
 final class DictationController {
   private(set) var pill: PillState = .hidden
-  private(set) var levels = LevelHistory(count: 48)
   private(set) var transcript = Transcript()
   private(set) var mode: RecordingMode = .toggle
+
+  /// The microphone levels, for the waveform.
+  @ObservationIgnored let levels = LevelFeed()
 
   @ObservationIgnored private let log = Log("dictation")
   @ObservationIgnored private let settings: Settings
@@ -92,7 +94,6 @@ final class DictationController {
 
     self.session = session
     self.mode = mode
-    levels = LevelHistory(count: levels.levels.count)
     transcript = Transcript()
     dismissal?.cancel()
     pill = .connecting

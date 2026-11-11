@@ -40,17 +40,3 @@ public enum Level {
     return Float(min(max((decibels + 50) / 40, 0), 1))
   }
 }
-
-/// The most recent levels, oldest first, for drawing the waveform.
-public struct LevelHistory: Equatable, Sendable {
-  public private(set) var levels: [Float]
-
-  public init(count: Int) {
-    levels = Array(repeating: 0, count: count)
-  }
-
-  public mutating func push(_ level: Float) {
-    levels.removeFirst()
-    levels.append(level)
-  }
-}
