@@ -4,19 +4,21 @@ import { join } from "node:path";
 export const root = join(import.meta.dirname, "..");
 
 /**
- * The two builds of the app. They have different names and bundle identifiers, so macOS
+ * The two builds of the app. They have different names, icons, and bundle identifiers, so macOS
  * keeps their permissions and settings apart and both can be installed at once.
  */
 const variants = {
   development: {
-    name: "Voice Dev",
+    name: "Voice (Development)",
     identifier: "eu.cekrause.voice.dev",
     configuration: "debug",
+    icon: "AppIconDevelopment.icns",
   },
   production: {
     name: "Voice",
     identifier: "eu.cekrause.voice",
     configuration: "release",
+    icon: "AppIcon.icns",
   },
 } as const;
 
