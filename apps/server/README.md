@@ -48,11 +48,11 @@ The server logs [structured records](../../docs/logging.md): in columns in a ter
 
 ```
 16:24:10.120 INFO  dictation   started dictation=1
-16:24:13.642 INFO  dictation   segment refined dictation=1 segment=0 final_ms=101 refine_ms=302 chars=42
+16:24:13.642 INFO  dictation   segment refined dictation=1 segment=0 final_ms=101 wait_ms=0 refine_ms=302 chars=42
 16:24:21.930 INFO  dictation   ended dictation=1 outcome=done segments=3 duration_ms=11810
 ```
 
-Each dictation has a number, on every record about it. `final_ms` is the time from the end of a segment to its transcript, and `refine_ms` the time the refinement took. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+Each dictation has a number, on every record about it. `final_ms` is the time from the end of a segment to its transcript, `wait_ms` the time it then waited for the segments before it to be refined, and `refine_ms` the time its own refinement took. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
 ## Tuning
 
