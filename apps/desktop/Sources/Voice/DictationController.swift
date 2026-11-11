@@ -1,9 +1,6 @@
 import AVFoundation
-import OSLog
 import Observation
 import VoiceCore
-
-private let logger = Logger(subsystem: "eu.cekrause.voice", category: "dictation")
 
 /// Runs dictations: records while a shortcut says so, and types what comes back.
 @MainActor @Observable
@@ -13,6 +10,7 @@ final class DictationController {
   private(set) var transcript = Transcript()
   private(set) var mode: RecordingMode = .toggle
 
+  @ObservationIgnored private let log = Log("dictation")
   @ObservationIgnored private let settings: Settings
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
@@ -20,6 +18,7 @@ final class DictationController {
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
+  @ObservationIgnored private var startedAt = ContinuousClock.now
 
   init(settings: Settings) {
     self.settings = settings
@@ -75,12 +74,16 @@ final class DictationController {
     session.onReady = { [weak self, weak session] in
       guard let self, self.session === session, pill == .connecting else { return }
       pill = .listening
+      log.debug("ready", ["connect_ms": elapsed])
     }
     session.onChange = { [weak self, weak session] in
       guard let self, let session, self.session === session else { return }
       transcript = session.transcript
     }
-    session.onText = { [inserter] text in inserter.insert(text) }
+    session.onText = { [inserter, log] text in
+      inserter.insert(text)
+      log.debug("typed", ["chars": text.count])
+    }
     session.onEnd = { [weak self, weak session] error in
       guard let self, self.session === session else { return }
       finish(error)
@@ -93,7 +96,8 @@ final class DictationController {
     transcript = Transcript()
     dismissal?.cancel()
     pill = .connecting
-    logger.info("Dictation started")
+    startedAt = .now
+    log.info("started", ["mode": mode])
 
     audio = Task {
       for await chunk in chunks {
@@ -116,7 +120,7 @@ final class DictationController {
     session?.cancel()
     session = nil
     pill = .hidden
-    logger.info("Dictation cancelled")
+    log.info("cancelled", ["duration_ms": elapsed])
   }
 
   /// The dictation the pill shows is over.
@@ -130,13 +134,18 @@ final class DictationController {
       fail(error)
     } else {
       pill = .hidden
-      logger.info("Dictation finished")
+      log.info("finished", ["duration_ms": elapsed, "segments": transcript.segments.count])
     }
+  }
+
+  /// Milliseconds since the dictation started.
+  private var elapsed: Int {
+    Int((ContinuousClock.now - startedAt) / .milliseconds(1))
   }
 
   /// Shows the error for a moment.
   private func fail(_ error: DictationError) {
-    logger.error("Dictation failed: \(error.message)")
+    log.error("failed", ["reason": error])
     pill = .failed(error)
     dismissal?.cancel()
     dismissal = Task {

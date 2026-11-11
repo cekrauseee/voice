@@ -1,27 +1,37 @@
-import AVFoundation
 import AppKit
-import OSLog
 import VoiceCore
-
-private let logger = Logger(subsystem: "eu.cekrause.voice", category: "app")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+  private let log = Log("app")
   private let settings = Settings()
+  private let permissions = Permissions()
   private lazy var controller = DictationController(settings: settings)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var settingsWindow = AppWindow(
     title: "Settings", content: SettingsView(settings: settings))
-  private lazy var onboardingWindow = AppWindow(
-    title: "Voice",
-    content: OnboardingView(settings: settings) { [weak self] in self?.finishOnboarding() })
-  private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+  private lazy var setupWindow = AppWindow(
+    title: AppInfo.name,
+    content: OnboardingContainer(permissions: permissions, settings: settings) { [weak self] in
+      self?.finishSetup()
+    })
+  private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    log.info(
+      "launched",
+      ["version": AppInfo.version, "build": AppInfo.isDevelopment ? "development" : "production"])
+
     NSApp.mainMenu = mainMenu()
     statusItem.button?.image = NSImage(
-      systemSymbolName: "waveform", accessibilityDescription: "Voice")
+      systemSymbolName: "waveform", accessibilityDescription: AppInfo.name)
+    if AppInfo.isDevelopment {
+      // Tells the development build from the production one in the menu bar.
+      statusItem.button?.title = "DEV"
+      statusItem.button?.font = .systemFont(ofSize: 9, weight: .semibold)
+      statusItem.button?.imagePosition = .imageLeading
+    }
     statusItem.menu = NSMenu()
     statusItem.menu?.delegate = self
 
@@ -37,46 +47,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     pill.start()
 
-    if !Permissions.isAccessibilityGranted { logger.info("Waiting for Accessibility access") }
-    startHotkeys()
-    if !settings.hasOnboarded { onboardingWindow.show() }
+    track { [permissions] in
+      permissions.accessibility
+    } onChange: { [weak self] isGranted in
+      if isGranted { self?.startShortcuts() }
+      self?.surfaceSetup()
+    }
+    track { [permissions] in
+      permissions.microphone
+    } onChange: { [weak self] _ in
+      self?.surfaceSetup()
+    }
+    if needsSetup { showSetup() }
   }
 
-  /// The shortcuts need Accessibility access, so this keeps trying until it is granted.
-  private func startHotkeys() {
+  /// The setup is shown until it is completed, and again whenever a permission is missing.
+  private var needsSetup: Bool {
+    !settings.hasOnboarded || !permissions.isComplete
+  }
+
+  private func showSetup() {
+    // The app has no Dock icon. During the setup it gets one, so the window is easy to
+    // come back to from System Settings.
+    NSApp.setActivationPolicy(.regular)
+    setupWindow.onClose = { [log] in
+      NSApp.setActivationPolicy(.accessory)
+      log.info("setup closed")
+    }
+    setupWindow.show()
+    log.info("setup shown")
+  }
+
+  private func finishSetup() {
+    settings.hasOnboarded = true
+    log.info("setup completed")
+    setupWindow.close()
+  }
+
+  /// A permission changed in System Settings: bring the setup back in front of it.
+  private func surfaceSetup() {
+    if setupWindow.isVisible { setupWindow.surface() }
+  }
+
+  private func startShortcuts() {
     if hotkeys.start() {
-      logger.info("Shortcuts ready")
+      log.info("shortcuts ready")
     } else {
-      Task {
-        try? await Task.sleep(for: .seconds(1))
-        startHotkeys()
-      }
+      log.error("shortcuts unavailable", ["hint": "quit and reopen the app"])
     }
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) {
     menu.removeAllItems()
-    if !Permissions.isAccessibilityGranted {
-      menu.addItem(item("Grant Accessibility Access…", #selector(openAccessibilitySettings)))
+    if needsSetup {
+      menu.addItem(item("Finish Setup…", #selector(openSetup)))
+      menu.addItem(.separator())
     }
-    if AVCaptureDevice.authorizationStatus(for: .audio) == .denied {
-      menu.addItem(item("Grant Microphone Access…", #selector(openMicrophoneSettings)))
-    }
-    if menu.numberOfItems > 0 { menu.addItem(.separator()) }
     menu.addItem(item("Settings…", #selector(openSettings), key: ","))
     menu.addItem(.separator())
-    menu.addItem(item("Quit Voice", #selector(NSApplication.terminate), key: "q"))
+    menu.addItem(item("Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q"))
   }
 
-  /// Without a main menu, the settings window would not respond to ⌘W and ⌘Q.
+  /// The windows need a main menu for the standard shortcuts, such as ⌘V and ⌘W.
   private func mainMenu() -> NSMenu {
-    let menu = NSMenu()
     let app = NSMenu()
-    app.addItem(item("Close Window", #selector(NSWindow.performClose), key: "w"))
-    app.addItem(item("Quit Voice", #selector(NSApplication.terminate), key: "q"))
-    let root = NSMenuItem()
-    root.submenu = app
-    menu.addItem(root)
+    app.addItem(item("Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q"))
+
+    let file = NSMenu(title: "File")
+    file.addItem(item("Close Window", #selector(NSWindow.performClose), key: "w"))
+
+    let edit = NSMenu(title: "Edit")
+    edit.addItem(item("Undo", Selector(("undo:")), key: "z"))
+    edit.addItem(item("Redo", Selector(("redo:")), key: "Z"))
+    edit.addItem(.separator())
+    edit.addItem(item("Cut", #selector(NSText.cut), key: "x"))
+    edit.addItem(item("Copy", #selector(NSText.copy), key: "c"))
+    edit.addItem(item("Paste", #selector(NSText.paste), key: "v"))
+    edit.addItem(item("Select All", #selector(NSText.selectAll), key: "a"))
+
+    let menu = NSMenu()
+    for submenu in [app, file, edit] {
+      let root = NSMenuItem()
+      root.submenu = submenu
+      menu.addItem(root)
+    }
     return menu
   }
 
@@ -84,20 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     NSMenuItem(title: title, action: action, keyEquivalent: key)
   }
 
-  private func finishOnboarding() {
-    settings.hasOnboarded = true
-    onboardingWindow.close()
-  }
-
   @objc private func openSettings() {
     settingsWindow.show()
   }
 
-  @objc private func openAccessibilitySettings() {
-    Permissions.openPrivacySettings("Privacy_Accessibility")
-  }
-
-  @objc private func openMicrophoneSettings() {
-    Permissions.openPrivacySettings("Privacy_Microphone")
+  @objc private func openSetup() {
+    showSetup()
   }
 }

@@ -2,32 +2,60 @@
 
 The macOS menu bar app. It records while a shortcut says so, streams the audio to [the server](../server/README.md), shows the pill, and types the text that comes back into the focused field.
 
-## Running
+## Builds
 
-```sh
-pnpm dev
-```
+There are two builds of the app. macOS tells them apart, so each has its own permissions and settings, and both can be installed at once.
 
-This builds `build/Voice.app`, opens it, and prints its log, one line per event, until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
+|                 | Development                    | Production          |
+| --------------- | ------------------------------ | ------------------- |
+| Command         | `pnpm dev`                     | `pnpm build`        |
+| App             | `build/Voice Dev.app`          | `build/Voice.app`   |
+| Name            | Voice Dev                      | Voice               |
+| Identifier      | `eu.cekrause.voice.dev`        | `eu.cekrause.voice` |
+| Compiled        | For debugging                  | Optimized           |
+| In the menu bar | The waveform with a `DEV` mark | The waveform        |
 
-The app connects to `ws://127.0.0.1:8787`. To use a server elsewhere:
+`pnpm dev` builds the development app, opens it, and prints its log until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
+
+`pnpm build` only builds. `VERSION` sets the version of the app, which the release workflow takes from the tag.
+
+The app connects to `ws://127.0.0.1:8787`. To use a server elsewhere, with the identifier of the build:
 
 ```sh
 defaults write eu.cekrause.voice serverURL wss://voice.example.com
 ```
 
-## Permissions
+## Setup
+
+The app needs two permissions:
 
 | Permission    | Why                                                  |
 | ------------- | ---------------------------------------------------- |
 | Accessibility | To see the shortcuts in any app and to type the text |
 | Microphone    | To record                                            |
 
-On first launch a welcome window lists both, with a button to allow each, and shows the shortcuts. It comes back on every launch until both are allowed and it is closed with Done.
+On first launch a setup window takes the user through three steps, one at a time:
 
-The shortcuts do nothing until Accessibility access is granted. The app keeps checking, so they start working once it is. If they do not, quit and reopen the app. If a permission is taken away later, the menu bar menu has an item that opens the right page of System Settings.
+1. **Accessibility.** Open Settings adds the app to the Accessibility list in System Settings and opens that page. The user turns the app on there.
+2. **Microphone.** Allow shows the macOS prompt.
+3. **Try it.** A text field takes the focus. Holding the push-to-talk shortcut and speaking types into it.
 
-macOS ties these permissions to the app's code signature. The build signs with the first Apple Development identity in the keychain, which keeps the permissions across builds. Without one it signs ad hoc, and macOS asks again after every build. Set `CODESIGN_IDENTITY` to choose an identity.
+The app follows the permissions as they change: a step is checked off the moment its permission is granted, and the window comes back in front of System Settings. While the window is open the app has a Dock icon, so the window is easy to find again. Done closes the setup, and is available once both permissions are granted.
+
+The setup comes back on launch until it is completed, and whenever a permission is missing. While it is incomplete, the menu bar menu has a Finish Setup item.
+
+### When a permission does not take effect
+
+macOS ties a permission to the app's code signature. If the app is on in the Accessibility list but the step stays open, the entry belongs to a build signed differently. Remove the app from the list with −, then turn it on again. Or start over:
+
+```sh
+pnpm reset              # the development app
+pnpm reset production   # the production app
+```
+
+This forgets the app's permissions and settings, so the next launch is a first launch.
+
+The build signs with the first Apple Development identity in the keychain, which keeps the permissions across builds. Without one it signs ad hoc, and macOS asks again after every build. Set `CODESIGN_IDENTITY` to choose an identity.
 
 ## Using it
 
@@ -54,22 +82,37 @@ Settings, from the menu bar menu:
 | Finishing  | A rippling waveform. Recording ended, the last text is on its way                                                                         |
 | Failed     | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
 
+## Logs
+
+The app writes structured records to the macOS system log: see [logging](../../docs/logging.md). `pnpm dev` prints them as they happen:
+
+```
+16:22:47.830 INFO  permissions state accessibility=false microphone=undetermined
+16:22:47.908 INFO  app         launched version=0.0.0 build=development
+16:22:47.950 INFO  setup       step current=accessibility
+```
+
+Set `LOG_LEVEL=debug` to also see the detail of each dictation.
+
 ## Tests and lint
 
 ```sh
-pnpm test     # builds the app and runs the tests
-pnpm lint     # swift format, strict
-pnpm format   # rewrites the sources
+pnpm test          # builds the app and runs the tests
+pnpm lint          # swift format, strict
+pnpm format        # rewrites the Swift sources
+pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, and audio chunking. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, and audio chunking. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
 | Path                                                                | Responsibility                               |
 | ------------------------------------------------------------------- | -------------------------------------------- |
 | `Sources/VoiceCore`                                                 | Logic without system dependencies            |
-| `Sources/Voice/AppDelegate.swift`                                   | The menu bar item and app startup            |
+| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows  |
+| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions             |
+| `Sources/Voice/OnboardingView.swift`                                | The setup window                             |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide             |
 | `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text |
 | `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                  |
@@ -77,6 +120,9 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field            |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                     |
 | `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                 |
-| `Sources/Voice/OnboardingView.swift`                                | The welcome window                           |
+| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is             |
 | `Support/Info.plist`                                                | The app bundle's metadata                    |
-| `scripts/bundle.sh`                                                 | Builds and signs `build/Voice.app`           |
+| `scripts/variants.ts`                                               | The names and identifiers of the two builds  |
+| `scripts/bundle.ts`                                                 | Builds and signs the app                     |
+| `scripts/dev.ts`                                                    | Builds, runs, and prints the log             |
+| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings   |

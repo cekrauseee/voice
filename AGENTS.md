@@ -6,6 +6,8 @@ Real-time voice dictation for macOS: a Swift menu bar app (`apps/desktop`) and a
 - A change to the messages between the app and the server updates [docs/protocol.md](docs/protocol.md), `apps/server/src/protocol.ts`, and `apps/desktop/Sources/VoiceCore/ServerMessage.swift` together.
 - Logic that does not need the system goes in `VoiceCore` with tests. The `Voice` target stays thin glue over macOS APIs.
 - The server runs TypeScript directly on Node.js: only erasable syntax, and relative imports end in `.ts`.
+- Logs are structured records, written with `@voice/log` in TypeScript and `Log` in the app: a constant lowercase message, and everything that varies in fields. Never log dictated text. See [docs/logging.md](docs/logging.md).
+- The app has a development and a production build with different identifiers. `pnpm dev` runs the development one.
 - UI copy is short, plain English.
 
 <!-- BEGIN:turborepo-agent-rules -->

@@ -4,6 +4,7 @@ Real-time voice dictation for macOS. Hold a key, speak, and the text is typed in
 
 - `apps/desktop`: the macOS menu bar app. It records, shows the pill, and types the text.
 - `apps/server`: the service that transcribes and refines the speech with OpenAI.
+- `packages/log`: the structured logger both use.
 
 ## Requirements
 
@@ -21,13 +22,13 @@ pnpm dev
 
 1. It installs the dependencies.
 2. It creates `apps/server/.env` from `.env.example`. Add your `OPENAI_API_KEY` there: the server waits for it and starts as soon as the file is saved.
-3. It builds and opens the app, which lives in the menu bar.
+3. It builds and opens the development app, Voice Dev, which lives in the menu bar.
 
-Each app has its own log in the terminal: move between them with the arrow keys, and quit with Ctrl-C.
+Each app has its own log in the terminal, as [structured records](docs/logging.md): move between them with the arrow keys, and quit with Ctrl-C.
 
 Running it again changes nothing you have set: variables added to `.env.example` later are added to your `.env`, and existing values are kept.
 
-On first launch the app opens a welcome window that asks for the two permissions it needs: see [the desktop README](apps/desktop/README.md#permissions).
+On first launch the app opens a setup window that takes you through the two permissions it needs and lets you try a dictation: see [the desktop README](apps/desktop/README.md#setup).
 
 Then dictate:
 
@@ -53,6 +54,7 @@ Add `--filter @voice/server` or `--filter @voice/desktop` to `pnpm dev` or `pnpm
 
 - [Architecture](docs/architecture.md): how speech becomes typed text, and why it is built this way
 - [Protocol](docs/protocol.md): the contract between the app and the server
+- [Logging](docs/logging.md): the form every log record takes
 - [Releasing](docs/releasing.md): how a version is published
 - [Server](apps/server/README.md): configuration, tuning, and tools
 - [Desktop](apps/desktop/README.md): permissions, settings, and signing
