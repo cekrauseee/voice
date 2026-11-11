@@ -2,96 +2,168 @@ import AVFoundation
 import SwiftUI
 import VoiceCore
 
-/// The first-launch window: the two permissions the app needs, and how to dictate.
+/// The setup window: the two permissions the app needs, then a place to try it.
 struct OnboardingView: View {
-  let settings: Settings
-  let onDone: () -> Void
+  let onboarding: Onboarding
+  let pushToTalk: Shortcut
+  /// Whether macOS can still ask for the microphone. If not, the way is System Settings.
+  let canAskForMicrophone: Bool
+  /// Whether System Settings was opened for Accessibility, to say what to do there.
+  let isWaitingForAccessibility: Bool
+  @Binding var sample: String
+  let allowAccessibility: () -> Void
+  let allowMicrophone: () -> Void
+  let done: () -> Void
 
-  @State private var askedForAccessibility = false
+  @FocusState private var isSampleFocused: Bool
 
   var body: some View {
-    // The permissions are granted outside the app, so their state is read again every second.
-    TimelineView(.periodic(from: .now, by: 1)) { _ in
-      let accessibility = Permissions.isAccessibilityGranted
-      let microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+    VStack(spacing: 20) {
+      VStack(spacing: 6) {
+        Image(systemName: "waveform")
+          .font(.system(size: 28, weight: .medium))
+        Text("Welcome to Voice")
+          .font(.title2.bold())
+        Text("Three steps, then dictate into any app.")
+          .foregroundStyle(.secondary)
+      }
 
       VStack(spacing: 0) {
-        VStack(spacing: 6) {
-          Image(systemName: "waveform")
-            .font(.system(size: 28, weight: .medium))
-          Text("Welcome to Voice")
-            .font(.title2.bold())
-          Text("Allow two permissions, then dictate into any app.")
-            .foregroundStyle(.secondary)
+        StepRow(
+          number: 1, title: "Accessibility", state: onboarding.state(of: .accessibility),
+          actionTitle: "Open Settings", action: allowAccessibility
+        ) {
+          Text("To use the shortcuts and type the text")
+          if isWaitingForAccessibility && !onboarding.accessibility {
+            Text(
+              "Turn on \(AppInfo.name) in the list. "
+                + "If it is already on, remove it with − and turn it on again.")
+          }
         }
-        .padding(.top, 28)
-
-        Form {
-          Section("Permissions") {
-            PermissionRow(
-              title: "Accessibility", detail: "To use the shortcuts and type the text",
-              isAllowed: accessibility, allow: allowAccessibility)
-            PermissionRow(
-              title: "Microphone", detail: "To hear you",
-              isAllowed: microphone == .authorized
-            ) {
-              if microphone == .notDetermined {
-                AVCaptureDevice.requestAccess(for: .audio) { _ in }
-              } else {
-                Permissions.openPrivacySettings("Privacy_Microphone")
+        Divider()
+        StepRow(
+          number: 2, title: "Microphone", state: onboarding.state(of: .microphone),
+          actionTitle: canAskForMicrophone ? "Allow" : "Open Settings", action: allowMicrophone
+        ) {
+          Text("To hear you")
+        }
+        Divider()
+        StepRow(number: 3, title: "Try it", state: onboarding.state(of: .tryIt)) {
+          HStack(spacing: 5) {
+            Text("Hold")
+            KeyCaps(labels: pushToTalk.keyCaps)
+            Text("and speak")
+          }
+          if onboarding.canFinish {
+            TextEditor(text: $sample)
+              .font(.body)
+              .foregroundStyle(.primary)
+              .scrollContentBackground(.hidden)
+              .focused($isSampleFocused)
+              .padding(6)
+              .frame(height: 64)
+              .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+              .overlay(alignment: .topLeading) {
+                if sample.isEmpty {
+                  Text("Your words appear here")
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .allowsHitTesting(false)
+                }
               }
-            }
-          }
-          Section("Shortcuts") {
-            LabeledContent("Hold to dictate") {
-              KeyCaps(labels: settings.pushToTalk.keyCaps)
-            }
-            LabeledContent("Press to start and stop") {
-              KeyCaps(labels: settings.toggle.keyCaps)
-            }
+              .padding(.top, 4)
           }
         }
-        .formStyle(.grouped)
-
-        Button("Done", action: onDone)
-          .keyboardShortcut(.defaultAction)
-          .controlSize(.large)
-          .disabled(!accessibility || microphone != .authorized)
-          .padding(.bottom, 20)
       }
-      .frame(width: 440)
-      .fixedSize()
-    }
-  }
+      .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+      .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.08)))
 
-  /// The system prompt shows once. After that, the settings page is the way in.
-  private func allowAccessibility() {
-    if askedForAccessibility {
-      Permissions.openPrivacySettings("Privacy_Accessibility")
-    } else {
-      askedForAccessibility = true
-      Permissions.promptForAccessibility()
+      Button("Done", action: done)
+        .keyboardShortcut(.defaultAction)
+        .controlSize(.large)
+        .disabled(!onboarding.canFinish)
     }
+    .padding(24)
+    .frame(width: 460)
+    .fixedSize()
+    // The dictated text goes to the focused field, so the sample takes the focus.
+    .onChange(of: onboarding.canFinish, initial: true) { isSampleFocused = onboarding.canFinish }
   }
 }
 
-private struct PermissionRow: View {
+/// One step of the setup: its number or a checkmark, what it is for, and its action.
+private struct StepRow<Detail: View>: View {
+  let number: Int
   let title: String
-  let detail: String
-  let isAllowed: Bool
-  let allow: () -> Void
+  let state: Onboarding.StepState
+  var actionTitle: String?
+  var action: () -> Void = {}
+  @ViewBuilder let detail: Detail
 
   var body: some View {
-    LabeledContent {
-      if isAllowed {
-        Label("Allowed", systemImage: "checkmark")
-          .foregroundStyle(.secondary)
-      } else {
-        Button("Allow", action: allow)
+    HStack(alignment: .top, spacing: 12) {
+      ZStack {
+        Circle().fill(.primary.opacity(state == .done ? 1 : 0.1))
+        if state == .done {
+          Image(systemName: "checkmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.background)
+        } else {
+          Text("\(number)")
+            .font(.system(size: 11, weight: .semibold))
+        }
       }
-    } label: {
-      Text(title)
-      Text(detail)
+      .frame(width: 22, height: 22)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.body.weight(.medium))
+        detail
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+
+      if state == .current, let actionTitle {
+        Button(actionTitle, action: action)
+      }
+    }
+    .padding(14)
+    .opacity(state == .upcoming ? 0.45 : 1)
+  }
+}
+
+/// The setup window with the live state of the permissions.
+struct OnboardingContainer: View {
+  let permissions: Permissions
+  let settings: Settings
+  let done: () -> Void
+
+  @State private var sample = ""
+  @State private var isWaitingForAccessibility = false
+
+  private let log = Log("setup")
+
+  var body: some View {
+    let onboarding = Onboarding(
+      accessibility: permissions.accessibility,
+      microphone: permissions.microphone == .authorized,
+      hasDictated: !sample.isEmpty)
+
+    OnboardingView(
+      onboarding: onboarding, pushToTalk: settings.pushToTalk,
+      canAskForMicrophone: permissions.microphone == .notDetermined,
+      isWaitingForAccessibility: isWaitingForAccessibility, sample: $sample,
+      allowAccessibility: {
+        isWaitingForAccessibility = true
+        permissions.requestAccessibility()
+      },
+      allowMicrophone: permissions.requestMicrophone, done: done
+    )
+    .onChange(of: onboarding.current, initial: true) {
+      log.info("step", ["current": onboarding.current.map { "\($0)" } ?? "none"])
     }
   }
 }

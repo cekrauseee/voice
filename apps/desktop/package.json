@@ -2,11 +2,21 @@
   "name": "@voice/desktop",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "scripts/dev.sh",
-    "build": "scripts/bundle.sh release",
+    "dev": "node scripts/dev.ts",
+    "build": "node scripts/bundle.ts production",
+    "reset": "node scripts/reset.ts",
+    "check-types": "tsc --noEmit",
     "lint": "swift format lint --strict --recursive Package.swift Sources Tests",
     "format": "swift format --in-place --recursive Package.swift Sources Tests",
     "test": "swift build --build-tests && swift test --skip-build"
+  },
+  "dependencies": {
+    "@voice/log": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "7.0.2"
   }
 }
