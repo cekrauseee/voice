@@ -1,0 +1,22 @@
+{
+  "name": "@voice/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/main.ts",
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "dictate": "node scripts/dictate.ts",
+    "check-types": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "openai": "^7.55.0",
+    "ws": "^8.22.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "typescript": "7.0.2"
+  }
+}
