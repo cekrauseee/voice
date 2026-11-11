@@ -1,0 +1,19 @@
+name: Setup
+description: Installs the toolchain and the dependencies.
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v5
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash
+    - name: Select the newest Xcode 27
+      shell: bash
+      run: |
+        xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1)"
+        if [ -n "$xcode" ]; then sudo xcode-select --switch "$xcode/Contents/Developer"; fi
+        swift --version

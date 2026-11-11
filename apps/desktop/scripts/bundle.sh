@@ -24,7 +24,7 @@ mkdir -p "$app/Contents/MacOS"
 cp "$(swift build -c "$configuration" --show-bin-path)/Voice" "$app/Contents/MacOS/Voice"
 cp Support/Info.plist "$app/Contents/Info.plist"
 if [ -n "${VERSION:-}" ]; then
-  plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
+  plutil -replace CFBundleShortVersionString -string "${VERSION#v}" "$app/Contents/Info.plist"
 fi
 
 identity="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: .*\)"/\1/p' | head -n 1)}"
