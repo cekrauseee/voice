@@ -26,7 +26,7 @@ async function checkOpenAI(client: OpenAI, models: string[]): Promise<void> {
       await client.models.retrieve(model);
     } catch (error) {
       if (error instanceof OpenAI.AuthenticationError) {
-        fatal("OpenAI rejected OPENAI_API_KEY. Check the key in apps/server/.env.");
+        fatal("OpenAI rejected OPENAI_API_KEY. Check your key in apps/server/.env.");
       }
       if (error instanceof OpenAI.NotFoundError) {
         fatal(`OpenAI model "${model}" is not available to this key.`);

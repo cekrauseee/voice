@@ -14,12 +14,18 @@ Real-time voice dictation for macOS. Hold a key, speak, and the text is typed in
 ## Getting started
 
 ```sh
-pnpm install
-cp apps/server/.env.example apps/server/.env   # then add your OPENAI_API_KEY
 pnpm dev
 ```
 
-`pnpm dev` starts the server and builds and opens the app. The app lives in the menu bar. On first launch macOS asks for Accessibility access, and for microphone access on the first dictation: see [the desktop README](apps/desktop/README.md#permissions).
+`pnpm dev` prepares what is missing, then runs both apps:
+
+1. It installs the dependencies.
+2. It creates `apps/server/.env` from `.env.example`. Add your `OPENAI_API_KEY` there: the server waits for it and starts as soon as the file is saved.
+3. It builds and opens the app, which lives in the menu bar.
+
+Running it again changes nothing you have set: variables added to `.env.example` later are added to your `.env`, and existing values are kept.
+
+On first launch macOS asks for Accessibility access, and for microphone access on the first dictation: see [the desktop README](apps/desktop/README.md#permissions).
 
 Then dictate:
 

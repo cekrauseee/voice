@@ -5,10 +5,11 @@ Transcribes and refines dictation. The desktop app streams microphone audio over
 ## Running
 
 ```sh
-cp .env.example .env   # then add your OPENAI_API_KEY
-pnpm dev               # restarts on changes
-pnpm start             # runs once
+pnpm dev     # prepares .env, then restarts on changes
+pnpm start   # runs once
 ```
+
+`pnpm dev` first creates `.env` from `.env.example`, or adds the variables your `.env` is missing. It never changes a value you set. Add your `OPENAI_API_KEY` to `.env`: the server restarts when the file is saved.
 
 On start the server checks the key and both models with OpenAI, then prints the address it listens on:
 
@@ -16,13 +17,13 @@ On start the server checks the key and both models with OpenAI, then prints the 
 ready: ws://127.0.0.1:8787/v1/dictation
 ```
 
-If something is missing it exits and says what to fix, for example `error: OPENAI_API_KEY is not set.`
+If something is missing it says what to fix, for example `error: OPENAI_API_KEY is not set. Add your key to apps/server/.env.`
 
 TypeScript runs directly on Node.js. There is no build step.
 
 ## Configuration
 
-Environment variables, read from `.env` when present.
+Environment variables, read from `.env`. `pnpm start` also runs without the file, with the variables set in the environment.
 
 | Variable               | Default               | Meaning                                                                                                 |
 | ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -82,3 +83,4 @@ The tests run the real server, session, and segmenter. The OpenAI API is replace
 | `src/refiner.ts`     | The refinement prompt and request                                                     |
 | `src/protocol.ts`    | The messages exchanged with the app                                                   |
 | `scripts/dictate.ts` | Replays a recording against a running server                                          |
+| `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                        |

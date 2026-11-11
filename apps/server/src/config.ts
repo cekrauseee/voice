@@ -12,9 +12,7 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const apiKey = env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new ConfigError(
-      "OPENAI_API_KEY is not set. Copy apps/server/.env.example to apps/server/.env and add your key.",
-    );
+    throw new ConfigError("OPENAI_API_KEY is not set. Add your key to apps/server/.env.");
   }
 
   const port = Number(env.PORT ?? 8787);
