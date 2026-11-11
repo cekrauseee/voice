@@ -1,22 +1,45 @@
 import SwiftUI
+import VoiceCore
 
-/// Bars that follow the microphone level, or ripple while loading.
+/// The microphone levels on their way to the waveform. The dictation writes them as they
+/// arrive, and each waveform reads the ones it has not seen yet on every frame.
+@MainActor
+final class LevelFeed {
+  /// How many levels were ever written.
+  private(set) var count = 0
+  private var recent: [Float] = []
+
+  func push(_ level: Float) {
+    recent.append(level)
+    if recent.count > 16 { recent.removeFirst() }
+    count += 1
+  }
+
+  /// The levels written after the first `seen`, oldest first.
+  func levels(after seen: Int) -> ArraySlice<Float> {
+    recent.suffix(min(max(count - seen, 0), recent.count))
+  }
+}
+
+/// Bars that move with the voice, and ripple while loading.
 struct Waveform: View {
-  /// Levels from 0 to 1, oldest first. One bar each.
-  let levels: ArraySlice<Float>
+  let feed: LevelFeed
+  let barCount: Int
   let isLoading: Bool
 
+  @State private var animator = WaveformAnimator()
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    TimelineView(.animation(paused: !isLoading || reduceMotion)) { timeline in
+    // With reduced motion the bars still show the level, a few times a second.
+    TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : nil)) { timeline in
       Canvas { context, size in
-        let time = timeline.date.timeIntervalSinceReferenceDate
-        let step = size.width / Double(levels.count)
-        let width = min(step * 0.6, 3)
-        for (index, level) in levels.enumerated() {
-          let amount = isLoading ? ripple(index, time) : Double(level)
-          let height = max(width, amount * size.height)
+        let heights = animator.heights(
+          at: timeline.date, feed: feed, barCount: barCount, isLoading: isLoading && !reduceMotion)
+        let step = size.width / Double(barCount)
+        let width = min(step * 0.55, 3)
+        for (index, height) in heights.enumerated() {
+          let height = max(width, height * size.height)
           let bar = CGRect(
             x: (Double(index) + 0.5) * step - width / 2, y: (size.height - height) / 2,
             width: width, height: height)
@@ -24,11 +47,28 @@ struct Waveform: View {
         }
       }
     }
-    .opacity(isLoading ? 0.5 : 1)
+    .opacity(isLoading ? 0.55 : 1)
+    .animation(.smooth(duration: 0.3), value: isLoading)
   }
+}
 
-  /// A low wave that travels along the bars.
-  private func ripple(_ index: Int, _ time: TimeInterval) -> Double {
-    reduceMotion ? 0 : 0.25 * (1 + sin(time * 6 - Double(index) * 0.7)) / 2
+/// Keeps the motion of the bars between frames.
+@MainActor
+private final class WaveformAnimator {
+  private var motion = WaveformMotion(barCount: 0)
+  private var barCount = 0
+  private var seen = 0
+  private var lastFrame: Date?
+
+  func heights(at date: Date, feed: LevelFeed, barCount: Int, isLoading: Bool) -> [Double] {
+    if barCount != self.barCount {
+      self.barCount = barCount
+      motion = WaveformMotion(barCount: barCount)
+    }
+    for level in feed.levels(after: seen) { motion.push(level) }
+    seen = feed.count
+    let elapsed = lastFrame.map { date.timeIntervalSince($0) } ?? 0
+    lastFrame = date
+    return motion.advance(by: elapsed, isLoading: isLoading)
   }
 }

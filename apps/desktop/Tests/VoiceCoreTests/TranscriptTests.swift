@@ -80,13 +80,4 @@ import Testing
     #expect(Level.normalized(pcm(1000)) < Level.normalized(pcm(5000)))
     #expect(Level.normalized(pcm(20_000)) == 1)
   }
-
-  @Test func levelHistoryKeepsTheLatestLevels() {
-    var history = LevelHistory(count: 3)
-    history.push(0.1)
-    history.push(0.2)
-    history.push(0.3)
-    history.push(0.4)
-    #expect(history.levels == [0.2, 0.3, 0.4])
-  }
 }

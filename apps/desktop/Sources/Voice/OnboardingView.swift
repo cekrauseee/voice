@@ -34,11 +34,6 @@ struct OnboardingView: View {
           actionTitle: "Open Settings", action: allowAccessibility
         ) {
           Text("To use the shortcuts and type the text")
-          if isWaitingForAccessibility && !onboarding.accessibility {
-            Text(
-              "Turn on \(AppInfo.name) in the list. "
-                + "If it is already on, remove it with − and turn it on again.")
-          }
         }
         Divider()
         StepRow(
@@ -54,30 +49,40 @@ struct OnboardingView: View {
             KeyCaps(labels: pushToTalk.keyCaps)
             Text("and speak")
           }
-          if onboarding.canFinish {
-            TextEditor(text: $sample)
-              .font(.body)
-              .foregroundStyle(.primary)
-              .scrollContentBackground(.hidden)
-              .focused($isSampleFocused)
-              .padding(6)
-              .frame(height: 64)
-              .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-              .overlay(alignment: .topLeading) {
-                if sample.isEmpty {
-                  Text("Your words appear here")
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 6)
-                    .allowsHitTesting(false)
-                }
+          TextEditor(text: $sample)
+            .font(.body)
+            .foregroundStyle(.primary)
+            .scrollContentBackground(.hidden)
+            .focused($isSampleFocused)
+            .padding(6)
+            .frame(height: 64)
+            .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(alignment: .topLeading) {
+              if sample.isEmpty {
+                Text("Your words appear here")
+                  .foregroundStyle(.tertiary)
+                  .padding(.horizontal, 11)
+                  .padding(.vertical, 6)
+                  .allowsHitTesting(false)
               }
-              .padding(.top, 4)
-          }
+            }
+            .padding(.top, 4)
+            .disabled(!onboarding.canFinish)
         }
       }
       .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
       .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.08)))
+
+      // Always laid out, so the window keeps its size when the note appears.
+      Text(
+        "Turn on \(AppInfo.name) in the list. "
+          + "If it is already on, remove it with − and turn it on again."
+      )
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      .opacity(isWaitingForAccessibility && !onboarding.accessibility ? 1 : 0)
 
       Button("Done", action: done)
         .keyboardShortcut(.defaultAction)
@@ -87,6 +92,8 @@ struct OnboardingView: View {
     .padding(24)
     .frame(width: 460)
     .fixedSize()
+    .animation(.smooth(duration: 0.35), value: onboarding)
+    .animation(.smooth(duration: 0.35), value: isWaitingForAccessibility)
     // The dictated text goes to the focused field, so the sample takes the focus.
     .onChange(of: onboarding.canFinish, initial: true) { isSampleFocused = onboarding.canFinish }
   }
@@ -109,9 +116,11 @@ private struct StepRow<Detail: View>: View {
           Image(systemName: "checkmark")
             .font(.system(size: 10, weight: .bold))
             .foregroundStyle(.background)
+            .transition(.scale(scale: 0.3).combined(with: .opacity))
         } else {
           Text("\(number)")
             .font(.system(size: 11, weight: .semibold))
+            .transition(.opacity)
         }
       }
       .frame(width: 22, height: 22)
@@ -128,6 +137,7 @@ private struct StepRow<Detail: View>: View {
 
       if state == .current, let actionTitle {
         Button(actionTitle, action: action)
+          .transition(.blurReplace)
       }
     }
     .padding(14)

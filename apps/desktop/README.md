@@ -76,6 +76,10 @@ Settings, from the menu bar menu:
 
 ## The pill
 
+The pill is one surface that changes shape. It grows out of its bottom edge when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
+
+The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the server is getting ready or the last text is on its way, a ripple runs through the bars, and the voice still shows through it. With Reduce Motion on, the bars only show the level, a few times a second.
+
 | State      | Shown                                                                                                                                     |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Connecting | A rippling waveform. Recording has started, the server is getting ready                                                                   |

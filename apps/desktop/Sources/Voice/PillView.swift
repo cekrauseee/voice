@@ -2,34 +2,46 @@ import SwiftUI
 import VoiceCore
 
 /// The pill: a waveform while dictating, and a short message when something fails.
+///
+/// It is one surface that changes shape. Going from one state or style to another, the
+/// surface grows or shrinks to the new content while the old content dissolves into it.
 struct PillView: View {
   let state: PillState
   let style: PillStyle
-  let levels: [Float]
+  let feed: LevelFeed
   let transcript: Transcript
   let mode: RecordingMode
   let toggle: Shortcut
 
   @Environment(\.colorScheme) private var colorScheme
 
-  private static let spring = Animation.spring(duration: 0.35, bounce: 0.2)
+  private static let morph = Animation.spring(duration: 0.42, bounce: 0.24)
+  /// The new content comes into focus as the surface reaches its shape. The old content
+  /// leaves at once, so what is seen changing is the surface.
+  private static let content = AnyTransition.asymmetric(
+    insertion: AnyTransition(.blurReplace),
+    removal: .opacity.animation(.easeOut(duration: 0.12)))
 
   var body: some View {
     ZStack(alignment: .bottom) {
       if state != .hidden {
-        content
-          .background(colorScheme == .dark ? Color(white: 0.12) : .white, in: shape)
+        // One container around whichever content is showing, so the surface is a single
+        // view that resizes, instead of each content bringing its own.
+        ZStack(alignment: .bottom) { content }
+          .background(colorScheme == .dark ? Color(white: 0.12) : .white)
+          .clipShape(shape)
           .overlay(shape.strokeBorder(.primary.opacity(0.12)))
           .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-          .transition(.scale(scale: 0.5, anchor: .bottom).combined(with: .opacity))
+          .transition(.pill)
       }
     }
-    .animation(Self.spring, value: state)
-    .animation(Self.spring, value: transcript.isEmpty)
+    .animation(Self.morph, value: state)
+    .animation(Self.morph, value: style)
+    .animation(.smooth(duration: 0.25), value: transcript)
   }
 
   private var shape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: isCompact ? 14 : 20, style: isCompact ? .circular : .continuous)
+    RoundedRectangle(cornerRadius: isCompact ? 14 : 20, style: .continuous)
   }
 
   private var isCompact: Bool {
@@ -47,19 +59,22 @@ struct PillView: View {
         .font(.system(size: 12, weight: .medium))
         .padding(.horizontal, 12)
         .frame(height: 28)
+        .transition(Self.content)
     } else if style == .minimal {
-      Waveform(levels: levels.suffix(9), isLoading: isLoading)
-        .frame(width: 44, height: 14)
+      Waveform(feed: feed, barCount: 7, isLoading: isLoading)
+        .frame(width: 40, height: 16)
         .padding(.horizontal, 12)
         .frame(height: 28)
+        .transition(Self.content)
     } else {
       detailed
+        .transition(Self.content)
     }
   }
 
   private var detailed: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Waveform(levels: levels[...], isLoading: isLoading)
+      Waveform(feed: feed, barCount: 49, isLoading: isLoading)
         .frame(height: 36)
       if !transcript.isEmpty {
         Text(transcriptText)
@@ -67,16 +82,22 @@ struct PillView: View {
           .lineLimit(3)
           .truncationMode(.head)
           .frame(maxWidth: .infinity, alignment: .leading)
+          .contentTransition(.interpolate)
+          .transition(.blurReplace)
       }
       HStack(spacing: 12) {
         Label(status, systemImage: "mic.fill")
+          .contentTransition(.interpolate)
         Spacer()
         if state != .finishing {
-          if mode == .toggle {
-            Hint(title: "Stop", keyCaps: toggle.keyCaps)
-          } else {
-            Text("Release to stop")
+          Group {
+            if mode == .toggle {
+              Hint(title: "Stop", keyCaps: toggle.keyCaps)
+            } else {
+              Text("Release to stop")
+            }
           }
+          .transition(.blurReplace)
         }
         Hint(title: "Cancel", keyCaps: ["esc"])
       }
@@ -114,5 +135,23 @@ private struct Hint: View {
       Text(title)
       KeyCaps(labels: keyCaps)
     }
+  }
+}
+
+/// How the pill comes and goes: it grows out of its bottom edge, coming into focus.
+private struct PillPresence: ViewModifier {
+  let isPresent: Bool
+
+  func body(content: Content) -> some View {
+    content
+      .scaleEffect(isPresent ? 1 : 0.55, anchor: .bottom)
+      .blur(radius: isPresent ? 0 : 6)
+      .opacity(isPresent ? 1 : 0)
+  }
+}
+
+extension AnyTransition {
+  fileprivate static var pill: AnyTransition {
+    .modifier(active: PillPresence(isPresent: false), identity: PillPresence(isPresent: true))
   }
 }

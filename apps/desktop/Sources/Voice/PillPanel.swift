@@ -59,7 +59,7 @@ private struct PillContainer: View {
 
   var body: some View {
     PillView(
-      state: controller.pill, style: settings.pillStyle, levels: controller.levels.levels,
+      state: controller.pill, style: settings.pillStyle, feed: controller.levels,
       transcript: controller.transcript, mode: controller.mode, toggle: settings.toggle
     )
     .padding(.bottom, 24)
