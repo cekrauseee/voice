@@ -14,10 +14,14 @@ pnpm start   # runs once
 On start the server checks the key and both models with OpenAI, then prints the address it listens on:
 
 ```
-ready: ws://127.0.0.1:8787/v1/dictation
+16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation transcribe=gpt-live-transcribe refine=gpt-6-luna
 ```
 
-If something is missing it says what to fix, for example `error: OPENAI_API_KEY is not set. Add your key to apps/server/.env.`
+If something is missing it says what to fix:
+
+```
+16:24:02.118 ERROR server      OPENAI_API_KEY is not set hint="add your key to apps/server/.env"
+```
 
 TypeScript runs directly on Node.js. There is no build step.
 
@@ -25,16 +29,30 @@ TypeScript runs directly on Node.js. There is no build step.
 
 Environment variables, read from `.env`. `pnpm start` also runs without the file, with the variables set in the environment.
 
-| Variable               | Default               | Meaning                                                                                                 |
-| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`       | required              | The key used for transcription and refinement                                                           |
-| `HOST`                 | `127.0.0.1`           | The address to listen on                                                                                |
-| `PORT`                 | `8787`                | The port to listen on                                                                                   |
-| `TRANSCRIBE_MODEL`     | `gpt-live-transcribe` | The realtime transcription model                                                                        |
-| `TRANSCRIBE_LANGUAGES` | none                  | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy |
-| `REFINE_MODEL`         | `gpt-6-luna`          | The model that refines each segment. It must support running without reasoning                          |
+| Variable               | Default                             | Meaning                                                                                                 |
+| ---------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`       | required                            | The key used for transcription and refinement                                                           |
+| `HOST`                 | `127.0.0.1`                         | The address to listen on                                                                                |
+| `PORT`                 | `8787`                              | The port to listen on                                                                                   |
+| `TRANSCRIBE_MODEL`     | `gpt-live-transcribe`               | The realtime transcription model                                                                        |
+| `TRANSCRIBE_LANGUAGES` | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy |
+| `REFINE_MODEL`         | `gpt-6-luna`                        | The model that refines each segment. It must support running without reasoning                          |
+| `LOG_FORMAT`           | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                         |
+| `LOG_LEVEL`            | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                            |
 
 The server has no authentication and listens on the loopback address only. Do not set `HOST` to a public address without an authenticating proxy in front: anyone who can reach the server can spend your OpenAI credit.
+
+## Logs
+
+The server logs [structured records](../../docs/logging.md): in columns in a terminal, and as one JSON object per line anywhere else, which is what a service manager or a log collector sees.
+
+```
+16:24:10.120 INFO  dictation   started dictation=1
+16:24:13.642 INFO  dictation   segment refined dictation=1 segment=0 final_ms=101 refine_ms=302 chars=42
+16:24:21.930 INFO  dictation   ended dictation=1 outcome=done segments=3 duration_ms=11810
+```
+
+Each dictation has a number, on every record about it. `final_ms` is the time from the end of a segment to its transcript, and `refine_ms` the time the refinement took. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
 ## Tuning
 

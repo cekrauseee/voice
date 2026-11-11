@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FakeRefiner, FakeTranscriber, settle, silence, speech } from "./fixtures.ts";
+import { FakeRefiner, FakeTranscriber, settle, silence, silent, speech } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
 import { DictationSession } from "./session.ts";
 
@@ -16,7 +16,7 @@ function setup() {
     end: () => {
       ended = true;
     },
-    log: () => {},
+    log: silent,
   });
   /** Speaks one segment: speech, then the pause that commits it. */
   const say = () => session.audio(Buffer.concat([speech(500), silence(700)]));

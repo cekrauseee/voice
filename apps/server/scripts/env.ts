@@ -3,6 +3,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createLogger } from "@voice/log";
 
 /** A variable assignment, set or commented out. */
 const ASSIGNMENT = /^\s*(?:#\s*)?([A-Za-z_][A-Za-z0-9_]*)=/;
@@ -44,10 +45,8 @@ if (import.meta.main) {
   );
   if (added.length > 0) {
     writeFileSync(path, content, { mode: 0o600 });
-    console.log(
-      exists
-        ? `added to apps/server/.env: ${added.join(", ")}`
-        : "created apps/server/.env from .env.example",
-    );
+    const log = createLogger({ scope: "env" });
+    if (exists) log.info("added variables", { file: "apps/server/.env", added: added.join(",") });
+    else log.info("created file", { file: "apps/server/.env", from: ".env.example" });
   }
 }

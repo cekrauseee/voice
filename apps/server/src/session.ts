@@ -1,3 +1,4 @@
+import type { Logger } from "@voice/log";
 import type { ErrorCode, ServerMessage } from "./protocol.ts";
 import type { Refiner } from "./refiner.ts";
 import { Segmenter, type SegmenterAction } from "./segmenter.ts";
@@ -16,7 +17,7 @@ export interface SessionDeps {
   send(message: ServerMessage): void;
   /** Called once when the session is over. No message follows. */
   end(): void;
-  log(message: string): void;
+  log: Logger;
 }
 
 interface Segment {
@@ -38,6 +39,7 @@ export class DictationSession {
   private readonly abort = new AbortController();
   private readonly segments: Segment[] = [];
   private readonly committedAt: number[] = [];
+  private readonly startedAt = Date.now();
   private emitted = 0;
   private stopped = false;
   private ended = false;
@@ -50,10 +52,11 @@ export class DictationSession {
       delta: (segment, text) => this.onDelta(segment, text),
       final: (segment, text) => this.onFinal(segment, text),
       error: (error) => {
-        this.deps.log(`transcription error: ${error.message}`);
+        this.deps.log.error("transcription failed", { error: error.message });
         this.fail("transcription_failed", "Transcription failed");
       },
     });
+    this.deps.log.info("started");
   }
 
   audio(pcm: Buffer): void {
@@ -73,9 +76,14 @@ export class DictationSession {
     this.emit();
   }
 
+  /** The client sent something that is not part of the protocol. */
+  reject(): void {
+    this.fail("bad_request", "Unexpected message");
+  }
+
   /** The client went away: drop everything. */
   close(): void {
-    this.end();
+    this.end("cancelled");
   }
 
   private apply(actions: SegmenterAction[]): void {
@@ -119,6 +127,7 @@ export class DictationSession {
   }
 
   private async refine(index: number, segment: Segment, text: string): Promise<void> {
+    const log = this.deps.log.child({ fields: { segment: index } });
     const finalAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     let refined = text;
@@ -128,15 +137,16 @@ export class DictationSession {
         signal,
       );
       if (isPlausible(text, output)) refined = output;
-      else this.deps.log(`segment ${index}: refinement discarded`);
+      else log.warn("refinement discarded", { chars: text.length, refined_chars: output.length });
     } catch (error) {
       if (this.ended) return;
-      this.deps.log(`segment ${index}: refinement failed: ${errorMessage(error)}`);
+      log.warn("refinement failed", { error: errorMessage(error) });
     }
-    const committedAt = this.committedAt[index] ?? finalAt;
-    this.deps.log(
-      `segment ${index}: final ${finalAt - committedAt}ms, refined ${Date.now() - finalAt}ms`,
-    );
+    log.info("segment refined", {
+      final_ms: finalAt - (this.committedAt[index] ?? finalAt),
+      refine_ms: Date.now() - finalAt,
+      chars: refined.length,
+    });
     segment.refined = refined;
     this.emit();
   }
@@ -162,22 +172,27 @@ export class DictationSession {
     }
     if (this.stopped && this.emitted === this.committedAt.length) {
       this.send({ type: "done" });
-      this.end();
+      this.end("done");
     }
   }
 
   private fail(code: ErrorCode, message: string): void {
     this.send({ type: "error", code, message });
-    this.end();
+    this.end(code);
   }
 
   private send(message: ServerMessage): void {
     if (!this.ended) this.deps.send(message);
   }
 
-  private end(): void {
+  private end(outcome: "done" | "cancelled" | ErrorCode): void {
     if (this.ended) return;
     this.ended = true;
+    this.deps.log.info("ended", {
+      outcome,
+      segments: this.committedAt.length,
+      duration_ms: Date.now() - this.startedAt,
+    });
     clearTimeout(this.finishTimer);
     this.abort.abort();
     this.transcriber.close();

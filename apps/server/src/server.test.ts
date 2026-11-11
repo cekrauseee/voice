@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { type TestContext, test } from "node:test";
 import { WebSocket } from "ws";
-import { FakeRefiner, FakeTranscriber, silence, speech, until } from "./fixtures.ts";
+import { FakeRefiner, FakeTranscriber, silence, silent, speech, until } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
 import { createServer } from "./server.ts";
 
 async function start(t: TestContext) {
   const transcriber = new FakeTranscriber();
   const refiner = new FakeRefiner();
-  const server = createServer({ createTranscriber: transcriber.create, refiner, log: () => {} });
+  const server = createServer({ createTranscriber: transcriber.create, refiner, log: silent });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => {
     server.close();

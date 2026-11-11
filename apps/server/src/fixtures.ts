@@ -1,3 +1,4 @@
+import { createLogger } from "@voice/log";
 import { SAMPLE_RATE } from "./protocol.ts";
 import type { RefineInput, Refiner } from "./refiner.ts";
 import type { CreateTranscriber, TranscriberEvents } from "./transcriber.ts";
@@ -67,3 +68,6 @@ export async function until(condition: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
 }
+
+/** A logger that writes nowhere. */
+export const silent = createLogger({ scope: "test", write: () => {} });

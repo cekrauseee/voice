@@ -1,4 +1,5 @@
 import { createServer as createHttpServer, type Server } from "node:http";
+import type { Logger } from "@voice/log";
 import { type RawData, WebSocketServer } from "ws";
 import { DICTATION_PATH, parseClientMessage, type ServerMessage } from "./protocol.ts";
 import type { Refiner } from "./refiner.ts";
@@ -8,7 +9,7 @@ import type { CreateTranscriber } from "./transcriber.ts";
 export interface ServerDeps {
   createTranscriber: CreateTranscriber;
   refiner: Refiner;
-  log(message: string): void;
+  log: Logger;
 }
 
 /** HTTP server with `GET /health` and the dictation WebSocket. One connection is one dictation. */
@@ -22,6 +23,7 @@ export function createServer(deps: ServerDeps): Server {
   });
 
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 1 << 20 });
+  let dictations = 0;
 
   server.on("upgrade", (request, socket, head) => {
     if (request.url !== DICTATION_PATH) {
@@ -29,16 +31,12 @@ export function createServer(deps: ServerDeps): Server {
       return;
     }
     sockets.handleUpgrade(request, socket, head, (ws) => {
-      const startedAt = Date.now();
-      deps.log("dictation started");
-      const send = (message: ServerMessage) => ws.send(JSON.stringify(message));
+      dictations += 1;
       const session = new DictationSession({
         ...deps,
-        send,
-        end: () => {
-          deps.log(`dictation ended after ${Date.now() - startedAt}ms`);
-          ws.close(1000);
-        },
+        log: deps.log.child({ scope: "dictation", fields: { dictation: dictations } }),
+        send: (message: ServerMessage) => ws.send(JSON.stringify(message)),
+        end: () => ws.close(1000),
       });
 
       ws.on("message", (data, isBinary) => {
@@ -47,8 +45,7 @@ export function createServer(deps: ServerDeps): Server {
         } else if (parseClientMessage(toBuffer(data).toString("utf8"))) {
           session.stop();
         } else {
-          send({ type: "error", code: "bad_request", message: "Unexpected message" });
-          session.close();
+          session.reject();
         }
       });
       ws.on("close", () => session.close());

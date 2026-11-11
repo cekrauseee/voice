@@ -14,7 +14,8 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": ["LOG_FORMAT", "LOG_LEVEL"]
     }
   }
 }
