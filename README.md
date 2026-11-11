@@ -7,7 +7,7 @@ Real-time voice dictation for macOS. Hold a key, speak, and the text is typed in
 
 ## Requirements
 
-- macOS 14 or later, with Xcode 16 or later
+- A Mac with Xcode 26 or later. The app targets macOS 14 and later
 - Node.js 26 and pnpm 11
 - An [OpenAI API key](https://platform.openai.com/api-keys)
 
