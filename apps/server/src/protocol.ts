@@ -5,7 +5,7 @@ export const DICTATION_PATH = "/v1/dictation";
 /** Audio the client streams as binary frames: 16-bit little-endian mono PCM. */
 export const SAMPLE_RATE = 24_000;
 
-export type ErrorCode = "bad_request" | "transcription_failed" | "timeout" | "internal";
+export type ErrorCode = "bad_request" | "transcription_failed" | "timeout";
 
 export type ServerMessage =
   | { type: "ready" }

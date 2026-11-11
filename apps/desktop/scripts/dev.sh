@@ -10,9 +10,11 @@ quit() {
 }
 
 quit
-log stream --style compact --predicate 'subsystem == "eu.cekrause.voice"' &
+log stream --level info --style compact --predicate 'subsystem == "eu.cekrause.voice"' &
 logs=$!
-trap 'quit; kill "$logs" 2>/dev/null' EXIT INT TERM
+trap 'quit; kill "$logs" 2>/dev/null' EXIT
+trap 'exit 130' INT TERM
 
 echo "Running Voice. It lives in the menu bar."
-open -W build/Voice.app
+open -W build/Voice.app &
+wait $!

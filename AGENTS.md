@@ -1,3 +1,13 @@
+# Voice
+
+Real-time voice dictation for macOS: a Swift menu bar app (`apps/desktop`) and a TypeScript server (`apps/server`). Start with [README.md](README.md), then [docs/architecture.md](docs/architecture.md).
+
+- `pnpm verify` must pass before a change is done. It checks formatting, lint, types, and tests, and CI runs the same command. `pnpm format` fixes formatting.
+- A change to the messages between the app and the server updates [docs/protocol.md](docs/protocol.md), `apps/server/src/protocol.ts`, and `apps/desktop/Sources/VoiceCore/ServerMessage.swift` together.
+- Logic that does not need the system goes in `VoiceCore` with tests. The `Voice` target stays thin glue over macOS APIs.
+- The server runs TypeScript directly on Node.js: only erasable syntax, and relative imports end in `.ts`.
+- UI copy is short, plain English.
+
 <!-- BEGIN:turborepo-agent-rules -->
 
 # This is NOT the Turborepo you know
