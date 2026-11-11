@@ -1,0 +1,12 @@
+{
+  "name": "@voice/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "scripts/dev.sh",
+    "build": "scripts/bundle.sh release",
+    "lint": "swift format lint --strict --recursive Package.swift Sources Tests",
+    "format": "swift format --in-place --recursive Package.swift Sources Tests",
+    "test": "swift build --build-tests && swift test --skip-build"
+  }
+}
