@@ -1,4 +1,4 @@
-// Builds the app bundle: build/Voice Dev.app for development, build/Voice.app for production.
+// Builds the app bundle: build/Voice (Development).app, or build/Voice.app for production.
 //
 //   node scripts/bundle.ts [development|production]
 //
@@ -23,7 +23,7 @@ function signingIdentity(): string | undefined {
 
 /** Builds and signs the app. Returns the path of the bundle. */
 export function bundle(name: VariantName, log: Logger): string {
-  const { app, configuration, identifier, name: appName } = variant(name);
+  const { app, configuration, icon, identifier, name: appName } = variant(name);
   const startedAt = Date.now();
 
   log.info("compiling", { build: name });
@@ -41,7 +41,9 @@ export function bundle(name: VariantName, log: Logger): string {
   const plist = join(contents, "Info.plist");
   rmSync(app, { recursive: true, force: true });
   mkdirSync(join(contents, "MacOS"), { recursive: true });
+  mkdirSync(join(contents, "Resources"));
   cpSync(binary, join(contents, "MacOS", "Voice"));
+  cpSync(join(root, "Support", icon), join(contents, "Resources", "AppIcon.icns"));
   cpSync(join(root, "Support", "Info.plist"), plist);
   const values = {
     CFBundleIdentifier: identifier,

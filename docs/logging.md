@@ -35,7 +35,7 @@ Levels:
 In a terminal, records are printed for people, in columns and in color:
 
 ```
-16:22:47.485 INFO  build       built app="build/Voice Dev.app" duration_ms=1829
+16:22:47.485 INFO  build       built app="build/Voice (Development).app" identifier=eu.cekrause.voice.dev duration_ms=1829
 16:22:47.908 INFO  app         launched version=0.0.0 build=development
 16:24:10.120 INFO  dictation   started dictation=1
 16:24:13.642 INFO  dictation   segment refined dictation=1 segment=0 final_ms=101 refine_ms=302 chars=42

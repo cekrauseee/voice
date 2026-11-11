@@ -6,14 +6,15 @@ The macOS menu bar app. It records while a shortcut says so, streams the audio t
 
 There are two builds of the app. macOS tells them apart, so each has its own permissions and settings, and both can be installed at once.
 
-|                 | Development                    | Production          |
-| --------------- | ------------------------------ | ------------------- |
-| Command         | `pnpm dev`                     | `pnpm build`        |
-| App             | `build/Voice Dev.app`          | `build/Voice.app`   |
-| Name            | Voice Dev                      | Voice               |
-| Identifier      | `eu.cekrause.voice.dev`        | `eu.cekrause.voice` |
-| Compiled        | For debugging                  | Optimized           |
-| In the menu bar | The waveform with a `DEV` mark | The waveform        |
+|                 | Development                       | Production          |
+| --------------- | --------------------------------- | ------------------- |
+| Command         | `pnpm dev`                        | `pnpm build`        |
+| App             | `build/Voice (Development).app`   | `build/Voice.app`   |
+| Name            | Voice (Development)               | Voice               |
+| Identifier      | `eu.cekrause.voice.dev`           | `eu.cekrause.voice` |
+| Icon            | The waveform in amber, marked DEV | The waveform        |
+| Compiled        | For debugging                     | Optimized           |
+| In the menu bar | The waveform with a `DEV` mark    | The waveform        |
 
 `pnpm dev` builds the development app, opens it, and prints its log until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
@@ -107,22 +108,23 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 
 ## Layout
 
-| Path                                                                | Responsibility                               |
-| ------------------------------------------------------------------- | -------------------------------------------- |
-| `Sources/VoiceCore`                                                 | Logic without system dependencies            |
-| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows  |
-| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions             |
-| `Sources/Voice/OnboardingView.swift`                                | The setup window                             |
-| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide             |
-| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text |
-| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                  |
-| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM         |
-| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field            |
-| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                     |
-| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                 |
-| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is             |
-| `Support/Info.plist`                                                | The app bundle's metadata                    |
-| `scripts/variants.ts`                                               | The names and identifiers of the two builds  |
-| `scripts/bundle.ts`                                                 | Builds and signs the app                     |
-| `scripts/dev.ts`                                                    | Builds, runs, and prints the log             |
-| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings   |
+| Path                                                                | Responsibility                                              |
+| ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `Sources/VoiceCore`                                                 | Logic without system dependencies                           |
+| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                 |
+| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                            |
+| `Sources/Voice/OnboardingView.swift`                                | The setup window                                            |
+| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                            |
+| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                |
+| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                 |
+| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                        |
+| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                           |
+| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                    |
+| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                |
+| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                            |
+| `Support/Info.plist`                                                | The app bundle's metadata                                   |
+| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them |
+| `scripts/variants.ts`                                               | The names and identifiers of the two builds                 |
+| `scripts/bundle.ts`                                                 | Builds and signs the app                                    |
+| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                            |
+| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                  |
