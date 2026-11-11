@@ -112,19 +112,7 @@ private struct Hint: View {
   var body: some View {
     HStack(spacing: 4) {
       Text(title)
-      ForEach(keyCaps, id: \.self) { KeyCap(label: $0) }
+      KeyCaps(labels: keyCaps)
     }
-  }
-}
-
-struct KeyCap: View {
-  let label: String
-
-  var body: some View {
-    Text(label)
-      .font(.system(size: 11, weight: .medium))
-      .padding(.horizontal, 5)
-      .frame(minWidth: 20, minHeight: 20)
-      .background(.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
   }
 }

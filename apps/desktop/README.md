@@ -8,7 +8,7 @@ The macOS menu bar app. It records while a shortcut says so, streams the audio t
 pnpm dev
 ```
 
-This builds `build/Voice.app`, opens it, and prints its log until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
+This builds `build/Voice.app`, opens it, and prints its log, one line per event, until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
 The app connects to `ws://127.0.0.1:8787`. To use a server elsewhere:
 
@@ -18,12 +18,14 @@ defaults write eu.cekrause.voice serverURL wss://voice.example.com
 
 ## Permissions
 
-| Permission    | Why                                                  | When macOS asks        |
-| ------------- | ---------------------------------------------------- | ---------------------- |
-| Accessibility | To see the shortcuts in any app and to type the text | On first launch        |
-| Microphone    | To record                                            | On the first dictation |
+| Permission    | Why                                                  |
+| ------------- | ---------------------------------------------------- |
+| Accessibility | To see the shortcuts in any app and to type the text |
+| Microphone    | To record                                            |
 
-The shortcuts do nothing until Accessibility access is granted. The app keeps checking, so they start working once it is. If they do not, quit and reopen the app. While a permission is missing, the menu bar menu has an item that opens the right page of System Settings.
+On first launch a welcome window lists both, with a button to allow each, and shows the shortcuts. It comes back on every launch until both are allowed and it is closed with Done.
+
+The shortcuts do nothing until Accessibility access is granted. The app keeps checking, so they start working once it is. If they do not, quit and reopen the app. If a permission is taken away later, the menu bar menu has an item that opens the right page of System Settings.
 
 macOS ties these permissions to the app's code signature. The build signs with the first Apple Development identity in the keychain, which keeps the permissions across builds. Without one it signs ad hoc, and macOS asks again after every build. Set `CODESIGN_IDENTITY` to choose an identity.
 
@@ -74,6 +76,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM         |
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field            |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                     |
-| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings and their window                |
+| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                 |
+| `Sources/Voice/OnboardingView.swift`                                | The welcome window                           |
 | `Support/Info.plist`                                                | The app bundle's metadata                    |
 | `scripts/bundle.sh`                                                 | Builds and signs `build/Voice.app`           |

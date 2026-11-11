@@ -18,6 +18,11 @@ final class Settings {
     didSet { save(toggle, forKey: "toggle") }
   }
 
+  /// Whether the welcome window was completed.
+  var hasOnboarded: Bool {
+    didSet { defaults.set(hasOnboarded, forKey: "hasOnboarded") }
+  }
+
   /// Set while the settings window captures a new shortcut, so the current ones stay quiet.
   var isRecordingShortcut = false
 
@@ -32,6 +37,7 @@ final class Settings {
     pillStyle = defaults.string(forKey: "pillStyle").flatMap(PillStyle.init) ?? .minimal
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
+    hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     serverURL =
       defaults.string(forKey: "serverURL").flatMap(URL.init)
       ?? URL(string: "ws://127.0.0.1:8787")!

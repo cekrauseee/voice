@@ -1,14 +1,14 @@
 import AppKit
 import SwiftUI
 
+/// A titled window around a SwiftUI view.
 @MainActor
-final class SettingsWindow {
+final class AppWindow {
   private let window: NSWindow
 
-  init(settings: Settings) {
-    window = NSWindow(
-      contentViewController: NSHostingController(rootView: SettingsView(settings: settings)))
-    window.title = "Settings"
+  init(title: String, content: some View) {
+    window = NSWindow(contentViewController: NSHostingController(rootView: content))
+    window.title = title
     window.styleMask = [.titled, .closable]
     window.isReleasedWhenClosed = false
     window.center()
@@ -17,5 +17,9 @@ final class SettingsWindow {
   func show() {
     NSApp.activate()
     window.makeKeyAndOrderFront(nil)
+  }
+
+  func close() {
+    window.close()
   }
 }

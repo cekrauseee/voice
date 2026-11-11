@@ -23,9 +23,11 @@ pnpm dev
 2. It creates `apps/server/.env` from `.env.example`. Add your `OPENAI_API_KEY` there: the server waits for it and starts as soon as the file is saved.
 3. It builds and opens the app, which lives in the menu bar.
 
+Each app has its own log in the terminal: move between them with the arrow keys, and quit with Ctrl-C.
+
 Running it again changes nothing you have set: variables added to `.env.example` later are added to your `.env`, and existing values are kept.
 
-On first launch macOS asks for Accessibility access, and for microphone access on the first dictation: see [the desktop README](apps/desktop/README.md#permissions).
+On first launch the app opens a welcome window that asks for the two permissions it needs: see [the desktop README](apps/desktop/README.md#permissions).
 
 Then dictate:
 
