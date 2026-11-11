@@ -8,7 +8,7 @@ import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 const REFINE_TIMEOUT_MS = 5_000;
 /** How long the pipeline may take to drain after the client stops. */
 const FINISH_TIMEOUT_MS = 15_000;
-/** How much preceding text the refiner sees. */
+/** How much of the refined text before a segment the refiner sees: the last few segments. */
 const CONTEXT_CHARS = 600;
 
 export interface SessionDeps {
@@ -23,14 +23,15 @@ export interface SessionDeps {
 interface Segment {
   live: string;
   final?: string;
+  finalAt?: number;
   refined?: string;
 }
 
 /**
  * One dictation: audio in, refined segments out.
  *
- * Each segment is transcribed live, completed on commit, then refined on its own
- * while the following segments keep transcribing. Refined segments are sent in order.
+ * Each segment is transcribed live and completed on commit. Completed segments are then
+ * refined one at a time, in order, while the following ones keep transcribing.
  */
 export class DictationSession {
   private readonly deps: SessionDeps;
@@ -40,7 +41,9 @@ export class DictationSession {
   private readonly segments: Segment[] = [];
   private readonly committedAt: number[] = [];
   private readonly startedAt = Date.now();
-  private emitted = 0;
+  /** The segment to refine next. Every segment before it is refined and sent. */
+  private next = 0;
+  private refining = false;
   private stopped = false;
   private ended = false;
   private finishTimer: NodeJS.Timeout | undefined;
@@ -73,7 +76,7 @@ export class DictationSession {
       () => this.fail("timeout", "Transcription timed out"),
       FINISH_TIMEOUT_MS,
     );
-    this.emit();
+    this.finishIfDrained();
   }
 
   /** The client sent something that is not part of the protocol. */
@@ -117,18 +120,38 @@ export class DictationSession {
     const segment = this.segment(index);
     if (segment.final !== undefined) return;
     segment.final = text.trim();
+    segment.finalAt = Date.now();
     this.send({ type: "final", segment: index, text: segment.final });
-    if (segment.final === "") {
-      segment.refined = "";
-      this.emit();
-    } else {
-      void this.refine(index, segment, segment.final);
-    }
+    void this.drain();
   }
 
-  private async refine(index: number, segment: Segment, text: string): Promise<void> {
+  /**
+   * Refines the completed segments one at a time, in the order they were spoken. A segment
+   * continues the text before it, so it waits for that text to be refined first.
+   */
+  private async drain(): Promise<void> {
+    if (this.refining) return;
+    this.refining = true;
+    for (;;) {
+      const index = this.next;
+      const segment = this.segments[index];
+      if (this.ended || segment?.final === undefined) break;
+      const text = segment.final === "" ? "" : await this.refine(index, segment);
+      if (this.ended) break;
+      segment.refined = text;
+      this.send({ type: "refined", segment: index, text });
+      this.next += 1;
+    }
+    this.refining = false;
+    this.finishIfDrained();
+  }
+
+  /** Returns the refined text of a segment, or its transcript when refining does not work out. */
+  private async refine(index: number, segment: Segment): Promise<string> {
     const log = this.deps.log.child({ fields: { segment: index } });
-    const finalAt = Date.now();
+    const text = segment.final ?? "";
+    const finalAt = segment.finalAt ?? Date.now();
+    const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     let refined = text;
     try {
@@ -139,41 +162,33 @@ export class DictationSession {
       if (isPlausible(text, output)) refined = output;
       else log.warn("refinement discarded", { chars: text.length, refined_chars: output.length });
     } catch (error) {
-      if (this.ended) return;
+      if (this.ended) return text;
       log.warn("refinement failed", { error: errorMessage(error) });
     }
     log.info("segment refined", {
       final_ms: finalAt - (this.committedAt[index] ?? finalAt),
-      refine_ms: Date.now() - finalAt,
+      wait_ms: startedAt - finalAt,
+      refine_ms: Date.now() - startedAt,
       chars: refined.length,
     });
-    segment.refined = refined;
-    this.emit();
+    return refined;
   }
 
-  /** The best text known for everything before a segment. */
+  /** The end of the refined text before a segment: what the segment continues. */
   private previous(index: number): string {
     return this.segments
       .slice(0, index)
-      .map((segment) => segment.refined ?? segment.final ?? segment.live)
+      .map((segment) => segment.refined ?? "")
       .filter((text) => text !== "")
       .join(" ")
       .slice(-CONTEXT_CHARS);
   }
 
-  /** Sends the refined segments that are next in order, and ends once all are out. */
-  private emit(): void {
-    if (this.ended) return;
-    for (;;) {
-      const text = this.segments[this.emitted]?.refined;
-      if (text === undefined) break;
-      this.send({ type: "refined", segment: this.emitted, text });
-      this.emitted += 1;
-    }
-    if (this.stopped && this.emitted === this.committedAt.length) {
-      this.send({ type: "done" });
-      this.end("done");
-    }
+  /** Ends the dictation once the client has stopped and every segment is refined. */
+  private finishIfDrained(): void {
+    if (this.ended || !this.stopped || this.next < this.committedAt.length) return;
+    this.send({ type: "done" });
+    this.end("done");
   }
 
   private fail(code: ErrorCode, message: string): void {

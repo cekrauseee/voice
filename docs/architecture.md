@@ -45,15 +45,19 @@ The pause length is the main trade-off. A shorter pause types text sooner but cu
 
 ## Refinement
 
-The [refiner](../apps/server/src/refiner.ts) sees one segment and the text that precedes it. The preceding text is context only: it is already typed.
+The [refiner](../apps/server/src/refiner.ts) sees one segment and the end of the refined text before it, about the last few segments. That text is context only: it is already typed.
 
-Because the segment before it cannot change, the refiner is told how to join them: start with a lowercase letter when the segment continues a sentence, and leave out the closing punctuation when it stops mid-sentence. The app puts one space between segments.
+A pause can fall in the middle of a sentence, so a segment is not always a sentence. Because the text before it cannot change, the refiner is told how to join them: start with a lowercase letter when the segment continues a sentence, and leave out the closing punctuation when it stops mid-sentence. The app puts one space between segments.
 
 Refinement can only improve a segment, never lose it. If the model fails, takes more than 5 s, or returns something far longer than the transcript (it answered instead of cleaning up), the transcript is typed as is.
 
-## Order
+## The refinement queue
 
-Results arrive in any order: OpenAI does not guarantee the order of completed transcripts, and a short segment refines faster than a long one. The [session](../apps/server/src/session.ts) starts refining a segment as soon as its transcript completes, and holds refined segments until all earlier ones are out. The app therefore receives `refined` messages strictly in order and types them as they come.
+Segments are refined one at a time, in the order they were spoken. Each refinement depends on the one before: how a segment starts depends on how the refined text before it ended. So a segment waits in a queue until the segment before it is refined, and the [session](../apps/server/src/session.ts) sends each `refined` message as soon as it is ready, already in order.
+
+Only refinement is queued. Transcription never waits: while a segment is being refined, the next ones are being recorded and transcribed. A refinement in progress is never cancelled when new speech arrives, because under continuous speech that would keep putting off the first text.
+
+OpenAI does not guarantee the order of completed transcripts. When a later transcript arrives first, it waits for the earlier one.
 
 ## Failure
 

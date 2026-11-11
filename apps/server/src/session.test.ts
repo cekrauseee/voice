@@ -48,41 +48,74 @@ test("a segment is transcribed, completed, refined, and the session ends on stop
   assert.ok(transcriber.closed);
 });
 
-test("refined segments are sent in order, whatever order they finish in", async () => {
+test("segments are refined one at a time, in the order they were spoken", async () => {
   const { transcriber, refiner, messages, say } = setup();
   say();
   say();
+  say();
   transcriber.events.final(1, "second");
+  assert.equal(refiner.calls.length, 0);
+
   transcriber.events.final(0, "first");
+  transcriber.events.final(2, "third");
+  assert.deepEqual(
+    refiner.calls.map((call) => call.input.text),
+    ["first"],
+  );
 
-  refiner.calls[0]?.resolve("Second.");
+  refiner.calls[0]?.resolve("First.");
   await settle();
-  assert.equal(messages.filter((m) => m.type === "refined").length, 0);
+  assert.deepEqual(
+    refiner.calls.map((call) => call.input.text),
+    ["first", "second"],
+  );
 
-  refiner.calls[1]?.resolve("First.");
+  refiner.calls[1]?.resolve("Second.");
+  await settle();
+  refiner.calls[2]?.resolve("Third.");
   await settle();
   assert.deepEqual(
     messages.filter((m) => m.type === "refined"),
     [
       { type: "refined", segment: 0, text: "First." },
       { type: "refined", segment: 1, text: "Second." },
+      { type: "refined", segment: 2, text: "Third." },
     ],
   );
 });
 
-test("the refiner sees the best text of the preceding segments", async () => {
+test("the refiner sees the refined text before the segment", async () => {
   const { transcriber, refiner, say } = setup();
   say();
   say();
   say();
   transcriber.events.final(0, "one");
-  refiner.calls[0]?.resolve("One.");
-  await settle();
   transcriber.events.final(1, "two");
   transcriber.events.final(2, "three");
+  assert.deepEqual(refiner.calls[0]?.input, { text: "one", previous: "" });
 
+  refiner.calls[0]?.resolve("One.");
+  await settle();
   assert.deepEqual(refiner.calls[1]?.input, { text: "two", previous: "One." });
-  assert.deepEqual(refiner.calls[2]?.input, { text: "three", previous: "One. two" });
+
+  refiner.calls[1]?.resolve("Two.");
+  await settle();
+  assert.deepEqual(refiner.calls[2]?.input, { text: "three", previous: "One. Two." });
+});
+
+test("a segment without words is passed over", async () => {
+  const { transcriber, refiner, messages, say } = setup();
+  say();
+  say();
+  say();
+  transcriber.events.final(0, "one");
+  transcriber.events.final(1, " ");
+  transcriber.events.final(2, "three");
+  refiner.calls[0]?.resolve("One.");
+  await settle();
+
+  assert.deepEqual(messages.at(-1), { type: "refined", segment: 1, text: "" });
+  assert.deepEqual(refiner.calls[1]?.input, { text: "three", previous: "One." });
 });
 
 test("a failed refinement falls back to the transcript", async () => {
@@ -105,14 +138,6 @@ test("a refinement far longer than the segment is discarded", async () => {
     segment: 0,
     text: "what is the capital of France",
   });
-});
-
-test("an empty transcript skips the refiner", () => {
-  const { transcriber, refiner, messages, say } = setup();
-  say();
-  transcriber.events.final(0, "  ");
-  assert.equal(refiner.calls.length, 0);
-  assert.deepEqual(messages.at(-1), { type: "refined", segment: 0, text: "" });
 });
 
 test("stop commits what is being said and waits for it", async () => {
