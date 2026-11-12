@@ -128,6 +128,7 @@ Some samples have a recording, spoken by a system voice, and one of them failed,
 Settings:
 
 - **Open at login**: macOS opens the app, in the menu bar, when you log in. Off by default. macOS keeps this, not the app: it is also in System Settings, under Login Items, and the two builds are separate items. If the app was turned off there, turning it on here opens that page.
+- **Microphone**: the microphone to dictate with, chosen from a menu of the ones connected. System default, the default, follows the input chosen in macOS. A chosen microphone that is disconnected stays chosen: until it is connected again, the system default records.
 - **Theme**: Auto, Light, or Dark.
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
@@ -136,9 +137,9 @@ Settings:
 
 ## Microphone and media
 
-The microphone is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
+The microphone is the one chosen in the settings, or the input chosen in macOS. It is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
 
-This matters with a Bluetooth headset used as the microphone. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It is back to normal about a third of a second later. While another app records, the headset is left alone.
+This matters with a Bluetooth headset used as the microphone, whether it is the one chosen or the system's. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It is back to normal about a third of a second later. While another app records, the headset is left alone.
 
 While a dictation records, the media playing on the Mac is paused, and it resumes when the recording ends, without waiting for the text. With a Bluetooth headset it resumes once the headset is out of call quality, and plays again about a second after the recording ends: the headset and the player both need a moment. Media that was not playing is left alone. This works with apps that macOS shows in Now Playing, such as music players and browsers. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
 
@@ -177,7 +178,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, the statistics, when media is paused and resumed, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, when media is paused and resumed, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 

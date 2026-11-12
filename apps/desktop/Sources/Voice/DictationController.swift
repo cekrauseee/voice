@@ -18,9 +18,7 @@ final class DictationController {
   @ObservationIgnored private let statistics: StatisticsStore
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
-  @ObservationIgnored private let media = MediaPause(
-    isPlaying: MediaControl.isPlaying, send: MediaControl.send,
-    soundIsBack: MediaControl.soundIsBack)
+  @ObservationIgnored private let media: MediaPause
   /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
@@ -31,6 +29,9 @@ final class DictationController {
     self.settings = settings
     self.history = history
     self.statistics = statistics
+    media = MediaPause(
+      isPlaying: MediaControl.isPlaying, send: MediaControl.send,
+      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) })
   }
 
   var isRecording: Bool {
@@ -74,7 +75,7 @@ final class DictationController {
 
     let chunks: AsyncStream<AudioChunk>
     do {
-      chunks = try capture.start()
+      chunks = try capture.start(with: settings.microphone)
     } catch {
       return fail(.microphoneUnavailable)
     }

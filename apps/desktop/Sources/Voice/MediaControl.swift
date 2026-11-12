@@ -47,16 +47,17 @@ enum MediaControl {
   }
 
   /// Gets sound back to normal after a recording, and returns once it is, or after five
-  /// seconds.
+  /// seconds. `microphone` is the identifier of the device that recorded.
   ///
   /// A Bluetooth headset plays in call quality while its microphone is open, and macOS
   /// leaves it there for two seconds after. Media resumed before it is out sounds flat.
-  static func soundIsBack() async {
+  static func soundIsBack(microphone: String?) async {
+    let input = microphone.flatMap(device) ?? defaultInput()
     let startedAt = ContinuousClock.now
     var exit = CallQualityExit()
     var asked = false
     waiting: while ContinuousClock.now - startedAt < .seconds(5) {
-      switch exit.step(headset(), after: ContinuousClock.now - startedAt) {
+      switch exit.step(headset(input), after: ContinuousClock.now - startedAt) {
       case .done:
         break waiting
       case .ask:
@@ -71,10 +72,8 @@ enum MediaControl {
     Log("media").debug("sound back", ["wait_ms": waited, "asked": asked])
   }
 
-  /// What the device that plays sound is doing.
-  private static func headset() -> CallQualityExit.Headset {
-    let system = AudioObjectID(kAudioObjectSystemObject)
-    let input: AudioObjectID? = read(system, kAudioHardwarePropertyDefaultInputDevice)
+  /// What the device that plays sound is doing, with `input` the one that recorded.
+  private static func headset(_ input: AudioObjectID?) -> CallQualityExit.Headset {
     let isRunning: UInt32? = input.flatMap {
       read($0, kAudioDevicePropertyDeviceIsRunningSomewhere)
     }
@@ -95,6 +94,26 @@ enum MediaControl {
       mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
     let size = UInt32(MemoryLayout<Float64>.size)
     return AudioObjectSetPropertyData(device, &address, 0, nil, size, &best) == noErr
+  }
+
+  private static func defaultInput() -> AudioObjectID? {
+    read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
+  }
+
+  /// The audio device with an identifier, as a capture device reports it.
+  private static func device(_ id: String) -> AudioObjectID? {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+      mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var uid = id as CFString
+    var device = AudioObjectID(kAudioObjectUnknown)
+    var size = UInt32(MemoryLayout<AudioObjectID>.size)
+    let status = withUnsafeMutablePointer(to: &uid) {
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject), &address,
+        UInt32(MemoryLayout<CFString>.size), $0, &size, &device)
+    }
+    return status == noErr && device != kAudioObjectUnknown ? device : nil
   }
 
   /// The device that plays sound, when it is a Bluetooth headset.

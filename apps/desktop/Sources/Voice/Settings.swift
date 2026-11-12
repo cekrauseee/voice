@@ -22,6 +22,13 @@ final class Settings {
     didSet { defaults.set(instructions, forKey: "instructions") }
   }
 
+  /// The microphone to dictate with. Without one, the system's records.
+  var microphone: Microphone? {
+    didSet {
+      defaults.set(microphone.flatMap { try? JSONEncoder().encode($0) }, forKey: "microphone")
+    }
+  }
+
   /// How long a transcription and its recording are kept.
   var retention: Retention {
     didSet { defaults.set(retention.rawValue, forKey: "retention") }
@@ -60,6 +67,9 @@ final class Settings {
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
+    microphone = defaults.data(forKey: "microphone").flatMap {
+      try? JSONDecoder().decode(Microphone.self, from: $0)
+    }
     retention = defaults.string(forKey: "retention").flatMap(Retention.init) ?? .never
     isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
