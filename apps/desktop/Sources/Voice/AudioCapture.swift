@@ -8,78 +8,105 @@ struct AudioChunk: Sendable {
   let level: Float
 }
 
-/// Records the microphone as a stream of fixed-size PCM chunks.
+/// Records the microphone as a stream of PCM chunks.
+///
+/// The microphone is open only while a recording runs. Each recording has its own capture
+/// session, which is torn down when it stops, so the app holds no audio device in between.
+/// With a Bluetooth headset that matters: while anything holds its microphone, it plays
+/// everything else in call quality.
 @MainActor
 final class AudioCapture {
-  private let engine = AVAudioEngine()
-  private var continuation: AsyncStream<AudioChunk>.Continuation?
+  private var recording: Recording?
 
+  /// Starts recording and returns at once. The chunks follow as soon as the microphone
+  /// delivers audio. The stream ends after `stop`, once all of the audio is delivered, or
+  /// by itself when the microphone does not start.
   func start() throws -> AsyncStream<AudioChunk> {
-    let input = engine.inputNode
-    let format = input.outputFormat(forBus: 0)
-    guard
-      format.sampleRate > 0,
-      let target = AVAudioFormat(
-        commonFormat: .pcmFormatInt16, sampleRate: AudioFormat.sampleRate, channels: 1,
-        interleaved: true),
-      let converter = AVAudioConverter(from: format, to: target)
-    else { throw DictationError.microphoneUnavailable }
-
+    stop()
     let (stream, continuation) = AsyncStream.makeStream(of: AudioChunk.self)
-    self.continuation = continuation
-    AudioProcessor(converter: converter, continuation: continuation).install(on: input)
-    do {
-      try engine.start()
-    } catch {
-      stop()
-      throw DictationError.microphoneUnavailable
-    }
+    guard let device = AVCaptureDevice.default(for: .audio),
+      let recording = Recording(device: device, continuation: continuation)
+    else { throw DictationError.microphoneUnavailable }
+    self.recording = recording
+    recording.start()
     return stream
   }
 
   func stop() {
-    engine.inputNode.removeTap(onBus: 0)
-    engine.stop()
-    continuation?.finish()
-    continuation = nil
+    recording?.stop()
+    recording = nil
   }
 }
 
-/// Converts what the microphone delivers into chunks. Runs on the audio thread only.
-private final class AudioProcessor: @unchecked Sendable {
-  private let converter: AVAudioConverter
+/// One recording: a capture session, and the chunks made of what it delivers.
+private final class Recording: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate,
+  @unchecked Sendable
+{
+  private let session = AVCaptureSession()
+  /// Starting and stopping the session block until the device answers, so they run here.
+  private let control = DispatchQueue(label: "eu.cekrause.voice.capture.control")
+  /// The audio arrives here, in order. The chunker is only touched on this queue.
+  private let audio = DispatchQueue(label: "eu.cekrause.voice.capture.audio")
   private let continuation: AsyncStream<AudioChunk>.Continuation
   private var chunker = PCMChunker()
 
-  init(converter: AVAudioConverter, continuation: AsyncStream<AudioChunk>.Continuation) {
-    self.converter = converter
+  init?(device: AVCaptureDevice, continuation: AsyncStream<AudioChunk>.Continuation) {
     self.continuation = continuation
+    super.init()
+
+    // The session converts what the device delivers into the format the server expects.
+    let output = AVCaptureAudioDataOutput()
+    output.audioSettings = [
+      AVFormatIDKey: kAudioFormatLinearPCM,
+      AVSampleRateKey: AudioFormat.sampleRate,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false,
+      AVLinearPCMIsNonInterleaved: false,
+    ]
+    output.setSampleBufferDelegate(self, queue: audio)
+    guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input),
+      session.canAddOutput(output)
+    else { return nil }
+    session.addInput(input)
+    session.addOutput(output)
   }
 
-  func install(on input: AVAudioInputNode) {
-    input.installTap(onBus: 0, bufferSize: 1024, format: converter.inputFormat) { buffer, _ in
-      self.process(buffer)
+  func start() {
+    control.async {
+      self.session.startRunning()
+      if !self.session.isRunning { self.finish() }
     }
   }
 
-  private func process(_ buffer: AVAudioPCMBuffer) {
-    let ratio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
-    let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
-    guard let output = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: capacity)
+  /// Releases the microphone, then ends the stream.
+  func stop() {
+    control.async {
+      self.session.stopRunning()
+      self.finish()
+    }
+  }
+
+  /// Ends the stream behind the audio still on its way.
+  private func finish() {
+    audio.async {
+      if let rest = self.chunker.flush() { self.yield(rest) }
+      self.continuation.finish()
+    }
+  }
+
+  func captureOutput(
+    _ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+    from connection: AVCaptureConnection
+  ) {
+    guard let block = sampleBuffer.dataBuffer, block.dataLength > 0,
+      let samples = try? block.dataBytes()
     else { return }
+    for pcm in chunker.append(samples) { yield(pcm) }
+  }
 
-    // The converter asks for input until it has enough: hand it this buffer once.
-    nonisolated(unsafe) var input: AVAudioPCMBuffer? = buffer
-    let status = converter.convert(to: output, error: nil) { _, inputStatus in
-      inputStatus.pointee = input == nil ? .noDataNow : .haveData
-      defer { input = nil }
-      return input
-    }
-    guard status != .error, let samples = output.int16ChannelData else { return }
-
-    let converted = UnsafeBufferPointer(start: samples[0], count: Int(output.frameLength))
-    for pcm in chunker.append(converted) {
-      continuation.yield(AudioChunk(pcm: pcm, level: Level.normalized(pcm)))
-    }
+  private func yield(_ pcm: Data) {
+    continuation.yield(AudioChunk(pcm: pcm, level: Level.normalized(pcm)))
   }
 }

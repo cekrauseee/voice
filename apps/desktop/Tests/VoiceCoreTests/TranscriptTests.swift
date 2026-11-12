@@ -58,12 +58,19 @@ import Testing
 @Suite struct AudioTests {
   @Test func chunkerEmitsFixedChunksAndKeepsTheRest() {
     var chunker = PCMChunker(chunkSamples: 4)
-    let samples: [Int16] = [1, 2, 3, 4, 5, 6]
-    let first = samples.withUnsafeBufferPointer { chunker.append($0) }
-    #expect(first.map(\.count) == [8])
-    let second = samples.withUnsafeBufferPointer { chunker.append($0) }
+    let pcm = Data([1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0])
+    #expect(chunker.append(pcm).map(\.count) == [8])
+    let second = chunker.append(pcm)
     #expect(second.map(\.count) == [8, 8])
     #expect(second[0] == Data([5, 0, 6, 0, 1, 0, 2, 0]))
+  }
+
+  @Test func chunkerGivesUpTheRestWhenTheStreamEnds() {
+    var chunker = PCMChunker(chunkSamples: 4)
+    #expect(chunker.flush() == nil)
+    _ = chunker.append(Data([1, 0, 2, 0, 3, 0, 4, 0, 5, 0]))
+    #expect(chunker.flush() == Data([5, 0]))
+    #expect(chunker.flush() == nil)
   }
 
   @Test func levelRisesWithLoudness() {

@@ -7,7 +7,7 @@ public enum AudioFormat {
   public static let chunkSamples = 960
 }
 
-/// Cuts a stream of samples into chunks of a fixed size.
+/// Cuts a stream of PCM into chunks of a fixed size.
 public struct PCMChunker: Sendable {
   private let chunkBytes: Int
   private var pending = Data()
@@ -16,15 +16,21 @@ public struct PCMChunker: Sendable {
     chunkBytes = chunkSamples * MemoryLayout<Int16>.size
   }
 
-  /// Adds samples and returns the chunks they complete.
-  public mutating func append(_ samples: UnsafeBufferPointer<Int16>) -> [Data] {
-    pending.append(Data(buffer: samples))
+  /// Adds PCM and returns the chunks it completes.
+  public mutating func append(_ pcm: Data) -> [Data] {
+    pending.append(pcm)
     var chunks: [Data] = []
     while pending.count >= chunkBytes {
       chunks.append(Data(pending.prefix(chunkBytes)))
       pending = Data(pending.dropFirst(chunkBytes))
     }
     return chunks
+  }
+
+  /// Returns what is left, shorter than a chunk, when the stream ends.
+  public mutating func flush() -> Data? {
+    defer { pending = Data() }
+    return pending.isEmpty ? nil : pending
   }
 }
 

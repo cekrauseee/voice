@@ -18,8 +18,7 @@ public enum DictationError: Error, Equatable {
 /// What the pill shows.
 public enum PillState: Equatable, Sendable {
   case hidden
-  /// Recording, while the server gets ready.
-  case connecting
+  /// Recording. The server may still be getting ready: the audio waits for it.
   case listening
   /// Recording ended, while the text is on its way.
   case finishing
