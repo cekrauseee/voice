@@ -64,6 +64,6 @@ The app adds up what each dictation used, day by day, and shows it on its Statis
 ## Why these choices
 
 - **Native Swift app.** The product depends on a system-wide shortcut on a single modifier key, a window that floats over every app without taking focus, and typing into other apps. These are native macOS APIs.
-- **A separate server.** The OpenAI key and the pipeline stay out of the app, so the pipeline can change without shipping the app, and the same server can run on another machine.
+- **A separate server.** The OpenAI key and the pipeline stay out of the app, so the pipeline can change without shipping the app, and the same server can run on another machine. On one Mac, the production app carries the server and runs it while it runs, with the key from the server's own `.env`.
 - **The server owns the text.** The app shows what the server sends and types what `done` carries. It does not assemble or correct text itself.
 - **One refinement at the end.** Refining pieces while the speaker talks types text sooner, but each piece is written without knowing what follows, and the pieces do not read as one text. One request over the whole transcript trades that speed for a coherent result.

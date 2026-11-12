@@ -41,7 +41,15 @@ final class Settings {
   var isRecordingShortcut = false
 
   /// Where the dictation server is. Change it with `defaults write eu.cekrause.voice serverURL`.
+  /// Unless it is set, the production app runs its own server, and the development app uses the
+  /// one `pnpm dev` runs.
   let serverURL: URL
+
+  /// Whether the app runs the server itself, on this Mac.
+  let runsServer: Bool
+
+  /// The `.env` the app's server runs with. `pnpm install-app` sets it to the repository's.
+  let serverEnvFile: String?
 
   @ObservationIgnored private let defaults: UserDefaults
 
@@ -55,9 +63,11 @@ final class Settings {
     retention = defaults.string(forKey: "retention").flatMap(Retention.init) ?? .never
     isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
+    let otherServer = defaults.string(forKey: "serverURL").flatMap(URL.init)
+    runsServer = otherServer == nil && !AppInfo.isDevelopment
     serverURL =
-      defaults.string(forKey: "serverURL").flatMap(URL.init)
-      ?? URL(string: "ws://127.0.0.1:8787")!
+      otherServer ?? (AppInfo.isDevelopment ? URL(string: "ws://127.0.0.1:8787")! : LocalServer.url)
+    serverEnvFile = defaults.string(forKey: "serverEnvFile")
   }
 
   private static func shortcut(_ defaults: UserDefaults, forKey key: String) -> Shortcut? {

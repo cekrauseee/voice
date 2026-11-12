@@ -15,14 +15,33 @@ There are two builds of the app. macOS tells them apart, so each has its own per
 | Icon            | The waveform in amber, marked DEV | The waveform                     |
 | Compiled        | For debugging                     | Optimized                        |
 | In the menu bar | The waveform with a `DEV` mark    | The waveform                     |
+| Server          | The one `pnpm dev` runs, at 8787  | Its own, at 8788                 |
 
 `pnpm dev` builds the development app, opens it, and prints its log. Whenever the sources change it builds the app again and opens the new build, so the app that runs is always the current code. A build that fails leaves the running app alone. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
 `pnpm build` builds the app and puts it in a disk image, `build/Voice.dmg`, with a link to Applications to drag it to. Only the image is kept, so Spotlight finds one Voice: the one installed. `VERSION` sets the version of the app, which the release workflow takes from the tag.
 
-`pnpm install-app` installs the production app on this Mac, or updates it, from the checkout. It builds the app and the disk image the way a release does, quits the app if it runs, copies the app from the image to `/Applications`, and opens it. The version is what `git describe` says of the checkout: `0.1.0` on the tag `v0.1.0`, `0.1.0-2-g1a2b3c4` two commits after it. Built here, the app is signed like a development build, so it keeps its permissions from one update to the next. Like a release, it needs [the server](../server/README.md) running.
+`pnpm install-app` installs the production app on this Mac, or updates it, from the checkout. It builds the app and the disk image the way a release does, quits the app if it runs, copies the app from the image to `/Applications`, and opens it. The version is what `git describe` says of the checkout: `0.1.0` on the tag `v0.1.0`, `0.1.0-2-g1a2b3c4` two commits after it. Built here, the app is signed like a development build, so it keeps its permissions from one update to the next.
 
-The app connects to `ws://127.0.0.1:8787`. To use a server elsewhere, with the identifier of the build:
+## The server
+
+The production app carries [the server](../server/README.md) and runs it on the Mac, at `ws://127.0.0.1:8788`. The two run together:
+
+- Opening the app starts the server, however the app is opened: from Spotlight, at login, or by `pnpm install-app`.
+- Quitting the app stops the server. If the app ends any other way, as in a crash, the server notices and stops too.
+- If the server cannot start, or stops by itself, the app says why and quits.
+
+The server runs with Node.js, installed with Homebrew or from nodejs.org (`/opt/homebrew/bin/node` or `/usr/local/bin/node`), and with the variables of `apps/server/.env`, the file `pnpm dev` uses: the OpenAI key, the models, the prices. The app sets the address and the port itself. `pnpm install-app` points the app at the `.env` of the repository's main checkout, also when it runs in another worktree, so a change to the file applies the next time the app opens. Without `pnpm install-app`, as from a release, set the file yourself:
+
+```sh
+defaults write eu.cekrause.voice serverEnvFile /path/to/.env
+```
+
+The server's records are in `~/Library/Logs/eu.cekrause.voice/server.log`, one JSON object per line, from its last start.
+
+The development app does not run a server: it uses the one `pnpm dev` runs, at `ws://127.0.0.1:8787`. The two ports differ so that both apps can run at once.
+
+To use a server elsewhere, set its address, with the identifier of the build. The production app then runs no server of its own:
 
 ```sh
 defaults write eu.cekrause.voice serverURL wss://voice.example.com
@@ -158,7 +177,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, the statistics, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, the statistics, when media is paused and resumed, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -182,6 +201,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                             |
 | `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it            |
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                |
+| `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                           |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                         |
 | `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                      |
 | `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                     |

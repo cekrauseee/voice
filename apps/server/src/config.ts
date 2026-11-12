@@ -18,6 +18,8 @@ export interface Config {
   transcribeLanguages: string[];
   refineModel: string;
   prices: Prices;
+  /** Stop when the program that started the server ends, such as the app. */
+  stopWithParent: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -55,5 +57,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       refineInput: price("REFINE_PRICE_PER_MILLION_INPUT", 0.1),
       refineOutput: price("REFINE_PRICE_PER_MILLION_OUTPUT", 0.5),
     },
+    stopWithParent: env.STOP_WITH_PARENT === "1",
   };
 }

@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let statistics = StatisticsStore()
   private let navigation = Navigation()
   private let loginItem = LoginItem()
+  private lazy var server = ServerProcess()
   private lazy var controller = DictationController(
     settings: settings, history: history, statistics: statistics)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     log.info(
       "launched",
       ["version": AppInfo.version, "build": AppInfo.isDevelopment ? "development" : "production"])
+    if settings.runsServer { startServer() }
 
     NSApp.mainMenu = mainMenu()
     statusItem.button?.image = NSImage(
@@ -85,6 +87,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.surfaceSetup()
     }
     if needsSetup { showSetup() }
+  }
+
+  /// The app and its server run together: when the server cannot start, or stops by itself, the
+  /// app says why and quits.
+  private func startServer() {
+    do {
+      try server.start(environmentFile: settings.serverEnvFile) { [weak self] failure in
+        self?.quit(failure)
+      }
+    } catch {
+      quit(error)
+    }
+  }
+
+  private func quit(_ failure: ServerProcess.Failure) {
+    NSApp.activate(ignoringOtherApps: true)
+    let alert = NSAlert()
+    alert.messageText = failure.title
+    alert.informativeText = failure.detail
+    alert.addButton(withTitle: "Quit")
+    alert.runModal()
+    NSApp.terminate(nil)
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    if settings.runsServer { server.stop() }
   }
 
   /// The setup is shown until it is completed, and again whenever a permission is missing.

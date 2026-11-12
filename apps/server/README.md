@@ -11,7 +11,7 @@ pnpm start   # runs once
 
 `pnpm dev` first creates `.env` from `.env.example`, or adds the variables your `.env` is missing. It never changes a value you set. Add your `OPENAI_API_KEY` to `.env`: the server restarts when the file is saved.
 
-On start the server checks the key and both models with OpenAI, then prints the address it listens on:
+On start the server checks the key and both models with OpenAI, then prints the address it listens on. If OpenAI cannot be reached, as just after login, it warns and starts anyway:
 
 ```
 16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation transcribe=gpt-live-transcribe refine=gpt-6-luna
@@ -23,25 +23,26 @@ If something is missing it says what to fix:
 16:24:02.118 ERROR server      OPENAI_API_KEY is not set hint="add your key to apps/server/.env"
 ```
 
-TypeScript runs directly on Node.js. There is no build step.
+TypeScript runs directly on Node.js. There is no build step. The production app carries the server as one bundled file and runs it: see [the desktop README](../desktop/README.md#the-server).
 
 ## Configuration
 
 Environment variables, read from `.env`. `pnpm start` also runs without the file, with the variables set in the environment.
 
-| Variable                          | Default                             | Meaning                                                                                                 |
-| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                  | required                            | The key used for transcription and refinement                                                           |
-| `HOST`                            | `127.0.0.1`                         | The address to listen on                                                                                |
-| `PORT`                            | `8787`                              | The port to listen on                                                                                   |
-| `TRANSCRIBE_MODEL`                | `gpt-live-transcribe`               | The realtime transcription model                                                                        |
-| `TRANSCRIBE_LANGUAGES`            | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy |
-| `REFINE_MODEL`                    | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                        |
-| `TRANSCRIBE_PRICE_PER_MINUTE`     | `0.017`                             | What OpenAI charges for a minute of audio transcribed, in US dollars                                    |
-| `REFINE_PRICE_PER_MILLION_INPUT`  | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                            |
-| `REFINE_PRICE_PER_MILLION_OUTPUT` | `0.50`                              | What OpenAI charges for a million tokens the refinement writes, in US dollars                           |
-| `LOG_FORMAT`                      | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                         |
-| `LOG_LEVEL`                       | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                            |
+| Variable                          | Default                             | Meaning                                                                                                                                          |
+| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`                  | required                            | The key used for transcription and refinement                                                                                                    |
+| `HOST`                            | `127.0.0.1`                         | The address to listen on                                                                                                                         |
+| `PORT`                            | `8787`                              | The port to listen on                                                                                                                            |
+| `TRANSCRIBE_MODEL`                | `gpt-live-transcribe`               | The realtime transcription model                                                                                                                 |
+| `TRANSCRIBE_LANGUAGES`            | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy                                          |
+| `REFINE_MODEL`                    | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                                                                 |
+| `TRANSCRIBE_PRICE_PER_MINUTE`     | `0.017`                             | What OpenAI charges for a minute of audio transcribed, in US dollars                                                                             |
+| `REFINE_PRICE_PER_MILLION_INPUT`  | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                                                                     |
+| `REFINE_PRICE_PER_MILLION_OUTPUT` | `0.50`                              | What OpenAI charges for a million tokens the refinement writes, in US dollars                                                                    |
+| `LOG_FORMAT`                      | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                                                                  |
+| `LOG_LEVEL`                       | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                                                                     |
+| `STOP_WITH_PARENT`                | none                                | `1` to stop when the program that started the server ends, as the app does. The server watches its standard input, which that program holds open |
 
 The prices are what the server estimates the cost of a dictation with, for the app's statistics. OpenAI reports what a dictation used, not what it costs. The defaults are [OpenAI's prices](https://developers.openai.com/api/docs/pricing) for the default models in November 2026: set them when you change a model, or when the prices change.
 

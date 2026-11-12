@@ -33,4 +33,4 @@ pnpm install-app
 
 The released app is signed ad hoc and is not notarized, because the workflow has no Apple Developer ID. On another Mac, macOS blocks it on first open: allow it in System Settings, under Privacy & Security. Its permissions are also asked for again after every update. `pnpm install-app` has neither limit: the app is built on the Mac it runs on, and signed with the Apple Development identity in its keychain.
 
-The server is not packaged. Run it from the tagged source with `pnpm start`.
+The app carries the server, but not what it runs with: the Mac needs Node.js, and a `.env` with the OpenAI key, set with `defaults write eu.cekrause.voice serverEnvFile`. See [the desktop README](../apps/desktop/README.md#the-server).

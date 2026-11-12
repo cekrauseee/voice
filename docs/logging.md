@@ -96,6 +96,8 @@ log stream --level debug --predicate 'subsystem == "eu.cekrause.voice"'
 
 The development build uses the subsystem `eu.cekrause.voice.dev`.
 
+**The server the production app runs** writes its records as JSON to `~/Library/Logs/eu.cekrause.voice/server.log`, which Console also shows.
+
 ## Scopes
 
 | Scope         | Where   | What it reports                                                        |
