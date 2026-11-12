@@ -6,13 +6,19 @@ public struct Transcription: Codable, Equatable, Identifiable, Sendable {
   /// When it was typed.
   public let date: Date
   public let text: String
+  /// What was heard, before it was refined into the text. Absent when it was not kept, or
+  /// when the words were typed as heard.
+  public let heard: String?
   /// How long the recording was, in seconds.
   public let duration: TimeInterval
 
-  public init(id: UUID = UUID(), date: Date, text: String, duration: TimeInterval) {
+  public init(
+    id: UUID = UUID(), date: Date, text: String, heard: String? = nil, duration: TimeInterval
+  ) {
     self.id = id
     self.date = date
     self.text = text
+    self.heard = heard
     self.duration = duration
   }
 }
@@ -80,6 +86,11 @@ public struct History: Codable, Equatable, Sendable {
 }
 
 extension Transcription {
+  /// How many words the text has.
+  public var words: Int {
+    text.split(whereSeparator: \.isWhitespace).count
+  }
+
   /// The duration as minutes and seconds, such as `1:05`.
   public var clock: String {
     let seconds = Int(duration.rounded())

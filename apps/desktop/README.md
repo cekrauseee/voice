@@ -74,16 +74,18 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 The app lives in the menu bar. Its menu opens the app's window on one of its two sections:
 
-- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed and how long the recording was, with its text cut at three lines. Clicking it shows all of the text, which can then be selected. Hovering shows a button to copy it, and the context menu deletes it.
+- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed, the start of its text, and how long the recording was. Clicking one opens its page, with all of the text to read and select, the date, the length, and the number of words, and what was heard before it was refined. The page's header has the way back, which Escape also takes, and buttons to copy and delete it. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
 - **Settings**: the settings below.
 
 The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
 
 The pointer shows what it is over: a hand over what can be clicked, the text cursor over text that can be selected or edited.
 
+Almost nothing in the window moves: what is under the pointer, what is selected, and what a click shows change at once. Two things move, quickly, to say where something went: the page of a transcription comes in from the right, and the list comes back from the left, and the mark of a choice slides to the option chosen.
+
 While the window is open, the app is also in the Dock and the app switcher, and it leaves them when the window closes. Opening the app again while it runs, from Finder or Spotlight, shows the window.
 
-The past transcriptions are kept in `history.json`, in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. The file stays on the Mac: nothing but the app reads it, and its text is never logged. A transcription is kept when its text is typed, also when a dictation failed and the words were typed as heard. A cancelled dictation is not kept.
+The past transcriptions are kept in `history.json`, in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. The file stays on the Mac: nothing but the app reads it, and its text is never logged. A transcription is kept when its text is typed, with what was heard when the text was refined from it, also when a dictation failed and the words were typed as heard. A cancelled dictation is not kept.
 
 To work on the window without dictating first, fill the history of the development app with sample transcriptions:
 
@@ -154,7 +156,8 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open      |
 | `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one              |
 | `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with |
-| `Sources/Voice/TranscriptionsView.swift`, `HistoryStore.swift`      | The past transcriptions, and the file that keeps them            |
+| `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one             |
+| `Sources/Voice/HistoryStore.swift`                                  | The file that keeps the past transcriptions                      |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |

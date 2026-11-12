@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 import VoiceCore
 
-/// The past transcriptions, day by day, newest first.
+/// The past transcriptions, day by day, newest first. Clicking one opens its page.
 struct TranscriptionsView: View {
   let history: History
   let pushToTalk: Shortcut
+  let open: (Transcription.ID) -> Void
   let remove: (Transcription.ID) -> Void
 
   var body: some View {
@@ -16,11 +17,15 @@ struct TranscriptionsView: View {
         LazyVStack(alignment: .leading, spacing: Design.loose) {
           ForEach(history.days(in: .current)) { day in
             VStack(alignment: .leading, spacing: Design.small) {
-              GroupTitle(title: title(of: day.date))
+              GroupTitle(title: day.date.dayTitle)
               Card {
                 ForEach(day.transcriptions) { transcription in
                   if transcription.id != day.transcriptions.first?.id { Hairline() }
-                  TranscriptionRow(transcription: transcription) { remove(transcription.id) }
+                  TranscriptionRow(transcription: transcription) {
+                    open(transcription.id)
+                  } remove: {
+                    remove(transcription.id)
+                  }
                 }
               }
             }
@@ -49,79 +54,64 @@ struct TranscriptionsView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
-
-  private func title(of day: Date) -> String {
-    let calendar = Calendar.current
-    if calendar.isDateInToday(day) { return "Today" }
-    if calendar.isDateInYesterday(day) { return "Yesterday" }
-    // In English, like the rest of the app, whatever language the Mac is in.
-    let isThisYear = calendar.isDate(day, equalTo: .now, toGranularity: .year)
-    let format = Date.FormatStyle(locale: Locale(identifier: "en_US"))
-      .weekday(.wide).day().month(.wide)
-    return day.formatted(isThisYear ? format : format.year())
-  }
 }
 
-/// One transcription: when it was typed, its text, and how long the recording was.
-///
-/// The text is cut at three lines. Clicking the row shows all of it, to read or select.
+/// One transcription in the list: when it was typed, the start of its text, and how long
+/// the recording was. Under the pointer, the length gives way to a button that copies it.
 private struct TranscriptionRow: View {
   let transcription: Transcription
+  let open: () -> Void
   let remove: () -> Void
 
   @State private var isHovered = false
-  @State private var isExpanded = false
   @State private var didCopy = false
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: Design.medium) {
-      Text(transcription.date.formatted(date: .omitted, time: .shortened))
-        .font(.voiceCaption)
-        .monospacedDigit()
-        .foregroundStyle(.secondary)
-        .frame(width: 36, alignment: .leading)
-      text
-        .font(.voiceBody)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      Text(transcription.clock)
-        .font(.voiceCaption)
-        .monospacedDigit()
-        .foregroundStyle(.tertiary)
-        .opacity(isHovered ? 0 : 1)
-        .overlay(alignment: .trailing) {
-          if isHovered {
-            Button(action: copy) {
-              Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11))
-                .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.borderless)
-            .pointer()
-            .help("Copy")
-            .transition(.opacity)
-          }
-        }
+    Button(action: open) {
+      HStack(alignment: .firstTextBaseline, spacing: Design.medium) {
+        Text(transcription.date.formatted(date: .omitted, time: .shortened))
+          .font(.voiceCaption)
+          .monospacedDigit()
+          .foregroundStyle(.secondary)
+          .frame(width: 36, alignment: .leading)
+        Text(transcription.text)
+          .font(.voiceBody)
+          .lineLimit(3)
+          .multilineTextAlignment(.leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        Text(transcription.clock)
+          .font(.voiceCaption)
+          .monospacedDigit()
+          .foregroundStyle(.tertiary)
+          .opacity(isHovered ? 0 : 1)
+      }
+      .padding(.horizontal, Design.medium)
+      .padding(.vertical, 10)
+      .background(isHovered ? Design.hover : .clear)
+      .contentShape(Rectangle())
     }
-    .padding(.horizontal, Design.medium)
-    .padding(.vertical, 10)
-    .background(isHovered ? Design.hover : .clear)
-    .contentShape(Rectangle())
-    .onTapGesture { isExpanded.toggle() }
+    .buttonStyle(.plain)
     .pointer()
+    .overlay(alignment: .topTrailing) {
+      if isHovered {
+        Button(action: copy) {
+          Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointer()
+        .help("Copy")
+        .padding(.top, 6)
+        .padding(.trailing, Design.small)
+      }
+    }
     .onHover { isHovered = $0 }
-    .animation(.easeOut(duration: 0.12), value: isHovered)
-    .animation(Design.morph, value: isExpanded)
     .contextMenu {
       Button("Copy", action: copy)
       Button("Delete", role: .destructive, action: remove)
-    }
-  }
-
-  @ViewBuilder private var text: some View {
-    if isExpanded {
-      Text(transcription.text).textSelection(.enabled).pointer(.text)
-    } else {
-      Text(transcription.text).lineLimit(3)
     }
   }
 

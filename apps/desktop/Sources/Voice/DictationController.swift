@@ -90,7 +90,8 @@ final class DictationController {
     session.onText = { [weak session, inserter, history, log] text in
       inserter.insert(text)
       log.debug("typed", ["chars": text.count])
-      history.add(text: text, duration: session?.recorded ?? 0)
+      history.add(
+        text: text, heard: session?.transcript.heard, duration: session?.recorded ?? 0)
     }
     session.onEnd = { [weak self, weak session] error in
       guard let self, self.session === session else { return }
