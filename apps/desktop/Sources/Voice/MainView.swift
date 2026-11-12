@@ -49,6 +49,7 @@ struct MainView: View {
   let history: HistoryStore
   let statistics: StatisticsStore
   let retry: Retry
+  let loginItem: LoginItem
   @Bindable var settings: Settings
 
   @Environment(\.windowButtonsWidth) private var windowButtonsWidth
@@ -72,7 +73,7 @@ struct MainView: View {
             case .transcriptions: transcriptions
             case .statistics:
               StatisticsView(statistics: statistics.statistics, period: period)
-            case .settings: SettingsView(settings: settings)
+            case .settings: SettingsView(settings: settings, loginItem: loginItem)
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

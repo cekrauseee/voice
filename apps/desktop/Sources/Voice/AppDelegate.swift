@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let history = HistoryStore()
   private let statistics = StatisticsStore()
   private let navigation = Navigation()
+  private let loginItem = LoginItem()
   private lazy var controller = DictationController(
     settings: settings, history: history, statistics: statistics)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
@@ -19,10 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     style: .main(size: NSSize(width: 680, height: 460)),
     content: MainView(
       navigation: navigation, history: history, statistics: statistics, retry: retry,
-      settings: settings))
+      loginItem: loginItem, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
-    content: OnboardingContainer(permissions: permissions, settings: settings) { [weak self] in
+    content: OnboardingContainer(
+      permissions: permissions, settings: settings, loginItem: loginItem
+    ) { [weak self] in
       self?.finishSetup()
     })
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
