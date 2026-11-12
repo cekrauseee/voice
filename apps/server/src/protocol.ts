@@ -9,13 +9,11 @@ export type ErrorCode = "bad_request" | "transcription_failed" | "timeout";
 
 export type ServerMessage =
   | { type: "ready" }
-  | { type: "delta"; segment: number; text: string }
-  | { type: "final"; segment: number; text: string }
-  | { type: "refined"; segment: number; text: string }
-  | { type: "done" }
+  | { type: "delta"; text: string }
+  | { type: "done"; text: string }
   | { type: "error"; code: ErrorCode; message: string };
 
-export type ClientMessage = { type: "stop" };
+export type ClientMessage = { type: "start"; instructions: string } | { type: "stop" };
 
 export function parseClientMessage(raw: string): ClientMessage | undefined {
   let value: unknown;
@@ -24,8 +22,11 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
   } catch {
     return undefined;
   }
-  if (typeof value === "object" && value !== null && "type" in value && value.type === "stop") {
-    return { type: "stop" };
+  if (typeof value !== "object" || value === null || !("type" in value)) return undefined;
+  if (value.type === "stop") return { type: "stop" };
+  if (value.type === "start") {
+    const instructions = "instructions" in value ? value.instructions : "";
+    if (typeof instructions === "string") return { type: "start", instructions };
   }
   return undefined;
 }

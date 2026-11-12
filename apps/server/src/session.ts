@@ -1,82 +1,90 @@
 import type { Logger } from "@voice/log";
 import type { ErrorCode, ServerMessage } from "./protocol.ts";
-import type { Refiner } from "./refiner.ts";
-import { Segmenter, type SegmenterAction } from "./segmenter.ts";
+import type { CreateRefiner, Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 
+/** How long the complete transcript may take once the speaker stops. */
+const TRANSCRIPT_TIMEOUT_MS = 5_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
-const REFINE_TIMEOUT_MS = 5_000;
-/** How long the pipeline may take to drain after the client stops. */
-const FINISH_TIMEOUT_MS = 15_000;
-/** How much of the refined text before a segment the refiner sees: the last few segments. */
-const CONTEXT_CHARS = 600;
+const REFINE_TIMEOUT_MS = 60_000;
 
 export interface SessionDeps {
   createTranscriber: CreateTranscriber;
-  refiner: Refiner;
+  createRefiner: CreateRefiner;
   send(message: ServerMessage): void;
   /** Called once when the session is over. No message follows. */
   end(): void;
   log: Logger;
 }
 
-interface Segment {
-  live: string;
-  final?: string;
-  finalAt?: number;
-  refined?: string;
+/** What a dictation runs on, from the moment the client starts it. */
+interface Started {
+  transcriber: Transcriber;
+  refiner: Refiner;
+  /** How the speaker wants the text written. */
+  instructions: string;
 }
 
 /**
- * One dictation: audio in, refined segments out.
+ * One dictation: audio in, one refined text out.
  *
- * Each segment is transcribed live and completed on commit. Completed segments are then
- * refined one at a time, in order, while the following ones keep transcribing.
+ * The audio is transcribed as a single turn while the speaker talks, and the text heard is
+ * passed on as it comes. When the speaker stops, the complete transcript is refined in one
+ * request, and its result ends the dictation.
  */
 export class DictationSession {
   private readonly deps: SessionDeps;
-  private readonly segmenter = new Segmenter();
-  private readonly transcriber: Transcriber;
   private readonly abort = new AbortController();
-  private readonly segments: Segment[] = [];
-  private readonly committedAt: number[] = [];
   private readonly startedAt = Date.now();
-  /** The segment to refine next. Every segment before it is refined and sent. */
-  private next = 0;
-  private refining = false;
-  private stopped = false;
+  private started: Started | undefined;
+  /** The text heard so far. */
+  private heard = "";
+  private stoppedAt: number | undefined;
+  /** Set once the transcript is complete. Nothing from the transcriber matters after it. */
+  private transcribed = false;
+  private transcriptTimer: NodeJS.Timeout | undefined;
   private ended = false;
-  private finishTimer: NodeJS.Timeout | undefined;
 
   constructor(deps: SessionDeps) {
     this.deps = deps;
-    this.transcriber = deps.createTranscriber({
-      ready: () => this.send({ type: "ready" }),
-      delta: (segment, text) => this.onDelta(segment, text),
-      final: (segment, text) => this.onFinal(segment, text),
-      error: (error) => {
-        this.deps.log.error("transcription failed", { error: error.message });
-        this.fail("transcription_failed", "Transcription failed");
-      },
-    });
-    this.deps.log.info("started");
+  }
+
+  /** The client opens the dictation, with how the speaker wants the text written. */
+  start(instructions: string): void {
+    if (this.ended) return;
+    if (this.started) {
+      this.reject();
+      return;
+    }
+    this.started = {
+      transcriber: this.deps.createTranscriber({
+        ready: () => this.send({ type: "ready" }),
+        delta: (text) => this.onDelta(text),
+        final: (text) => this.onFinal(text),
+        error: (error) => this.onError(error),
+      }),
+      refiner: this.deps.createRefiner(),
+      instructions,
+    };
+    this.deps.log.info("started", { instructions_chars: instructions.trim().length });
   }
 
   audio(pcm: Buffer): void {
-    if (this.stopped || this.ended) return;
-    this.apply(this.segmenter.push(pcm));
+    if (this.ended || this.stoppedAt !== undefined) return;
+    if (this.started) this.started.transcriber.append(pcm);
+    else this.reject();
   }
 
-  /** The client finished speaking: drain the pipeline, then end. */
+  /** The client finished speaking: complete the transcript, refine it, then end. */
   stop(): void {
-    if (this.stopped || this.ended) return;
-    this.stopped = true;
-    this.apply(this.segmenter.flush());
-    this.finishTimer = setTimeout(
-      () => this.fail("timeout", "Transcription timed out"),
-      FINISH_TIMEOUT_MS,
-    );
-    this.finishIfDrained();
+    if (this.ended || this.stoppedAt !== undefined) return;
+    if (!this.started) {
+      this.reject();
+      return;
+    }
+    this.stoppedAt = Date.now();
+    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), TRANSCRIPT_TIMEOUT_MS);
+    this.started.transcriber.commit();
   }
 
   /** The client sent something that is not part of the protocol. */
@@ -89,106 +97,73 @@ export class DictationSession {
     this.end("cancelled");
   }
 
-  private apply(actions: SegmenterAction[]): void {
-    for (const action of actions) {
-      if (action.type === "audio") {
-        this.transcriber.append(action.pcm);
-      } else {
-        this.transcriber.commit();
-        this.committedAt.push(Date.now());
-      }
+  private onDelta(text: string): void {
+    if (this.transcribed) return;
+    // The first words arrive with a space before them.
+    const delta = this.heard === "" ? text.trimStart() : text;
+    if (delta === "") return;
+    this.heard += delta;
+    this.send({ type: "delta", text: delta });
+  }
+
+  private onFinal(text: string): void {
+    if (this.stoppedAt === undefined || this.transcribed) return;
+    void this.finish(text.trim());
+  }
+
+  /** The complete transcript did not come. What was heard stands in for it. */
+  private onTranscriptTimeout(): void {
+    const heard = this.heard.trim();
+    if (heard === "") {
+      this.fail("timeout", "Transcription timed out");
+    } else {
+      this.deps.log.warn("transcript timed out", { chars: heard.length });
+      void this.finish(heard);
     }
   }
 
-  private segment(index: number): Segment {
-    let segment = this.segments[index];
-    if (!segment) {
-      segment = { live: "" };
-      this.segments[index] = segment;
-    }
-    return segment;
+  private onError(error: Error): void {
+    if (this.transcribed) return;
+    this.deps.log.error("transcription failed", { error: error.message });
+    this.fail("transcription_failed", "Transcription failed");
   }
 
-  private onDelta(index: number, text: string): void {
-    const segment = this.segment(index);
-    if (segment.final !== undefined) return;
-    segment.live += text;
-    this.send({ type: "delta", segment: index, text });
+  private async finish(transcript: string): Promise<void> {
+    const started = this.started;
+    if (this.ended || !started) return;
+    this.transcribed = true;
+    clearTimeout(this.transcriptTimer);
+    this.deps.log.info("transcribed", {
+      transcript_ms: Date.now() - (this.stoppedAt ?? Date.now()),
+      chars: transcript.length,
+    });
+    const text = transcript === "" ? "" : await this.refine(transcript, started);
+    if (this.ended) return;
+    this.send({ type: "done", text });
+    this.end("done");
   }
 
-  private onFinal(index: number, text: string): void {
-    const segment = this.segment(index);
-    if (segment.final !== undefined) return;
-    segment.final = text.trim();
-    segment.finalAt = Date.now();
-    this.send({ type: "final", segment: index, text: segment.final });
-    void this.drain();
-  }
-
-  /**
-   * Refines the completed segments one at a time, in the order they were spoken. A segment
-   * continues the text before it, so it waits for that text to be refined first.
-   */
-  private async drain(): Promise<void> {
-    if (this.refining) return;
-    this.refining = true;
-    for (;;) {
-      const index = this.next;
-      const segment = this.segments[index];
-      if (this.ended || segment?.final === undefined) break;
-      const text = segment.final === "" ? "" : await this.refine(index, segment);
-      if (this.ended) break;
-      segment.refined = text;
-      this.send({ type: "refined", segment: index, text });
-      this.next += 1;
-    }
-    this.refining = false;
-    this.finishIfDrained();
-  }
-
-  /** Returns the refined text of a segment, or its transcript when refining does not work out. */
-  private async refine(index: number, segment: Segment): Promise<string> {
-    const log = this.deps.log.child({ fields: { segment: index } });
-    const text = segment.final ?? "";
-    const finalAt = segment.finalAt ?? Date.now();
+  /** Returns the refined text, or the transcript when refining does not work out. */
+  private async refine(transcript: string, { refiner, instructions }: Started): Promise<string> {
+    const log = this.deps.log;
     const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
-    let refined = text;
     try {
-      const output = await this.deps.refiner.refine(
-        { text, previous: this.previous(index) },
-        signal,
-      );
-      if (isPlausible(text, output)) refined = output;
-      else log.warn("refinement discarded", { chars: text.length, refined_chars: output.length });
+      const refined = await refiner.refine({ text: transcript, instructions }, signal);
+      if (refined !== "") {
+        log.info("refined", { refine_ms: Date.now() - startedAt, chars: refined.length });
+        return refined;
+      }
+      log.warn("refinement empty", { refine_ms: Date.now() - startedAt });
     } catch (error) {
-      if (this.ended) return text;
-      log.warn("refinement failed", { error: errorMessage(error) });
+      if (!this.ended) {
+        log.warn("refinement failed", {
+          refine_ms: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
-    log.info("segment refined", {
-      final_ms: finalAt - (this.committedAt[index] ?? finalAt),
-      wait_ms: startedAt - finalAt,
-      refine_ms: Date.now() - startedAt,
-      chars: refined.length,
-    });
-    return refined;
-  }
-
-  /** The end of the refined text before a segment: what the segment continues. */
-  private previous(index: number): string {
-    return this.segments
-      .slice(0, index)
-      .map((segment) => segment.refined ?? "")
-      .filter((text) => text !== "")
-      .join(" ")
-      .slice(-CONTEXT_CHARS);
-  }
-
-  /** Ends the dictation once the client has stopped and every segment is refined. */
-  private finishIfDrained(): void {
-    if (this.ended || !this.stopped || this.next < this.committedAt.length) return;
-    this.send({ type: "done" });
-    this.end("done");
+    return transcript;
   }
 
   private fail(code: ErrorCode, message: string): void {
@@ -203,23 +178,11 @@ export class DictationSession {
   private end(outcome: "done" | "cancelled" | ErrorCode): void {
     if (this.ended) return;
     this.ended = true;
-    this.deps.log.info("ended", {
-      outcome,
-      segments: this.committedAt.length,
-      duration_ms: Date.now() - this.startedAt,
-    });
-    clearTimeout(this.finishTimer);
+    this.deps.log.info("ended", { outcome, duration_ms: Date.now() - this.startedAt });
+    clearTimeout(this.transcriptTimer);
     this.abort.abort();
-    this.transcriber.close();
+    this.started?.transcriber.close();
+    this.started?.refiner.close();
     this.deps.end();
   }
-}
-
-/** Rejects output that is far longer than the segment: the model wrote, it did not clean up. */
-function isPlausible(text: string, refined: string): boolean {
-  return refined.length <= text.length * 2 + 40;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

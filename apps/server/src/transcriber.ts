@@ -6,16 +6,16 @@ import { SAMPLE_RATE } from "./protocol.ts";
 export interface TranscriberEvents {
   /** The transcription session is configured and receiving audio. */
   ready(): void;
-  /** New live text for a segment. Segments are numbered by commit order, from 0. */
-  delta(segment: number, text: string): void;
-  /** The complete transcript of a committed segment. Order across segments is not guaranteed. */
-  final(segment: number, text: string): void;
+  /** More text, heard while the speaker talks. */
+  delta(text: string): void;
+  /** The complete transcript, once the audio is committed. */
+  final(text: string): void;
   error(error: Error): void;
 }
 
 export interface Transcriber {
   append(pcm: Buffer): void;
-  /** Ends the current segment. */
+  /** Ends the audio. The complete transcript follows. */
   commit(): void;
   close(): void;
 }
@@ -27,23 +27,26 @@ export interface OpenAITranscriberOptions {
   languages: string[];
 }
 
-/** Transcribes through an OpenAI realtime transcription session, one per dictation. */
+/** OpenAI rejects a commit of less audio than 100 ms. */
+const MIN_COMMIT_BYTES = (SAMPLE_RATE / 10) * 2;
+
+/**
+ * Transcribes through an OpenAI realtime transcription session, one per dictation.
+ *
+ * The whole dictation is one turn, committed once at the end. The model hears each sentence
+ * with what follows it, so it punctuates and recognizes better than on audio cut at pauses.
+ */
 export function createOpenAITranscriber(
   client: OpenAI,
   options: OpenAITranscriberOptions,
 ): CreateTranscriber {
   return (events) => {
     const realtime = new OpenAIRealtimeWS({ intent: "transcription" }, client);
-    // Item ids in order of first appearance. Each commit creates one item, so the index is the segment.
-    const items: string[] = [];
     // Events wait here until the session is configured, so no audio precedes its format.
     let queued: RealtimeClientEvent[] | undefined = [];
+    let bytes = 0;
     let closed = false;
 
-    const segmentOf = (itemId: string): number => {
-      const index = items.indexOf(itemId);
-      return index === -1 ? items.push(itemId) - 1 : index;
-    };
     const send = (event: RealtimeClientEvent) => {
       if (queued) queued.push(event);
       else realtime.send(event);
@@ -80,14 +83,11 @@ export function createOpenAITranscriber(
       for (const event of pending) realtime.send(event);
       events.ready();
     });
-    realtime.on("input_audio_buffer.committed", (event) => {
-      segmentOf(event.item_id);
-    });
     realtime.on("conversation.item.input_audio_transcription.delta", (event) => {
-      if (event.delta) events.delta(segmentOf(event.item_id), event.delta);
+      if (event.delta) events.delta(event.delta);
     });
     realtime.on("conversation.item.input_audio_transcription.completed", (event) => {
-      events.final(segmentOf(event.item_id), event.transcript);
+      events.final(event.transcript);
     });
     realtime.on("conversation.item.input_audio_transcription.failed", (event) => {
       fail(new Error(event.error.message ?? "Transcription failed"));
@@ -95,10 +95,18 @@ export function createOpenAITranscriber(
 
     return {
       append(pcm) {
+        bytes += pcm.length;
         send({ type: "input_audio_buffer.append", audio: pcm.toString("base64") });
       },
       commit() {
-        send({ type: "input_audio_buffer.commit" });
+        if (bytes >= MIN_COMMIT_BYTES) {
+          send({ type: "input_audio_buffer.commit" });
+        } else {
+          // Too short to hold a word, and OpenAI would reject it.
+          queueMicrotask(() => {
+            if (!closed) events.final("");
+          });
+        }
       },
       close() {
         closed = true;

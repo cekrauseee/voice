@@ -1,19 +1,10 @@
 import { createLogger } from "@voice/log";
 import { SAMPLE_RATE } from "./protocol.ts";
-import type { RefineInput, Refiner } from "./refiner.ts";
+import type { CreateRefiner, RefineInput } from "./refiner.ts";
 import type { CreateTranscriber, TranscriberEvents } from "./transcriber.ts";
 
-/** A loud 220 Hz tone, which the segmenter hears as speech. */
-export function speech(ms: number): Buffer {
-  const samples = (SAMPLE_RATE * ms) / 1000;
-  const pcm = Buffer.alloc(samples * 2);
-  for (let i = 0; i < samples; i++) {
-    pcm.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 220 * i) / SAMPLE_RATE)), i * 2);
-  }
-  return pcm;
-}
-
-export function silence(ms: number): Buffer {
+/** Audio of a given length. */
+export function audio(ms: number): Buffer {
   return Buffer.alloc(((SAMPLE_RATE * ms) / 1000) * 2);
 }
 
@@ -41,18 +32,29 @@ export class FakeTranscriber {
 }
 
 /** A refiner whose calls resolve when the test says so. */
-export class FakeRefiner implements Refiner {
+export class FakeRefiner {
   readonly calls: {
     input: RefineInput;
+    signal: AbortSignal;
     resolve(text: string): void;
     reject(error: Error): void;
   }[] = [];
+  created = 0;
+  closed = false;
 
-  refine(input: RefineInput): Promise<string> {
-    const { promise, resolve, reject } = Promise.withResolvers<string>();
-    this.calls.push({ input, resolve, reject });
-    return promise;
-  }
+  readonly create: CreateRefiner = () => {
+    this.created += 1;
+    return {
+      refine: (input, signal) => {
+        const { promise, resolve, reject } = Promise.withResolvers<string>();
+        this.calls.push({ input, signal, resolve, reject });
+        return promise;
+      },
+      close: () => {
+        this.closed = true;
+      },
+    };
+  };
 }
 
 /** Lets pending promise callbacks run. */

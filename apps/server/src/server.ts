@@ -2,13 +2,13 @@ import { createServer as createHttpServer, type Server } from "node:http";
 import type { Logger } from "@voice/log";
 import { type RawData, WebSocketServer } from "ws";
 import { DICTATION_PATH, parseClientMessage, type ServerMessage } from "./protocol.ts";
-import type { Refiner } from "./refiner.ts";
+import type { CreateRefiner } from "./refiner.ts";
 import { DictationSession } from "./session.ts";
 import type { CreateTranscriber } from "./transcriber.ts";
 
 export interface ServerDeps {
   createTranscriber: CreateTranscriber;
-  refiner: Refiner;
+  createRefiner: CreateRefiner;
   log: Logger;
 }
 
@@ -42,11 +42,12 @@ export function createServer(deps: ServerDeps): Server {
       ws.on("message", (data, isBinary) => {
         if (isBinary) {
           session.audio(toBuffer(data));
-        } else if (parseClientMessage(toBuffer(data).toString("utf8"))) {
-          session.stop();
-        } else {
-          session.reject();
+          return;
         }
+        const message = parseClientMessage(toBuffer(data).toString("utf8"));
+        if (message?.type === "start") session.start(message.instructions);
+        else if (message?.type === "stop") session.stop();
+        else session.reject();
       });
       ws.on("close", () => session.close());
       ws.on("error", () => session.close());

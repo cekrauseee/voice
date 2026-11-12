@@ -21,7 +21,7 @@ public enum PillState: Equatable, Sendable {
   /// Recording, while the server gets ready.
   case connecting
   case listening
-  /// Recording ended, while the last text is on its way.
+  /// Recording ended, while the text is on its way.
   case finishing
   case failed(DictationError)
 }

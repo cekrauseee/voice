@@ -12,7 +12,7 @@ Every part of Voice logs the same way: the server, the development scripts, and 
 | `message` | What happened, as a short lowercase phrase                             |
 | fields    | Everything that varies: identifiers, counts, durations, reasons, hints |
 
-Write the message so that it is the same every time the event happens, and put the rest in fields. `segment refined` with `segment=2 refine_ms=302`, not `refined segment 2 in 302ms`.
+Write the message so that it is the same every time the event happens, and put the rest in fields. `refined` with `refine_ms=1180 chars=298`, not `refined 298 characters in 1180ms`.
 
 Conventions for fields:
 
@@ -37,9 +37,9 @@ In a terminal, records are printed for people, in columns and in color:
 ```
 16:22:47.485 INFO  build       built app="build/Voice (Development).app" identifier=eu.cekrause.voice.dev duration_ms=1829
 16:22:47.908 INFO  app         launched version=0.0.0 build=development
-16:24:10.120 INFO  dictation   started dictation=1
-16:24:13.642 INFO  dictation   segment refined dictation=1 segment=0 final_ms=101 wait_ms=0 refine_ms=302 chars=42
-16:24:15.007 WARN  dictation   refinement failed dictation=1 segment=1 error="Request timed out."
+16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0
+16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
+16:24:40.007 WARN  dictation   refinement failed dictation=2 refine_ms=5003 error="Refinement stalled"
 16:24:20.310 ERROR server      OPENAI_API_KEY is not set hint="add your key to apps/server/.env"
 ```
 
@@ -47,16 +47,13 @@ Anywhere else, such as a pipe, a file, or a service manager, each record is one 
 
 ```json
 {
-  "time": "2026-11-11T16:24:13.642Z",
+  "time": "2026-11-11T16:24:21.642Z",
   "level": "info",
   "scope": "dictation",
-  "message": "segment refined",
+  "message": "refined",
   "dictation": 1,
-  "segment": 0,
-  "final_ms": 101,
-  "wait_ms": 0,
-  "refine_ms": 302,
-  "chars": 42
+  "refine_ms": 1180,
+  "chars": 298
 }
 ```
 
@@ -81,7 +78,7 @@ log.info("listening", { url });
 
 // A logger for one dictation: another scope, and a field on every record.
 const dictation = log.child({ scope: "dictation", fields: { dictation: 7 } });
-dictation.warn("refinement failed", { segment: 1, error: "Request timed out." });
+dictation.warn("refinement failed", { refine_ms: 5003, error: "Refinement stalled" });
 ```
 
 **The desktop app** writes to the macOS system log with [`Log`](../apps/desktop/Sources/Voice/Log.swift). The scope is the log category, and the message carries the fields as `key=value`:
@@ -105,7 +102,7 @@ The development build uses the subsystem `eu.cekrause.voice.dev`.
 | ------------- | ------- | ----------------------------------------------------------- |
 | `env`         | server  | Changes to `apps/server/.env` made by `pnpm dev`            |
 | `server`      | server  | Startup, the address it listens on, and why it cannot start |
-| `dictation`   | server  | Each dictation: started, each segment's timings, ended      |
+| `dictation`   | server  | Each dictation: started, its timings, ended                 |
 | `build`       | desktop | Compiling and signing the app                               |
 | `desktop`     | desktop | The development script: running and quitting the app        |
 | `reset`       | desktop | Forgetting the app's permissions and settings               |

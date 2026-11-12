@@ -1,6 +1,6 @@
 # Desktop
 
-The macOS menu bar app. It records while a shortcut says so, streams the audio to [the server](../server/README.md), shows the pill, and types the text that comes back into the focused field.
+The macOS menu bar app. It records while a shortcut says so, streams the audio to [the server](../server/README.md), shows the pill, and types the text that comes back into the focused field when the recording ends.
 
 ## Builds
 
@@ -64,27 +64,28 @@ The build signs with the first Apple Development identity in the keychain, which
 | ---------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Push to talk     | Right ⌥ | Records while held. A modifier key used as a shortcut still works as a modifier: pressing another key with it cancels the recording |
 | Toggle recording | ⌥ Space | Starts recording, and stops it when pressed again                                                                                   |
-| Cancel           | esc     | Drops the recording and any text that has not been typed                                                                            |
+| Cancel           | esc     | Drops the recording. Nothing is typed                                                                                               |
 
-Text is typed by pasting. The clipboard is restored afterwards.
+The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards.
 
 Settings, from the menu bar menu:
 
 - **Theme**: Auto, Light, or Dark.
-- **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed until it is refined, and the shortcuts.
+- **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
+- **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
 
 ## The pill
 
 The pill is one surface that changes shape. It grows out of its bottom edge when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
 
-The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the server is getting ready or the last text is on its way, a ripple runs through the bars, and the voice still shows through it. With Reduce Motion on, the bars only show the level, a few times a second.
+The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the server is getting ready or the text is being refined, a ripple runs through the bars, and the voice still shows through it. With Reduce Motion on, the bars only show the level, a few times a second.
 
 | State      | Shown                                                                                                                                     |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Connecting | A rippling waveform. Recording has started, the server is getting ready                                                                   |
 | Listening  | The waveform follows the microphone                                                                                                       |
-| Finishing  | A rippling waveform. Recording ended, the last text is on its way                                                                         |
+| Finishing  | A rippling waveform. Recording ended, the text is being refined                                                                           |
 | Failed     | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
 
 ## Logs

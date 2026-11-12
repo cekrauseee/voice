@@ -50,7 +50,7 @@ const server = createServer({
     model: transcribeModel,
     languages: transcribeLanguages,
   }),
-  refiner: createOpenAIRefiner(client, refineModel),
+  createRefiner: createOpenAIRefiner(client, { model: refineModel }),
   log,
 });
 
