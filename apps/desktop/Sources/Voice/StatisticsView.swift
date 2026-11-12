@@ -1,7 +1,8 @@
 import SwiftUI
 import VoiceCore
 
-/// How much was dictated in a period, what it cost, and the words of each day.
+/// How much was dictated in a period, what it cost, and the words of each day, or of each
+/// hour of today.
 struct StatisticsView: View {
   let statistics: Statistics
   let period: Statistics.Period
@@ -46,7 +47,7 @@ struct StatisticsView: View {
     let pointed = bars.first { $0.id == hovered }
     return VStack(alignment: .leading, spacing: Design.small) {
       HStack {
-        Text(bars.first?.isMonth == true ? "Words per month" : "Words per day")
+        Text(heading(bars.first?.unit ?? .day))
           .foregroundStyle(.secondary)
         Spacer(minLength: Design.small)
         if let pointed {
@@ -81,18 +82,41 @@ struct StatisticsView: View {
       HStack {
         Text(bars.first.map(title) ?? "")
         Spacer(minLength: Design.small)
-        Text(bars.last?.isMonth == true ? "This month" : "Today")
+        Text(bars.last.map(end) ?? "")
       }
       .font(.voiceCaption)
       .foregroundStyle(.tertiary)
     }
   }
 
-  /// The day or the month of a bar, such as `Nov 12` or `November 2026`.
+  private func heading(_ unit: Statistics.Bar.Unit) -> String {
+    switch unit {
+    case .hour: "Words per hour"
+    case .day: "Words per day"
+    case .month: "Words per month"
+    }
+  }
+
+  /// The hour, the day, or the month of a bar, such as `09:00`, `Nov 12`, or
+  /// `November 2026`.
   private func title(of bar: Statistics.Bar) -> String {
     let format = Date.FormatStyle(locale: Locale(identifier: "en_US"))
-    return bar.start.formatted(
-      bar.isMonth ? format.month(.wide).year() : format.month(.abbreviated).day())
+    switch bar.unit {
+    case .hour:
+      let hour = Calendar.current.component(.hour, from: bar.start)
+      return "\(hour < 10 ? "0" : "")\(hour):00"
+    case .day: return bar.start.formatted(format.month(.abbreviated).day())
+    case .month: return bar.start.formatted(format.month(.wide).year())
+    }
+  }
+
+  /// What the last bar is called under the chart.
+  private func end(_ bar: Statistics.Bar) -> String {
+    switch bar.unit {
+    case .hour: title(of: bar)
+    case .day: "Today"
+    case .month: "This month"
+    }
   }
 
   private func words(_ count: Int) -> String {
