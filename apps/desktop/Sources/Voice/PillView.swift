@@ -50,7 +50,7 @@ struct PillView: View {
   }
 
   private var isLoading: Bool {
-    state != .listening
+    state == .finishing
   }
 
   @ViewBuilder private var content: some View {
@@ -111,11 +111,7 @@ struct PillView: View {
   }
 
   private var status: String {
-    switch state {
-    case .connecting: "Connecting"
-    case .finishing: "Finishing"
-    default: "Listening"
-    }
+    state == .finishing ? "Finishing" : "Listening"
   }
 }
 

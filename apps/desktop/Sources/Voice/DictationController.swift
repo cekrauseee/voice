@@ -16,6 +16,9 @@ final class DictationController {
   @ObservationIgnored private let settings: Settings
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
+  @ObservationIgnored private let media = MediaPause(
+    isPlaying: MediaControl.isPlaying, send: MediaControl.send,
+    soundIsBack: MediaControl.soundIsBack)
   /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
@@ -27,7 +30,7 @@ final class DictationController {
   }
 
   var isRecording: Bool {
-    pill == .connecting || pill == .listening
+    pill == .listening
   }
 
   /// Whether a dictation is recording or finishing, so Escape can cancel it.
@@ -75,8 +78,7 @@ final class DictationController {
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions)
     session.onReady = { [weak self, weak session] in
-      guard let self, self.session === session, pill == .connecting else { return }
-      pill = .listening
+      guard let self, self.session === session else { return }
       log.debug("ready", ["connect_ms": elapsed])
     }
     session.onChange = { [weak self, weak session] in
@@ -97,17 +99,30 @@ final class DictationController {
     self.mode = mode
     transcript = Transcript()
     dismissal?.cancel()
-    pill = .connecting
+    // The recording does not wait for the server: the audio is sent as it comes, and
+    // what comes before the server is ready waits for it on the way.
+    pill = .listening
     startedAt = .now
+    media.pause()
     log.info("started", ["mode": mode])
 
     audio = Task {
+      var isFirst = true
       for await chunk in chunks {
+        if isFirst { log.debug("recording", ["microphone_ms": elapsed]) }
+        isFirst = false
         session.send(chunk.pcm)
         levels.push(chunk.level)
       }
-      // The recording ended and all of it is sent.
-      if !Task.isCancelled { session.stop() }
+      guard !Task.isCancelled else { return }
+      if self.session === session, pill == .listening {
+        // Nobody stopped the recording: the microphone did not start.
+        session.cancel()
+        finish(.microphoneUnavailable)
+      } else {
+        // The recording ended and all of it is sent.
+        session.stop()
+      }
     }
   }
 
@@ -122,6 +137,7 @@ final class DictationController {
     session?.cancel()
     session = nil
     pill = .hidden
+    media.resume()
     log.info("cancelled", ["duration_ms": elapsed])
   }
 
@@ -132,6 +148,7 @@ final class DictationController {
       capture.stop()
     }
     session = nil
+    media.resume()
     if let error {
       fail(error)
     } else {

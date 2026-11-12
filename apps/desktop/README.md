@@ -66,6 +66,8 @@ The build signs with the first Apple Development identity in the keychain, which
 | Toggle recording | ⌥ Space | Starts recording, and stops it when pressed again                                                                                   |
 | Cancel           | esc     | Drops the recording. Nothing is typed                                                                                               |
 
+Recording starts the moment the shortcut is pressed. It does not wait for the server: audio recorded before the connection is up is sent once it is, also when the recording has already ended by then.
+
 The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards.
 
 Settings, from the menu bar menu:
@@ -75,18 +77,25 @@ Settings, from the menu bar menu:
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
 
+## Microphone and media
+
+The microphone is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
+
+This matters with a Bluetooth headset used as the microphone. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. It goes back to normal a few seconds after the recording ends.
+
+While a dictation runs, the media playing on the Mac is paused, and it resumes when the dictation is over. With a Bluetooth headset it resumes once the headset is out of call quality. Media that was not playing is left alone. This works with apps that macOS shows in Now Playing, such as music players and browsers. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
+
 ## The pill
 
 The pill is one surface that changes shape. It grows out of its bottom edge when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
 
-The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the server is getting ready or the text is being refined, a ripple runs through the bars, and the voice still shows through it. With Reduce Motion on, the bars only show the level, a few times a second.
+The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the text is being refined, a ripple runs through the bars. With Reduce Motion on, the bars only show the level, a few times a second.
 
-| State      | Shown                                                                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Connecting | A rippling waveform. Recording has started, the server is getting ready                                                                   |
-| Listening  | The waveform follows the microphone                                                                                                       |
-| Finishing  | A rippling waveform. Recording ended, the text is being refined                                                                           |
-| Failed     | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
+| State     | Shown                                                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Listening | The waveform follows the microphone                                                                                                       |
+| Finishing | A rippling waveform. Recording ended, the text is being refined                                                                           |
+| Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
 
 ## Logs
 
@@ -109,7 +118,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, and audio chunking. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -123,6 +132,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                |
 | `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                 |
 | `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                        |
+| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it       |
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                           |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                    |
 | `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                |
