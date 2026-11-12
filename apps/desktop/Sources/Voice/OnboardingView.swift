@@ -2,7 +2,8 @@ import AVFoundation
 import SwiftUI
 import VoiceCore
 
-/// The setup window: the two permissions the app needs, then a place to try it.
+/// The setup window: the two permissions the app needs, then a place to try it. Under
+/// them is the choice of opening the app at login, which is not a step: it can be left.
 struct OnboardingView: View {
   let onboarding: Onboarding
   let pushToTalk: Shortcut
@@ -11,6 +12,7 @@ struct OnboardingView: View {
   /// Whether System Settings was opened for Accessibility, to say what to do there.
   let isWaitingForAccessibility: Bool
   @Binding var sample: String
+  @Binding var opensAtLogin: Bool
   let allowAccessibility: () -> Void
   let allowMicrophone: () -> Void
   let done: () -> Void
@@ -72,6 +74,13 @@ struct OnboardingView: View {
       }
       .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
       .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.08)))
+
+      HStack {
+        Text("Open at login")
+        Spacer()
+        Switch(title: "Open at login", isOn: $opensAtLogin)
+      }
+      .padding(.horizontal, 14)
 
       // Always laid out, so the window keeps its size when the note appears.
       Text(
@@ -151,6 +160,7 @@ private struct StepRow<Detail: View>: View {
 struct OnboardingContainer: View {
   let permissions: Permissions
   let settings: Settings
+  let loginItem: LoginItem
   let done: () -> Void
 
   @State private var sample = ""
@@ -168,6 +178,11 @@ struct OnboardingContainer: View {
       onboarding: onboarding, pushToTalk: settings.pushToTalk,
       canAskForMicrophone: permissions.microphone == .notDetermined,
       isWaitingForAccessibility: isWaitingForAccessibility, sample: $sample,
+      opensAtLogin: Binding {
+        loginItem.isEnabled
+      } set: {
+        loginItem.set($0)
+      },
       allowAccessibility: {
         isWaitingForAccessibility = true
         permissions.requestAccessibility()

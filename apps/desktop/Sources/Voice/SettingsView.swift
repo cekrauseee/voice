@@ -3,10 +3,23 @@ import VoiceCore
 
 struct SettingsView: View {
   @Bindable var settings: Settings
+  let loginItem: LoginItem
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: Design.wide) {
+        group("General") {
+          SettingRow(title: "Open at login", detail: "Starts in the menu bar when you log in") {
+            Switch(
+              title: "Open at login",
+              isOn: Binding {
+                loginItem.isEnabled
+              } set: {
+                loginItem.set($0)
+              })
+          }
+        }
+
         group("Appearance") {
           SettingRow(title: "Theme") {
             Segmented(options: Theme.allCases.map { ($0, $0.title) }, selection: $settings.theme)
@@ -67,6 +80,12 @@ struct SettingsView: View {
         }
       }
       .padding(Design.medium)
+    }
+    // It can be changed in System Settings while the window is behind.
+    .onAppear { loginItem.refresh() }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
+    {
+      _ in loginItem.refresh()
     }
   }
 

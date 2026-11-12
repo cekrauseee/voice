@@ -9,7 +9,8 @@ import SwiftUI
 ///
 /// Almost nothing moves. What the pointer is over, what is selected, and what a click
 /// shows change at once. Motion is kept for the two places where it says where something
-/// went: a page that opens over a list, and the mark of a choice that moves to another.
+/// went: a page that opens over a list, and the mark of a choice that moves to another,
+/// which the knob of a switch is too.
 enum Design {
   // Space between and inside things, on a 4-point grid.
   static let tight = 4.0
@@ -106,6 +107,32 @@ struct GroupTitle: View {
       .font(.voiceLabel)
       .foregroundStyle(.secondary)
       .padding(.horizontal, Design.small)
+  }
+}
+
+/// Something that is on or off. The knob slides to the side chosen.
+struct Switch: View {
+  let title: String
+  @Binding var isOn: Bool
+
+  var body: some View {
+    Button {
+      isOn.toggle()
+    } label: {
+      Capsule()
+        .fill(Color.primary.opacity(isOn ? 0.85 : 0.2))
+        .frame(width: 30, height: 18)
+        .overlay(alignment: isOn ? .trailing : .leading) {
+          Circle()
+            .fill(Color(nsColor: .windowBackgroundColor))
+            .padding(2)
+        }
+        .animation(Design.move, value: isOn)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .pointer()
+    .accessibilityRepresentation { Toggle(title, isOn: $isOn) }
   }
 }
 

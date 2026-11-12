@@ -41,6 +41,8 @@ On first launch a setup window takes the user through three steps, one at a time
 2. **Microphone.** Allow shows the macOS prompt.
 3. **Try it.** A text field takes the focus. Holding the push-to-talk shortcut and speaking types into it.
 
+Under the steps is Open at login, off by default. It is not a step: the setup is done without it, and it is the same setting as in the app's window.
+
 The app follows the permissions as they change: a step is checked off the moment its permission is granted, and the window comes back in front of System Settings. While the window is open the app has a Dock icon, so the window is easy to find again. Done closes the setup, and is available once both permissions are granted.
 
 The setup comes back on launch until it is completed, and whenever a permission is missing. While it is incomplete, the menu bar menu has a Finish Setup item.
@@ -104,6 +106,7 @@ Some samples have a recording, spoken by a system voice, and one of them failed,
 
 Settings:
 
+- **Open at login**: macOS opens the app, in the menu bar, when you log in. Off by default. macOS keeps this, not the app: it is also in System Settings, under Login Items, and the two builds are separate items. If the app was turned off there, turning it on here opens that page.
 - **Theme**: Auto, Light, or Dark.
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
@@ -169,6 +172,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
 | `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
+| `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                             |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |
 | `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                     |

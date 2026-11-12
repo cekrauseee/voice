@@ -113,3 +113,4 @@ The development build uses the subsystem `eu.cekrause.voice.dev`.
 | `history`     | app     | Loading, saving, and pruning the past transcriptions, never their text |
 | `retry`       | app     | Transcribing a failed dictation again                                  |
 | `statistics`  | app     | Loading and saving the figures of what was dictated                    |
+| `login`       | app     | Turning opening at login on and off                                    |
