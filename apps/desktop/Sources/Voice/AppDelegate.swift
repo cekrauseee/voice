@@ -97,14 +97,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func menuNeedsUpdate(_ menu: NSMenu) {
     menu.removeAllItems()
+    // Every item has an icon, so their names line up. A section has the icon it has in the
+    // window's sidebar.
     if needsSetup {
-      menu.addItem(item("Finish Setup…", #selector(openSetup)))
+      menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
       menu.addItem(.separator())
     }
-    menu.addItem(item("Transcriptions", #selector(openTranscriptions)))
-    menu.addItem(item("Settings…", #selector(openSettings), key: ","))
+    let (transcriptions, settings) = (AppSection.transcriptions, AppSection.settings)
+    menu.addItem(
+      item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
+    menu.addItem(
+      item("\(settings.title)…", #selector(openSettings), key: ",", symbol: settings.symbol))
     menu.addItem(.separator())
-    menu.addItem(item("Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q"))
+    menu.addItem(
+      item(
+        "Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q", symbol: "power"))
   }
 
   /// The app was opened again while it runs, from Finder, Spotlight, or the Dock.
@@ -141,8 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     return menu
   }
 
-  private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
-    NSMenuItem(title: title, action: action, keyEquivalent: key)
+  private func item(
+    _ title: String, _ action: Selector, key: String = "", symbol: String? = nil
+  ) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+    if let symbol {
+      item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    }
+    return item
   }
 
   @objc private func openTranscriptions() {
