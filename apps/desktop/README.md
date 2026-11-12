@@ -70,7 +70,18 @@ Recording starts the moment the shortcut is pressed. It does not wait for the se
 
 The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards.
 
-Settings, from the menu bar menu:
+## The window
+
+The app lives in the menu bar. Its menu opens the app's window on one of its two sections:
+
+- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed and how long the recording was. Hovering shows a button to copy it, the text can be selected, and the context menu deletes it.
+- **Settings**: the settings below.
+
+While the window is open, the app is also in the Dock and the app switcher, and it leaves them when the window closes. Opening the app again while it runs, from Finder or Spotlight, shows the window.
+
+The past transcriptions are kept in `history.json`, in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. The file stays on the Mac: nothing but the app reads it, and its text is never logged. A transcription is kept when its text is typed, also when a dictation failed and the words were typed as heard. A cancelled dictation is not kept.
+
+Settings:
 
 - **Theme**: Auto, Light, or Dark.
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
@@ -120,7 +131,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -128,6 +139,9 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | ------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `Sources/VoiceCore`                                                 | Logic without system dependencies                           |
 | `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                 |
+| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open |
+| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one         |
+| `Sources/Voice/TranscriptionsView.swift`, `HistoryStore.swift`      | The past transcriptions, and the file that keeps them       |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                            |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                            |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                            |

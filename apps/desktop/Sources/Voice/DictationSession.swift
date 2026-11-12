@@ -7,6 +7,8 @@ final class DictationSession {
   private let socket: URLSessionWebSocketTask
   private let instructions: String
   private(set) var transcript = Transcript()
+  /// How much audio was sent, in seconds.
+  private(set) var recorded = 0.0
   private var isReady = false
   private var isOver = false
 
@@ -31,6 +33,7 @@ final class DictationSession {
   }
 
   func send(_ pcm: Data) {
+    recorded += Double(pcm.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
     socket.send(.data(pcm)) { _ in }
   }
 

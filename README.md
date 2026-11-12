@@ -38,6 +38,8 @@ Then dictate:
 | Toggle recording: press to start, press again to stop | ⌥ Space          |
 | Cancel                                                | esc              |
 
+The menu bar menu opens the app's window, with the past transcriptions and the settings.
+
 ## Commands
 
 | Command       | What it does                                                        |

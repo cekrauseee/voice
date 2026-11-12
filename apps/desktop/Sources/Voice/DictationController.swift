@@ -14,6 +14,7 @@ final class DictationController {
 
   @ObservationIgnored private let log = Log("dictation")
   @ObservationIgnored private let settings: Settings
+  @ObservationIgnored private let history: HistoryStore
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
   @ObservationIgnored private let media = MediaPause(
@@ -25,8 +26,9 @@ final class DictationController {
   @ObservationIgnored private var dismissal: Task<Void, Never>?
   @ObservationIgnored private var startedAt = ContinuousClock.now
 
-  init(settings: Settings) {
+  init(settings: Settings, history: HistoryStore) {
     self.settings = settings
+    self.history = history
   }
 
   var isRecording: Bool {
@@ -85,9 +87,10 @@ final class DictationController {
       guard let self, let session, self.session === session else { return }
       transcript = session.transcript
     }
-    session.onText = { [inserter, log] text in
+    session.onText = { [weak session, inserter, history, log] text in
       inserter.insert(text)
       log.debug("typed", ["chars": text.count])
+      history.add(text: text, duration: session?.recorded ?? 0)
     }
     session.onEnd = { [weak self, weak session] error in
       guard let self, self.session === session else { return }
