@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.ts",
     "build": "node scripts/bundle.ts production",
     "reset": "node scripts/reset.ts",
+    "seed": "node scripts/seed.ts",
     "check-types": "tsc --noEmit",
     "lint": "swift format lint --strict --recursive Package.swift Sources Tests",
     "format": "swift format --in-place --recursive Package.swift Sources Tests",

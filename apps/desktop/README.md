@@ -85,6 +85,14 @@ While the window is open, the app is also in the Dock and the app switcher, and 
 
 The past transcriptions are kept in `history.json`, in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. The file stays on the Mac: nothing but the app reads it, and its text is never logged. A transcription is kept when its text is typed, also when a dictation failed and the words were typed as heard. A cancelled dictation is not kept.
 
+To work on the window without dictating first, fill the history of the development app with sample transcriptions:
+
+```sh
+pnpm seed
+```
+
+It keeps what the history holds, and running it again renews the samples. The app reads its history when it starts, so a running app is quit and opened again.
+
 Settings:
 
 - **Theme**: Auto, Light, or Dark.
@@ -165,3 +173,4 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
 | `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
 | `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |
+| `scripts/seed.ts`                                                   | Fills the development app's history with samples                 |
