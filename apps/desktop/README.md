@@ -77,7 +77,7 @@ The app lives in the menu bar. Its menu opens the app's window on one of its two
 - **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed and how long the recording was, with its text cut at three lines. Clicking it shows all of the text, which can then be selected. Hovering shows a button to copy it, and the context menu deletes it.
 - **Settings**: the settings below.
 
-The window has a header beside its buttons, with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
+The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
 
 The pointer shows what it is over: a hand over what can be clicked, the text cursor over text that can be selected or edited.
 
