@@ -41,7 +41,7 @@ async function checkOpenAI(client: OpenAI, models: string[]): Promise<void> {
   }
 }
 
-const { apiKey, host, port, transcribeModel, transcribeLanguages, refineModel } = config();
+const { apiKey, host, port, transcribeModel, transcribeLanguages, refineModel, prices } = config();
 const client = new OpenAI({ apiKey });
 await checkOpenAI(client, [transcribeModel, refineModel]);
 
@@ -51,6 +51,7 @@ const server = createServer({
     languages: transcribeLanguages,
   }),
   createRefiner: createOpenAIRefiner(client, { model: refineModel }),
+  prices,
   log,
 });
 

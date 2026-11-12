@@ -9,6 +9,8 @@ final class DictationSession {
   private(set) var transcript = Transcript()
   /// The audio that was sent: 16-bit mono PCM at 24 kHz.
   private(set) var recording = Data()
+  /// What the dictation used on the server, once it has its text.
+  private(set) var usage: Usage?
 
   /// How long the recording is, in seconds.
   var recorded: TimeInterval {
@@ -78,7 +80,8 @@ final class DictationSession {
     case .delta:
       transcript.apply(message)
       onChange()
-    case .done:
+    case .done(_, let usage):
+      self.usage = usage
       transcript.apply(message)
       onChange()
       end(nil)

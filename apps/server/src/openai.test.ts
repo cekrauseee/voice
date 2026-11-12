@@ -228,8 +228,11 @@ test("the refiner connects ahead, then asks for the transcript to be rewritten",
 
   responses.emit({ type: "response.output_text.delta", delta: " Hello," });
   responses.emit({ type: "response.output_text.delta", delta: " world. " });
-  responses.emit({ type: "response.completed", response: {} });
-  assert.equal(await refined, "Hello, world.");
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 210, output_tokens: 4, total_tokens: 214 } },
+  });
+  assert.deepEqual(await refined, { text: "Hello, world.", inputTokens: 210, outputTokens: 4 });
   assert.equal(responses.connections, 1);
 });
 
@@ -248,7 +251,7 @@ test("the refiner puts the speaker's instructions after its own", async (t) => {
   assert.ok(instructions.endsWith("<instructions>\nWrite formally.\n</instructions>"));
 
   responses.emit({ type: "response.completed", response: {} });
-  assert.equal(await refined, "");
+  assert.deepEqual(await refined, { text: "", inputTokens: 0, outputTokens: 0 });
 });
 
 test("the refiner gives up on a model that stops answering", async (t) => {
@@ -293,7 +296,7 @@ test("the refiner connects again when its connection is gone", async (t) => {
   assert.equal(responses.connections, 2);
   responses.emit({ type: "response.output_text.delta", delta: "Hi." });
   responses.emit({ type: "response.completed", response: {} });
-  assert.equal(await refined, "Hi.");
+  assert.equal((await refined).text, "Hi.");
 });
 
 test("closing the refiner ends the request in progress", async (t) => {

@@ -38,6 +38,9 @@ enum Design {
   static let hover = Color.primary.opacity(0.05)
   /// What is selected.
   static let selected = Color.primary.opacity(0.11)
+  /// A bar of a chart, and the one under the pointer.
+  static let bar = Color.primary.opacity(0.28)
+  static let barHover = Color.primary.opacity(0.6)
 }
 
 /// What the pointer looks like over a part of the window.
@@ -90,6 +93,8 @@ extension Font {
   static let voiceLabel = Font.system(size: 12, weight: .medium)
   /// Times, lengths, and explanations.
   static let voiceCaption = Font.system(size: 11)
+  /// A number that is what a page is about.
+  static let voiceFigure = Font.system(size: 22, weight: .semibold).monospacedDigit()
 }
 
 /// The name of a group of rows, in line with their text.

@@ -1,12 +1,13 @@
-// Fills the history of the development app with sample transcriptions, to work on the
-// window without dictating first.
+// Fills the history and the statistics of the development app with samples, to work on
+// the window without dictating first.
 //
 //   node scripts/seed.ts
 //
 // Some samples have a recording, spoken by a system voice, and one of them failed, to try
 // playing and trying again. What the history already holds is kept, and running it again
-// renews the samples. The app reads its history when it starts, so a running app is quit
-// first and opened again.
+// renews the samples. The statistics get sample figures for the days that have none: a day
+// with figures is left as it is. The app reads its files when it starts, so a running app
+// is quit first and opened again.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -33,6 +34,18 @@ interface Transcription {
   duration: number;
   /** Whether the dictation failed, and can be tried again from its recording. */
   failed?: boolean;
+}
+
+/** The figures of a day as the app keeps them in `statistics.json`. */
+interface Tally {
+  dictations: number;
+  words: number;
+  /** How long the speaker talked, in seconds. */
+  seconds: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** In US dollars. */
+  cost: number;
 }
 
 /** What makes a sample more than text: a recording, spoken by a system voice, or a failure. */
@@ -140,6 +153,52 @@ function sample(index: number, recordings: string): Transcription {
   };
 }
 
+/** The date of a day as the statistics name it, such as `2026-11-12`. */
+function dayKey(daysAgo: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * Sample figures for a day: a few dictations at a speaking pace, at OpenAI's prices. The
+ * same on every run. One day in five has none.
+ */
+function sampleDay(daysAgo: number): Tally | undefined {
+  let state = daysAgo * 7919 + 17;
+  const pick = (bound: number) => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return Math.floor((state / 2147483648) * bound);
+  };
+  if (pick(5) === 0) return undefined;
+  const tally: Tally = {
+    dictations: 1 + pick(9),
+    words: 0,
+    seconds: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
+  };
+  for (let dictation = 0; dictation < tally.dictations; dictation++) {
+    const words = 8 + pick(120);
+    tally.words += words;
+    // Between 115 and 170 words a minute.
+    tally.seconds += Math.round((words / (1.9 + pick(10) / 10)) * 10) / 10;
+    // The refinement reads its instructions and the transcript, and writes the text.
+    tally.inputTokens += 230 + Math.round(words * 1.6);
+    tally.outputTokens += Math.round(words * 1.4);
+  }
+  tally.seconds = Math.round(tally.seconds * 10) / 10;
+  const cost =
+    (tally.seconds / 60) * 0.017 + (tally.inputTokens * 0.1 + tally.outputTokens * 0.5) / 1e6;
+  tally.cost = Math.round(cost * 1e6) / 1e6;
+  return tally;
+}
+
+/** How many days back the statistics get samples for. */
+const SAMPLE_DAYS = 30;
+
 function isRunning(identifier: string): boolean {
   const answer = spawnSync("osascript", ["-e", `application id "${identifier}" is running`], {
     encoding: "utf8",
@@ -173,11 +232,26 @@ try {
   }
   const transcriptions = [...kept, ...samples.map((_, index) => sample(index, recordings))];
   writeFileSync(file, `${JSON.stringify({ transcriptions }, null, 2)}\n`);
+
+  const statisticsFile = join(directory, "statistics.json");
+  const days: Record<string, Tally> = existsSync(statisticsFile)
+    ? JSON.parse(readFileSync(statisticsFile, "utf8")).days
+    : {};
+  let sampleDays = 0;
+  for (let daysAgo = 0; daysAgo < SAMPLE_DAYS; daysAgo++) {
+    const tally = sampleDay(daysAgo);
+    if (!tally || days[dayKey(daysAgo)]) continue;
+    days[dayKey(daysAgo)] = tally;
+    sampleDays += 1;
+  }
+  writeFileSync(statisticsFile, `${JSON.stringify({ days }, null, 2)}\n`);
+
   log.info("seeded", {
     app: name,
     samples: samples.length,
     recordings: readdirSync(recordings).filter(isSample).length,
     kept: kept.length,
+    statistics_days: sampleDays,
     file,
   });
 

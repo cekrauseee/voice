@@ -1,6 +1,6 @@
 import type { Logger } from "@voice/log";
-import type { ErrorCode, ServerMessage } from "./protocol.ts";
-import type { CreateRefiner, Refiner } from "./refiner.ts";
+import { type ErrorCode, type Prices, type ServerMessage, usage } from "./protocol.ts";
+import type { CreateRefiner, Refinement, Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 
 /** How long transcription may take to be ready for audio. */
@@ -9,10 +9,14 @@ const READY_TIMEOUT_MS = 10_000;
 const TRANSCRIPT_TIMEOUT_MS = 5_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
+/** The audio is 16-bit mono at 24 kHz. */
+const BYTES_PER_SECOND = 48_000;
 
 export interface SessionDeps {
   createTranscriber: CreateTranscriber;
   createRefiner: CreateRefiner;
+  /** What the dictation is charged at, to tell the client what it cost. */
+  prices: Prices;
   send(message: ServerMessage): void;
   /** Called once when the session is over. No message follows. */
   end(): void;
@@ -41,6 +45,8 @@ export class DictationSession {
   private started: Started | undefined;
   /** The text heard so far. */
   private heard = "";
+  /** How much audio the client sent. */
+  private audioBytes = 0;
   private ready = false;
   private stoppedAt: number | undefined;
   /** Set once the transcript is complete. Nothing from the transcriber matters after it. */
@@ -79,8 +85,12 @@ export class DictationSession {
 
   audio(pcm: Buffer): void {
     if (this.ended || this.stoppedAt !== undefined) return;
-    if (this.started) this.started.transcriber.append(pcm);
-    else this.reject();
+    if (!this.started) {
+      this.reject();
+      return;
+    }
+    this.audioBytes += pcm.length;
+    this.started.transcriber.append(pcm);
   }
 
   /** The client finished speaking: complete the transcript, refine it, then end. */
@@ -160,24 +170,39 @@ export class DictationSession {
       transcript_ms: Date.now() - (this.stoppedAt ?? Date.now()),
       chars: transcript.length,
     });
-    const text = transcript === "" ? "" : await this.refine(transcript, started);
+    const unrefined = { text: transcript, inputTokens: 0, outputTokens: 0 };
+    const refined = transcript === "" ? unrefined : await this.refine(transcript, started);
     if (this.ended) return;
-    this.send({ type: "done", text });
+    const used = usage(
+      this.deps.prices,
+      this.audioBytes / BYTES_PER_SECOND,
+      refined.inputTokens,
+      refined.outputTokens,
+    );
+    this.deps.log.info("used", { ...used });
+    this.send({ type: "done", text: refined.text, usage: used });
     this.end("done");
   }
 
-  /** Returns the refined text, or the transcript when refining does not work out. */
-  private async refine(transcript: string, { refiner, instructions }: Started): Promise<string> {
+  /**
+   * Returns the refined text, or the transcript when refining does not work out. The
+   * tokens of a refinement that returned nothing are still counted: they were paid for.
+   */
+  private async refine(
+    transcript: string,
+    { refiner, instructions }: Started,
+  ): Promise<Refinement> {
     const log = this.deps.log;
     const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     try {
       const refined = await refiner.refine({ text: transcript, instructions }, signal);
-      if (refined !== "") {
-        log.info("refined", { refine_ms: Date.now() - startedAt, chars: refined.length });
+      if (refined.text !== "") {
+        log.info("refined", { refine_ms: Date.now() - startedAt, chars: refined.text.length });
         return refined;
       }
       log.warn("refinement empty", { refine_ms: Date.now() - startedAt });
+      return { ...refined, text: transcript };
     } catch (error) {
       if (!this.ended) {
         log.warn("refinement failed", {
@@ -186,7 +211,7 @@ export class DictationSession {
         });
       }
     }
-    return transcript;
+    return { text: transcript, inputTokens: 0, outputTokens: 0 };
   }
 
   private fail(code: ErrorCode, message: string): void {

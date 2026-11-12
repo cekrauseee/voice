@@ -29,16 +29,21 @@ TypeScript runs directly on Node.js. There is no build step.
 
 Environment variables, read from `.env`. `pnpm start` also runs without the file, with the variables set in the environment.
 
-| Variable               | Default                             | Meaning                                                                                                 |
-| ---------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`       | required                            | The key used for transcription and refinement                                                           |
-| `HOST`                 | `127.0.0.1`                         | The address to listen on                                                                                |
-| `PORT`                 | `8787`                              | The port to listen on                                                                                   |
-| `TRANSCRIBE_MODEL`     | `gpt-live-transcribe`               | The realtime transcription model                                                                        |
-| `TRANSCRIBE_LANGUAGES` | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy |
-| `REFINE_MODEL`         | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                        |
-| `LOG_FORMAT`           | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                         |
-| `LOG_LEVEL`            | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                            |
+| Variable                          | Default                             | Meaning                                                                                                 |
+| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`                  | required                            | The key used for transcription and refinement                                                           |
+| `HOST`                            | `127.0.0.1`                         | The address to listen on                                                                                |
+| `PORT`                            | `8787`                              | The port to listen on                                                                                   |
+| `TRANSCRIBE_MODEL`                | `gpt-live-transcribe`               | The realtime transcription model                                                                        |
+| `TRANSCRIBE_LANGUAGES`            | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy |
+| `REFINE_MODEL`                    | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                        |
+| `TRANSCRIBE_PRICE_PER_MINUTE`     | `0.017`                             | What OpenAI charges for a minute of audio transcribed, in US dollars                                    |
+| `REFINE_PRICE_PER_MILLION_INPUT`  | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                            |
+| `REFINE_PRICE_PER_MILLION_OUTPUT` | `0.50`                              | What OpenAI charges for a million tokens the refinement writes, in US dollars                           |
+| `LOG_FORMAT`                      | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                         |
+| `LOG_LEVEL`                       | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                            |
+
+The prices are what the server estimates the cost of a dictation with, for the app's statistics. OpenAI reports what a dictation used, not what it costs. The defaults are [OpenAI's prices](https://developers.openai.com/api/docs/pricing) for the default models in November 2026: set them when you change a model, or when the prices change.
 
 The server has no authentication and listens on the loopback address only. Do not set `HOST` to a public address without an authenticating proxy in front: anyone who can reach the server can spend your OpenAI credit.
 
@@ -50,10 +55,11 @@ The server logs [structured records](../../docs/logging.md): in columns in a ter
 16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0
 16:24:20.462 INFO  dictation   transcribed dictation=1 transcript_ms=684 chars=340
 16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
+16:24:21.642 INFO  dictation   used dictation=1 audio_seconds=10.3 input_tokens=318 output_tokens=71 cost=0.002986
 16:24:21.643 INFO  dictation   ended dictation=1 outcome=done duration_ms=11523
 ```
 
-Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
 ## Tuning
 

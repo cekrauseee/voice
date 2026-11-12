@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { type TestContext, test } from "node:test";
 import { WebSocket } from "ws";
-import { audio, FakeRefiner, FakeTranscriber, silent, until } from "./fixtures.ts";
+import { audio, FakeRefiner, FakeTranscriber, prices, silent, until } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
 import { createServer } from "./server.ts";
 
@@ -12,6 +12,7 @@ async function start(t: TestContext) {
   const server = createServer({
     createTranscriber: transcriber.create,
     createRefiner: refiner.create,
+    prices,
     log: silent,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -70,7 +71,11 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   assert.deepEqual(messages, [
     { type: "ready" },
     { type: "delta", text: "hi" },
-    { type: "done", text: "Hi there." },
+    {
+      type: "done",
+      text: "Hi there.",
+      usage: { audio_seconds: 0.5, input_tokens: 0, output_tokens: 0, cost: 0.005 },
+    },
   ]);
   assert.equal(closeCode(), 1000);
   assert.ok(transcriber.closed);

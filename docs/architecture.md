@@ -15,7 +15,7 @@ Voice turns speech into typed text: the words appear as they are heard, and the 
                                                                    └──────────────────────┘
 ```
 
-The app owns the machine: the shortcuts, the microphone, the pill, typing, and the history of what was dictated, which it keeps on the Mac with the recording of each dictation. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
+The app owns the machine: the shortcuts, the microphone, the pill, typing, the history of what was dictated, which it keeps on the Mac with the recording of each dictation, and the statistics of how much was dictated and what it cost. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
 
 ## A dictation
 
@@ -46,6 +46,12 @@ The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a 
 - **The speaker's instructions.** The app can send instructions with the dictation, such as a tone or a language. They are added after the server's own and take precedence over them.
 - **Over a WebSocket.** The request goes through the Responses API on a WebSocket that the server opens when the dictation starts. When the speaker stops, the connection is already there, and the answer streams back on it.
 - **It cannot lose text.** If the model fails, stops answering for 5 s, takes more than a minute, or returns nothing, the transcript is typed as it was heard.
+
+## Cost
+
+A dictation is charged twice by OpenAI: the transcription by the minute of audio, and the refinement by the token. The refinement reports the tokens it read and wrote. Nothing reports a price, so the server holds the prices in its configuration and sends an estimate of the cost with the text.
+
+The app adds up what each dictation used, day by day, and shows it on its Statistics page with how much was dictated and how fast. Those figures are counted as dictations happen and kept apart from the history, so they stay when a transcription is deleted.
 
 ## Failure
 

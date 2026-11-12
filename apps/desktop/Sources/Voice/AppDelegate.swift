@@ -7,16 +7,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let settings = Settings()
   private let permissions = Permissions()
   private let history = HistoryStore()
+  private let statistics = StatisticsStore()
   private let navigation = Navigation()
-  private lazy var controller = DictationController(settings: settings, history: history)
-  private lazy var retry = Retry(settings: settings, history: history)
+  private lazy var controller = DictationController(
+    settings: settings, history: history, statistics: statistics)
+  private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
     style: .main(size: NSSize(width: 680, height: 460)),
     content: MainView(
-      navigation: navigation, history: history, retry: retry, settings: settings))
+      navigation: navigation, history: history, statistics: statistics, retry: retry,
+      settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(permissions: permissions, settings: settings) { [weak self] in
@@ -119,9 +122,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
       menu.addItem(.separator())
     }
-    let (transcriptions, settings) = (AppSection.transcriptions, AppSection.settings)
+    let (transcriptions, statistics, settings) = (
+      AppSection.transcriptions, AppSection.statistics, AppSection.settings
+    )
     menu.addItem(
       item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
+    menu.addItem(item(statistics.title, #selector(openStatistics), symbol: statistics.symbol))
     menu.addItem(
       item("\(settings.title)…", #selector(openSettings), key: ",", symbol: settings.symbol))
     menu.addItem(.separator())
@@ -176,6 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openTranscriptions() {
     open(.transcriptions)
+  }
+
+  @objc private func openStatistics() {
+    open(.statistics)
   }
 
   @objc private func openSettings() {

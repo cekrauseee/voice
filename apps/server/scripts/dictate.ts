@@ -67,8 +67,11 @@ ws.on("message", (data) => {
   const message: ServerMessage = JSON.parse(data.toString());
   switch (message.type) {
     case "delta":
+      print(`delta  ${JSON.stringify(message.text)}`);
+      break;
     case "done":
-      print(`${message.type.padEnd(5)}  ${JSON.stringify(message.text)}`);
+      print(`done   ${JSON.stringify(message.text)}`);
+      print(`usage  ${JSON.stringify(message.usage)}`);
       break;
     case "error":
       print(`error  ${message.code}: ${message.message}`);

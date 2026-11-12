@@ -1,3 +1,5 @@
+import type { Prices } from "./protocol.ts";
+
 /** A configuration problem, with what to do about it. */
 export class ConfigError extends Error {
   readonly hint: string;
@@ -15,6 +17,7 @@ export interface Config {
   transcribeModel: string;
   transcribeLanguages: string[];
   refineModel: string;
+  prices: Prices;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -28,6 +31,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(`PORT is not a port number: ${env.PORT}`, "set PORT to 0-65535");
   }
 
+  const price = (name: string, fallback: number) => {
+    const value = Number(env[name] ?? fallback);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new ConfigError(`${name} is not a price: ${env[name]}`, "set it to US dollars");
+    }
+    return value;
+  };
+
   return {
     apiKey,
     host: env.HOST || "127.0.0.1",
@@ -38,5 +49,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map((language) => language.trim())
       .filter((language) => language !== ""),
     refineModel: env.REFINE_MODEL || "gpt-6-luna",
+    // OpenAI's prices for the default models, as published in November 2026.
+    prices: {
+      transcribeMinute: price("TRANSCRIBE_PRICE_PER_MINUTE", 0.017),
+      refineInput: price("REFINE_PRICE_PER_MILLION_INPUT", 0.1),
+      refineOutput: price("REFINE_PRICE_PER_MILLION_OUTPUT", 0.5),
+    },
   };
 }

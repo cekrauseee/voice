@@ -21,7 +21,7 @@ public struct Transcript: Equatable, Sendable {
     switch message {
     case .delta(let text):
       if !isRefined { stream.append(text, at: time) }
-    case .done(let text):
+    case .done(let text, _):
       stream = TextStream(text)
       isRefined = true
     case .ready, .error:
