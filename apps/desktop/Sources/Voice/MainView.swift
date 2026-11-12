@@ -30,47 +30,72 @@ final class Navigation {
   var section = AppSection.transcriptions
 }
 
-/// The app's window: the sections on the left, and the one that is selected beside them.
+/// The app's window: a header beside the window's buttons, and under it the sections on the
+/// left and the selected one beside them.
 struct MainView: View {
   @Bindable var navigation: Navigation
   let history: HistoryStore
   @Bindable var settings: Settings
 
+  @Environment(\.windowButtonsWidth) private var windowButtonsWidth
+
   var body: some View {
-    HStack(spacing: 0) {
-      Sidebar(section: $navigation.section, isCollapsed: $settings.isSidebarCollapsed)
-      Rectangle()
-        .fill(Design.hairline)
-        .frame(width: 1)
-      VStack(alignment: .leading, spacing: 0) {
-        // On the row of the window's buttons, like a window's own title.
-        Text(navigation.section.title)
-          .font(.voiceTitle)
-          .frame(height: Design.barHeight)
-          .padding(.horizontal, Design.large)
-        switch navigation.section {
-        case .transcriptions:
-          TranscriptionsView(
-            history: history.history, pushToTalk: settings.pushToTalk, remove: history.remove)
-        case .settings:
-          SettingsView(settings: settings)
+    GeometryReader { window in
+      VStack(spacing: 0) {
+        // As tall as the title bar, which only holds the window's buttons.
+        header
+          .frame(height: window.safeAreaInsets.top)
+        Rectangle()
+          .fill(Design.hairline)
+          .frame(height: 1)
+        HStack(spacing: 0) {
+          Sidebar(section: $navigation.section, isCollapsed: settings.isSidebarCollapsed)
+          Rectangle()
+            .fill(Design.hairline)
+            .frame(width: 1)
+          Group {
+            switch navigation.section {
+            case .transcriptions:
+              TranscriptionsView(
+                history: history.history, pushToTalk: settings.pushToTalk, remove: history.remove
+              )
+            case .settings:
+              SettingsView(settings: settings)
+            }
+          }
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .ignoresSafeArea(edges: .top)
     }
-    // The content reaches under the title bar, which only holds the window's buttons.
-    .ignoresSafeArea(edges: .top)
     .animation(Design.morph, value: settings.isSidebarCollapsed)
+  }
+
+  /// The button that folds the sidebar, and the name of the section.
+  private var header: some View {
+    HStack(spacing: Design.small) {
+      IconButton(
+        symbol: "sidebar.left", help: settings.isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
+      ) {
+        settings.isSidebarCollapsed.toggle()
+      }
+      .keyboardShortcut("s", modifiers: [.control, .command])
+      Text(navigation.section.title)
+        .font(.voiceTitle)
+      Spacer(minLength: 0)
+    }
+    .padding(.leading, windowButtonsWidth + Design.medium)
+    .padding(.trailing, Design.large)
   }
 }
 
 /// The sections, as icons with their names, or as icons alone when collapsed.
 private struct Sidebar: View {
   @Binding var section: AppSection
-  @Binding var isCollapsed: Bool
+  let isCollapsed: Bool
 
   var body: some View {
-    VStack(spacing: 2) {
+    VStack(alignment: .leading, spacing: 2) {
       ForEach(AppSection.allCases) { item in
         SidebarItem(
           title: item.title, symbol: item.symbol, isSelected: item == section,
@@ -80,64 +105,78 @@ private struct Sidebar: View {
         }
       }
       Spacer(minLength: 0)
-      SidebarItem(
-        title: isCollapsed ? "Expand" : "Collapse", symbol: "sidebar.left", isSelected: false,
-        isCollapsed: isCollapsed, isQuiet: true
-      ) {
-        isCollapsed.toggle()
-      }
-      .keyboardShortcut("s", modifiers: [.control, .command])
     }
     .padding(Design.small)
-    // Below the window's buttons.
-    .padding(.top, Design.barHeight)
-    .frame(width: isCollapsed ? Design.railWidth : Design.sidebarWidth)
-    .background(Design.surface)
+    .frame(width: isCollapsed ? Design.railWidth : Design.sidebarWidth, alignment: .leading)
     .clipped()
   }
 }
 
+/// A section in the sidebar. Its icon stays where it is when the sidebar folds.
 private struct SidebarItem: View {
   let title: String
   let symbol: String
   let isSelected: Bool
   let isCollapsed: Bool
-  /// Whether it is a control of the sidebar, not a section, and so drawn fainter.
-  var isQuiet = false
   let action: () -> Void
 
   @State private var isHovered = false
 
   var body: some View {
     Button(action: action) {
-      HStack(spacing: Design.small) {
+      HStack(spacing: 2) {
         Image(systemName: symbol)
           .font(.system(size: 13))
           .foregroundStyle(isSelected ? .primary : .secondary)
-          .frame(width: 20)
+          .frame(width: Design.control, height: Design.control)
         if !isCollapsed {
           Text(title)
             .font(.voiceLabel)
-            .foregroundStyle(isQuiet ? .secondary : .primary)
             .lineLimit(1)
             .fixedSize()
             .transition(.opacity)
         }
       }
-      .padding(.horizontal, Design.small)
       .frame(maxWidth: isCollapsed ? nil : .infinity, alignment: .leading)
-      .frame(height: 28)
       .background(
         isSelected ? Design.selected : isHovered ? Design.hover : .clear,
         in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
       )
-      .frame(maxWidth: .infinity)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .onHover { isHovered = $0 }
+    .pointer()
     .help(isCollapsed ? title : "")
     .accessibilityLabel(title)
     .accessibilityAddTraits(isSelected ? .isSelected : [])
+  }
+}
+
+/// A button that is an icon, with a quiet highlight under the pointer.
+struct IconButton: View {
+  let symbol: String
+  let help: String
+  let action: () -> Void
+
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: symbol)
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .frame(width: Design.control, height: Design.control)
+        .background(
+          isHovered ? Design.hover : .clear,
+          in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+        )
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovered = $0 }
+    .pointer()
+    .help(help)
+    .accessibilityLabel(help)
   }
 }

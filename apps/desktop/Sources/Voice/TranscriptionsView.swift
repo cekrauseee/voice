@@ -13,9 +13,9 @@ struct TranscriptionsView: View {
       empty
     } else {
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: Design.large) {
+        LazyVStack(alignment: .leading, spacing: Design.loose) {
           ForEach(history.days(in: .current)) { day in
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Design.small) {
               GroupTitle(title: title(of: day.date))
               Card {
                 ForEach(day.transcriptions) { transcription in
@@ -26,8 +26,8 @@ struct TranscriptionsView: View {
             }
           }
         }
-        .padding([.horizontal, .bottom], Design.large)
-        .padding(.top, Design.tight)
+        .padding(.horizontal, Design.wide)
+        .padding(.vertical, Design.large)
       }
     }
   }
@@ -48,8 +48,6 @@ struct TranscriptionsView: View {
       .foregroundStyle(.secondary)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    // The middle of the window, not of what is left under the title.
-    .padding(.bottom, Design.barHeight)
   }
 
   private func title(of day: Date) -> String {
@@ -81,7 +79,7 @@ private struct TranscriptionRow: View {
         .font(.voiceCaption)
         .monospacedDigit()
         .foregroundStyle(.secondary)
-        .frame(width: 34, alignment: .leading)
+        .frame(width: 36, alignment: .leading)
       text
         .font(.voiceBody)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,16 +96,18 @@ private struct TranscriptionRow: View {
                 .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.borderless)
+            .pointer()
             .help("Copy")
             .transition(.opacity)
           }
         }
     }
     .padding(.horizontal, Design.medium)
-    .padding(.vertical, Design.small)
+    .padding(.vertical, 10)
     .background(isHovered ? Design.hover : .clear)
     .contentShape(Rectangle())
     .onTapGesture { isExpanded.toggle() }
+    .pointer()
     .onHover { isHovered = $0 }
     .animation(.easeOut(duration: 0.12), value: isHovered)
     .animation(Design.morph, value: isExpanded)
@@ -119,7 +119,7 @@ private struct TranscriptionRow: View {
 
   @ViewBuilder private var text: some View {
     if isExpanded {
-      Text(transcription.text).textSelection(.enabled)
+      Text(transcription.text).textSelection(.enabled).pointer(.text)
     } else {
       Text(transcription.text).lineLimit(3)
     }

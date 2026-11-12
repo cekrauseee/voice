@@ -11,33 +11,44 @@ final class AppWindow: NSObject, NSWindowDelegate {
   enum Style {
     /// A small window of a fixed size, as large as its content.
     case panel
-    /// A resizable window whose content reaches under the title bar.
+    /// A resizable window whose content reaches under the title bar and draws the header
+    /// there, beside the window's buttons.
     case main(size: NSSize, minimum: NSSize)
   }
 
   /// The windows that are open.
   private static var open: Set<ObjectIdentifier> = []
 
-  private let window: NSWindow
+  let window: NSWindow
   /// Called when the window closes, however it was closed.
   var onClose: () -> Void = {}
 
   init(title: String, style: Style = .panel, content: some View) {
-    window = NSWindow(contentViewController: NSHostingController(rootView: content))
+    switch style {
+    case .panel:
+      window = NSWindow(contentViewController: NSHostingController(rootView: content))
+      window.styleMask = [.titled, .closable]
+    case .main(let size, let minimum):
+      window = NSWindow(
+        contentRect: NSRect(origin: .zero, size: size),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+        backing: .buffered, defer: false)
+      window.titlebarAppearsTransparent = true
+      window.titleVisibility = .hidden
+      // An empty toolbar makes the title bar tall enough for a header, with the window's
+      // buttons in the middle of it.
+      window.toolbar = NSToolbar()
+      window.toolbarStyle = .unifiedCompact
+      let buttons = window.standardWindowButton(.zoomButton).map { $0.convert($0.bounds, to: nil) }
+      window.contentViewController = NSHostingController(
+        rootView: content.environment(\.windowButtonsWidth, buttons?.maxX ?? 0))
+      window.setContentSize(size)
+      window.contentMinSize = minimum
+    }
     super.init()
     window.title = title
     window.isReleasedWhenClosed = false
     window.delegate = self
-    switch style {
-    case .panel:
-      window.styleMask = [.titled, .closable]
-    case .main(let size, let minimum):
-      window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-      window.titlebarAppearsTransparent = true
-      window.titleVisibility = .hidden
-      window.setContentSize(size)
-      window.contentMinSize = minimum
-    }
     window.center()
     // The window comes back where and as large as it was left.
     if case .main = style { window.setFrameAutosaveName("Main") }
@@ -72,4 +83,17 @@ final class AppWindow: NSObject, NSWindowDelegate {
     if Self.open.isEmpty { NSApp.setActivationPolicy(.accessory) }
     onClose()
   }
+}
+
+extension EnvironmentValues {
+  /// How far the window's buttons reach from the leading edge of the title bar, for a
+  /// header that is drawn beside them. Zero where the content does not reach under it.
+  var windowButtonsWidth: CGFloat {
+    get { self[WindowButtonsWidthKey.self] }
+    set { self[WindowButtonsWidthKey.self] = newValue }
+  }
+}
+
+private struct WindowButtonsWidthKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
 }

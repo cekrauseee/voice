@@ -20,6 +20,7 @@ struct ShortcutField: View {
         Button("Reset", systemImage: "arrow.counterclockwise") { shortcut = fallback }
           .labelStyle(.iconOnly)
           .buttonStyle(.borderless)
+          .pointer()
       }
       Button {
         if monitor == nil { begin() } else { end() }
@@ -33,6 +34,7 @@ struct ShortcutField: View {
         }
       }
       .buttonStyle(.plain)
+      .pointer()
     }
     .animation(.smooth(duration: 0.25), value: monitor == nil)
     .animation(.smooth(duration: 0.25), value: shortcut)

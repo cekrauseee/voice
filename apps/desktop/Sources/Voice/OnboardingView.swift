@@ -85,6 +85,7 @@ struct OnboardingView: View {
       .opacity(isWaitingForAccessibility && !onboarding.accessibility ? 1 : 0)
 
       Button("Done", action: done)
+        .pointer()
         .keyboardShortcut(.defaultAction)
         .controlSize(.large)
         .disabled(!onboarding.canFinish)
@@ -137,6 +138,7 @@ private struct StepRow<Detail: View>: View {
 
       if state == .current, let actionTitle {
         Button(actionTitle, action: action)
+          .pointer()
           .transition(.blurReplace)
       }
     }
