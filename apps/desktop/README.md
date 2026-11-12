@@ -16,7 +16,7 @@ There are two builds of the app. macOS tells them apart, so each has its own per
 | Compiled        | For debugging                     | Optimized           |
 | In the menu bar | The waveform with a `DEV` mark    | The waveform        |
 
-`pnpm dev` builds the development app, opens it, and prints its log until it quits. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
+`pnpm dev` builds the development app, opens it, and prints its log. Whenever the sources change it builds the app again and opens the new build, so the app that runs is always the current code. A build that fails leaves the running app alone. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
 `pnpm build` only builds. `VERSION` sets the version of the app, which the release workflow takes from the tag.
 
