@@ -24,6 +24,8 @@ pnpm dev
 2. It creates `apps/server/.env` from `.env.example`. Add your `OPENAI_API_KEY` there: the server waits for it and starts as soon as the file is saved.
 3. It builds and opens the development app, Voice (Development), which lives in the menu bar.
 
+While it runs, a change to the code restarts the server, and builds and reopens the app.
+
 Each app has its own log in the terminal, as [structured records](docs/logging.md): move between them with the arrow keys, and quit with Ctrl-C.
 
 Running it again changes nothing you have set: variables added to `.env.example` later are added to your `.env`, and existing values are kept.
