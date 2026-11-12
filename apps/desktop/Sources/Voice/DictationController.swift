@@ -73,12 +73,15 @@ final class DictationController {
       return fail(.microphoneDenied)
     }
 
-    let chunks: AsyncStream<AudioChunk>
-    do {
-      chunks = try capture.start(with: settings.microphone)
-    } catch {
-      return fail(.microphoneUnavailable)
-    }
+    // The pill shows at once. The microphone opens behind it, and the recording does not
+    // wait for the server: the audio is sent as it comes, and what comes before the server
+    // is ready waits for it on the way.
+    self.mode = mode
+    transcript = Transcript()
+    dismissal?.cancel()
+    pill = .listening
+    startedAt = .now
+    let chunks = capture.start(with: settings.microphone)
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions)
@@ -108,23 +111,18 @@ final class DictationController {
       finish(error)
     }
     session.start()
-
     self.session = session
-    self.mode = mode
-    transcript = Transcript()
-    dismissal?.cancel()
-    // The recording does not wait for the server: the audio is sent as it comes, and
-    // what comes before the server is ready waits for it on the way.
-    pill = .listening
-    startedAt = .now
     media.pause()
     log.info("started", ["mode": mode])
 
     audio = Task {
-      var isFirst = true
+      var isLive = false
       for await chunk in chunks {
-        if isFirst { log.debug("recording", ["microphone_ms": elapsed]) }
-        isFirst = false
+        // Until then the microphone is starting: what it delivers is nothing at all.
+        if !isLive, !Level.isZero(chunk.pcm) {
+          isLive = true
+          log.debug("recording", ["microphone_ms": elapsed])
+        }
         session.send(chunk.pcm)
         levels.push(chunk.level)
       }

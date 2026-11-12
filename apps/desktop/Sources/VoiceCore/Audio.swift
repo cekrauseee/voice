@@ -45,6 +45,12 @@ public enum Level {
     let decibels = 20 * log10((sum / Double(count)).squareRoot() / 32_768)
     return Float(min(max((decibels + 50) / 40, 0), 1))
   }
+
+  /// Whether every sample is zero. A microphone delivers that while it starts, which even
+  /// the quietest room does not.
+  public static func isZero(_ pcm: Data) -> Bool {
+    pcm.allSatisfy { $0 == 0 }
+  }
 }
 
 /// A recording as a WAV file: the PCM the server expects, with the header that lets any

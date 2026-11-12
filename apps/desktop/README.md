@@ -138,7 +138,7 @@ Settings:
 
 ## Microphone and media
 
-The microphone is the one chosen in the settings, or the input chosen in macOS. It is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
+The microphone is the one chosen in the settings, or the input chosen in macOS. It is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between. Opening and closing the microphone wait for the device, so they happen behind the pill, which shows as soon as the shortcut is pressed. A microphone that was idle for a few seconds can take about a second to deliver sound, and a Bluetooth headset as long to switch to call quality: the `recording` record in the log says when the sound came. While the microphone opens and closes, the indicator macOS shows in the menu bar has a camera for a moment, whatever the app records with.
 
 This matters with a Bluetooth headset used as the microphone, whether it is the one chosen or the system's. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It is back to normal about a third of a second later. While another app records, the headset is left alone.
 

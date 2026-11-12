@@ -20,6 +20,8 @@ enum MediaControl {
       process.arguments = ["-l", "JavaScript", "-e", question]
       process.standardOutput = Pipe()
       process.standardError = FileHandle.nullDevice
+      // Out of the way of the pill, which shows at the same moment.
+      process.qualityOfService = .utility
       process.terminationHandler = { process in
         let output = (process.standardOutput as? Pipe)?.fileHandleForReading.readDataToEndOfFile()
         let answer = String(decoding: output ?? Data(), as: UTF8.self)
@@ -52,7 +54,7 @@ enum MediaControl {
   /// A Bluetooth headset plays in call quality while its microphone is open, and macOS
   /// leaves it there for two seconds after. Media resumed before it is out sounds flat.
   static func soundIsBack(microphone: String?) async {
-    let input = microphone.flatMap(device) ?? defaultInput()
+    let input = microphone.flatMap(AudioDevice.withID) ?? defaultInput()
     let startedAt = ContinuousClock.now
     var exit = CallQualityExit()
     var asked = false
@@ -98,22 +100,6 @@ enum MediaControl {
 
   private static func defaultInput() -> AudioObjectID? {
     read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
-  }
-
-  /// The audio device with an identifier, as a capture device reports it.
-  private static func device(_ id: String) -> AudioObjectID? {
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
-      mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-    var uid = id as CFString
-    var device = AudioObjectID(kAudioObjectUnknown)
-    var size = UInt32(MemoryLayout<AudioObjectID>.size)
-    let status = withUnsafeMutablePointer(to: &uid) {
-      AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject), &address,
-        UInt32(MemoryLayout<CFString>.size), $0, &size, &device)
-    }
-    return status == noErr && device != kAudioObjectUnknown ? device : nil
   }
 
   /// The device that plays sound, when it is a Bluetooth headset.
