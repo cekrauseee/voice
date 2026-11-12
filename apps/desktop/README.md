@@ -74,8 +74,10 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 The app lives in the menu bar. Its menu opens the app's window on one of its two sections:
 
-- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed and how long the recording was. Hovering shows a button to copy it, the text can be selected, and the context menu deletes it.
+- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed and how long the recording was, with its text cut at three lines. Clicking it shows all of the text, which can then be selected. Hovering shows a button to copy it, and the context menu deletes it.
 - **Settings**: the settings below.
+
+The sections are in a sidebar on the left. The button at its bottom, or ⌃⌘S, collapses it to the icons alone and brings it back. The app remembers which.
 
 While the window is open, the app is also in the Dock and the app switcher, and it leaves them when the window closes. Opening the app again while it runs, from Finder or Spotlight, shows the window.
 
@@ -135,28 +137,29 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 
 ## Layout
 
-| Path                                                                | Responsibility                                              |
-| ------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `Sources/VoiceCore`                                                 | Logic without system dependencies                           |
-| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                 |
-| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open |
-| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one         |
-| `Sources/Voice/TranscriptionsView.swift`, `HistoryStore.swift`      | The past transcriptions, and the file that keeps them       |
-| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                            |
-| `Sources/Voice/OnboardingView.swift`                                | The setup window                                            |
-| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                            |
-| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                |
-| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                 |
-| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                        |
-| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it       |
-| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                           |
-| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                    |
-| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                 |
-| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                |
-| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                            |
-| `Support/Info.plist`                                                | The app bundle's metadata                                   |
-| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them |
-| `scripts/variants.ts`                                               | The names and identifiers of the two builds                 |
-| `scripts/bundle.ts`                                                 | Builds and signs the app                                    |
-| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                            |
-| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                  |
+| Path                                                                | Responsibility                                                   |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `Sources/VoiceCore`                                                 | Logic without system dependencies                                |
+| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                      |
+| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open      |
+| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one              |
+| `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with |
+| `Sources/Voice/TranscriptionsView.swift`, `HistoryStore.swift`      | The past transcriptions, and the file that keeps them            |
+| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
+| `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
+| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |
+| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                     |
+| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                      |
+| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                             |
+| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it            |
+| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                |
+| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                         |
+| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                      |
+| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                     |
+| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                                 |
+| `Support/Info.plist`                                                | The app bundle's metadata                                        |
+| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them      |
+| `scripts/variants.ts`                                               | The names and identifiers of the two builds                      |
+| `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
+| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
+| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |

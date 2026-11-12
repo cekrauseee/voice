@@ -39,7 +39,8 @@ final class AppWindow: NSObject, NSWindowDelegate {
       window.contentMinSize = minimum
     }
     window.center()
-    if case .main = style { window.setFrameAutosaveName(title) }
+    // The window comes back where and as large as it was left.
+    if case .main = style { window.setFrameAutosaveName("Main") }
   }
 
   var isVisible: Bool {

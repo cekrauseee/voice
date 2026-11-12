@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
-    style: .main(size: NSSize(width: 820, height: 560), minimum: NSSize(width: 640, height: 420)),
+    style: .main(size: NSSize(width: 680, height: 460), minimum: NSSize(width: 480, height: 320)),
     content: MainView(navigation: navigation, history: history, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,

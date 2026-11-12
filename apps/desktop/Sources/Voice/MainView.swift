@@ -34,18 +34,20 @@ final class Navigation {
 struct MainView: View {
   @Bindable var navigation: Navigation
   let history: HistoryStore
-  let settings: Settings
+  @Bindable var settings: Settings
 
   var body: some View {
     HStack(spacing: 0) {
-      sidebar
-      Divider()
+      Sidebar(section: $navigation.section, isCollapsed: $settings.isSidebarCollapsed)
+      Rectangle()
+        .fill(Design.hairline)
+        .frame(width: 1)
       VStack(alignment: .leading, spacing: 0) {
+        // On the row of the window's buttons, like a window's own title.
         Text(navigation.section.title)
-          .font(.title2.bold())
-          .padding(.horizontal, 20)
-          .padding(.top, 40)
-          .padding(.bottom, 4)
+          .font(.voiceTitle)
+          .frame(height: Design.barHeight)
+          .padding(.horizontal, Design.large)
         switch navigation.section {
         case .transcriptions:
           TranscriptionsView(
@@ -58,45 +60,84 @@ struct MainView: View {
     }
     // The content reaches under the title bar, which only holds the window's buttons.
     .ignoresSafeArea(edges: .top)
-  }
-
-  private var sidebar: some View {
-    VStack(spacing: 2) {
-      ForEach(AppSection.allCases) { section in
-        Button {
-          navigation.section = section
-        } label: {
-          Label(section.title, systemImage: section.symbol)
-            .labelStyle(SidebarLabelStyle())
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-              .primary.opacity(navigation.section == section ? 0.1 : 0),
-              in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-      }
-      Spacer()
-    }
-    .padding(.horizontal, 10)
-    // Below the window's buttons.
-    .padding(.top, 52)
-    .frame(width: 190)
-    .background(.primary.opacity(0.04))
+    .animation(Design.morph, value: settings.isSidebarCollapsed)
   }
 }
 
-private struct SidebarLabelStyle: LabelStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: 8) {
-      configuration.icon
-        .foregroundStyle(.secondary)
-        .frame(width: 18)
-      configuration.title
+/// The sections, as icons with their names, or as icons alone when collapsed.
+private struct Sidebar: View {
+  @Binding var section: AppSection
+  @Binding var isCollapsed: Bool
+
+  var body: some View {
+    VStack(spacing: 2) {
+      ForEach(AppSection.allCases) { item in
+        SidebarItem(
+          title: item.title, symbol: item.symbol, isSelected: item == section,
+          isCollapsed: isCollapsed
+        ) {
+          section = item
+        }
+      }
+      Spacer(minLength: 0)
+      SidebarItem(
+        title: isCollapsed ? "Expand" : "Collapse", symbol: "sidebar.left", isSelected: false,
+        isCollapsed: isCollapsed, isQuiet: true
+      ) {
+        isCollapsed.toggle()
+      }
+      .keyboardShortcut("s", modifiers: [.control, .command])
     }
-    .font(.system(size: 13, weight: .medium))
+    .padding(Design.small)
+    // Below the window's buttons.
+    .padding(.top, Design.barHeight)
+    .frame(width: isCollapsed ? Design.railWidth : Design.sidebarWidth)
+    .background(Design.surface)
+    .clipped()
+  }
+}
+
+private struct SidebarItem: View {
+  let title: String
+  let symbol: String
+  let isSelected: Bool
+  let isCollapsed: Bool
+  /// Whether it is a control of the sidebar, not a section, and so drawn fainter.
+  var isQuiet = false
+  let action: () -> Void
+
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: Design.small) {
+        Image(systemName: symbol)
+          .font(.system(size: 13))
+          .foregroundStyle(isSelected ? .primary : .secondary)
+          .frame(width: 20)
+        if !isCollapsed {
+          Text(title)
+            .font(.voiceLabel)
+            .foregroundStyle(isQuiet ? .secondary : .primary)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+        }
+      }
+      .padding(.horizontal, Design.small)
+      .frame(maxWidth: isCollapsed ? nil : .infinity, alignment: .leading)
+      .frame(height: 28)
+      .background(
+        isSelected ? Design.selected : isHovered ? Design.hover : .clear,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+      )
+      .frame(maxWidth: .infinity)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovered = $0 }
+    .help(isCollapsed ? title : "")
+    .accessibilityLabel(title)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 }
