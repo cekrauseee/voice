@@ -3,7 +3,9 @@ import type { ErrorCode, ServerMessage } from "./protocol.ts";
 import type { CreateRefiner, Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 
-/** How long the complete transcript may take once the speaker stops. */
+/** How long transcription may take to be ready for audio. */
+const READY_TIMEOUT_MS = 10_000;
+/** How long the transcriber may send nothing once the speaker has stopped. */
 const TRANSCRIPT_TIMEOUT_MS = 5_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
@@ -39,9 +41,11 @@ export class DictationSession {
   private started: Started | undefined;
   /** The text heard so far. */
   private heard = "";
+  private ready = false;
   private stoppedAt: number | undefined;
   /** Set once the transcript is complete. Nothing from the transcriber matters after it. */
   private transcribed = false;
+  private readyTimer: NodeJS.Timeout | undefined;
   private transcriptTimer: NodeJS.Timeout | undefined;
   private ended = false;
 
@@ -58,7 +62,7 @@ export class DictationSession {
     }
     this.started = {
       transcriber: this.deps.createTranscriber({
-        ready: () => this.send({ type: "ready" }),
+        ready: () => this.onReady(),
         delta: (text) => this.onDelta(text),
         final: (text) => this.onFinal(text),
         error: (error) => this.onError(error),
@@ -66,6 +70,10 @@ export class DictationSession {
       refiner: this.deps.createRefiner(),
       instructions,
     };
+    this.readyTimer = setTimeout(() => {
+      this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
+      this.fail("timeout", "Transcription timed out");
+    }, READY_TIMEOUT_MS);
     this.deps.log.info("started", { instructions_chars: instructions.trim().length });
   }
 
@@ -83,8 +91,9 @@ export class DictationSession {
       return;
     }
     this.stoppedAt = Date.now();
-    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), TRANSCRIPT_TIMEOUT_MS);
     this.started.transcriber.commit();
+    // Audio sent before transcription is ready waits for it, and so does the transcript.
+    if (this.ready) this.awaitTranscript();
   }
 
   /** The client sent something that is not part of the protocol. */
@@ -97,8 +106,22 @@ export class DictationSession {
     this.end("cancelled");
   }
 
+  private onReady(): void {
+    this.ready = true;
+    clearTimeout(this.readyTimer);
+    this.send({ type: "ready" });
+    if (this.stoppedAt !== undefined && !this.transcribed) this.awaitTranscript();
+  }
+
+  /** Gives the transcriber a fresh `TRANSCRIPT_TIMEOUT_MS` to send what comes next. */
+  private awaitTranscript(): void {
+    clearTimeout(this.transcriptTimer);
+    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), TRANSCRIPT_TIMEOUT_MS);
+  }
+
   private onDelta(text: string): void {
     if (this.transcribed) return;
+    if (this.stoppedAt !== undefined) this.awaitTranscript();
     // The first words arrive with a space before them.
     const delta = this.heard === "" ? text.trimStart() : text;
     if (delta === "") return;
@@ -111,7 +134,7 @@ export class DictationSession {
     void this.finish(text.trim());
   }
 
-  /** The complete transcript did not come. What was heard stands in for it. */
+  /** The transcriber went silent before completing the transcript. What was heard stands in. */
   private onTranscriptTimeout(): void {
     const heard = this.heard.trim();
     if (heard === "") {
@@ -179,6 +202,7 @@ export class DictationSession {
     if (this.ended) return;
     this.ended = true;
     this.deps.log.info("ended", { outcome, duration_ms: Date.now() - this.startedAt });
+    clearTimeout(this.readyTimer);
     clearTimeout(this.transcriptTimer);
     this.abort.abort();
     this.started?.transcriber.close();
