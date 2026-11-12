@@ -75,7 +75,7 @@ public enum PillStyle: String, CaseIterable, Identifiable, Sendable {
 public enum PillPosition: String, CaseIterable, Identifiable, Sendable {
   /// Above the Dock, at the bottom of the screen.
   case bottom
-  /// Under the menu bar, and under the notch on a Mac that has one.
+  /// Under the menu bar, or out of the notch on a screen that has one.
   case top
 
   public var id: Self { self }
