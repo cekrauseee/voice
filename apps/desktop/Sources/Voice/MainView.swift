@@ -30,8 +30,8 @@ final class Navigation {
   var section = AppSection.transcriptions
 }
 
-/// The app's window: a header beside the window's buttons, and under it the sections on the
-/// left and the selected one beside them.
+/// The app's window: a header beside the button that closes it, and under it the sections
+/// on the left and the selected one beside them.
 struct MainView: View {
   @Bindable var navigation: Navigation
   let history: HistoryStore
@@ -42,7 +42,7 @@ struct MainView: View {
   var body: some View {
     GeometryReader { window in
       VStack(spacing: 0) {
-        // As tall as the title bar, which only holds the window's buttons.
+        // As tall as the title bar, which only holds the button that closes the window.
         header
           .frame(height: window.safeAreaInsets.top)
         Rectangle()
