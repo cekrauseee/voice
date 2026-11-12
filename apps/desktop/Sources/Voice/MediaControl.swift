@@ -84,7 +84,7 @@ enum MediaControl {
   /// What the device that plays sound is doing, with `input` the one that recorded.
   private static func headset(_ input: AudioObjectID?) -> CallQualityExit.Headset {
     let isRunning: UInt32? = input.flatMap {
-      read($0, kAudioDevicePropertyDeviceIsRunningSomewhere)
+      AudioDevice.read($0, kAudioDevicePropertyDeviceIsRunningSomewhere)
     }
     let rates = output().flatMap(rates)
     return CallQualityExit.Headset(
@@ -106,27 +106,30 @@ enum MediaControl {
   }
 
   private static func defaultInput() -> AudioObjectID? {
-    read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
+    AudioDevice.read(
+      AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
   }
 
   /// The device that plays sound, when it is a Bluetooth headset.
   private static func output() -> AudioObjectID? {
     let system = AudioObjectID(kAudioObjectSystemObject)
-    guard let device: AudioObjectID = read(system, kAudioHardwarePropertyDefaultOutputDevice),
+    guard
+      let device: AudioObjectID = AudioDevice.read(
+        system, kAudioHardwarePropertyDefaultOutputDevice),
       isBluetooth(device)
     else { return nil }
     return device
   }
 
   private static func isBluetooth(_ device: AudioObjectID) -> Bool {
-    let transport: UInt32? = read(device, kAudioDevicePropertyTransportType)
+    let transport: UInt32? = AudioDevice.read(device, kAudioDevicePropertyTransportType)
     return transport == kAudioDeviceTransportTypeBluetooth
       || transport == kAudioDeviceTransportTypeBluetoothLE
   }
 
   /// The sample rate a device runs at, and the best one it has.
   private static func rates(_ device: AudioObjectID) -> (now: Float64, best: Float64)? {
-    guard let now: Float64 = read(device, kAudioDevicePropertyNominalSampleRate) else {
+    guard let now: Float64 = AudioDevice.read(device, kAudioDevicePropertyNominalSampleRate) else {
       return nil
     }
     var address = AudioObjectPropertyAddress(
@@ -142,22 +145,6 @@ enum MediaControl {
       return nil
     }
     return (now, ranges.map(\.mMaximum).max() ?? now)
-  }
-
-  /// Reads a property of an audio object that holds a single value.
-  private static func read<Value>(
-    _ object: AudioObjectID, _ selector: AudioObjectPropertySelector
-  ) -> Value? {
-    var address = AudioObjectPropertyAddress(
-      mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain)
-    var size = UInt32(MemoryLayout<Value>.size)
-    let value = UnsafeMutablePointer<Value>.allocate(capacity: 1)
-    defer { value.deallocate() }
-    guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, value) == noErr else {
-      return nil
-    }
-    return value.pointee
   }
 
   private static let question = """

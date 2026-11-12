@@ -19,6 +19,7 @@ final class DictationController {
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
   @ObservationIgnored private let media: MediaPause
+  @ObservationIgnored private let others = OtherAudio()
   /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
@@ -33,7 +34,8 @@ final class DictationController {
     self.statistics = statistics
     media = MediaPause(
       isPlaying: MediaControl.isPlaying, send: MediaControl.send,
-      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) })
+      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) },
+      muteOthers: { [others] in $0 ? others.mute() : others.unmute() })
   }
 
   var isRecording: Bool {
