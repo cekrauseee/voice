@@ -5,7 +5,8 @@ export const root = join(import.meta.dirname, "..");
 
 /**
  * The two builds of the app. They have different names, icons, and bundle identifiers, so macOS
- * keeps their permissions and settings apart and both can be installed at once.
+ * keeps their permissions and settings apart and both can be installed at once. The production
+ * app carries the server and runs it. The development app uses the one `pnpm dev` runs.
  */
 const variants = {
   development: {
@@ -13,12 +14,14 @@ const variants = {
     identifier: "eu.cekrause.voice.dev",
     configuration: "debug",
     icon: "AppIconDevelopment.icns",
+    server: false,
   },
   production: {
     name: "Voice",
     identifier: "eu.cekrause.voice",
     configuration: "release",
     icon: "AppIcon.icns",
+    server: true,
   },
 } as const;
 

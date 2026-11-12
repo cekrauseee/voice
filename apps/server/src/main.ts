@@ -34,14 +34,27 @@ async function checkOpenAI(client: OpenAI, models: string[]): Promise<void> {
       if (error instanceof OpenAI.NotFoundError) {
         fatal("OpenAI model is not available to this key", { model });
       }
-      fatal("could not reach OpenAI", {
+      // Without a network, as just after login, the server still starts: dictations work once
+      // OpenAI can be reached.
+      log.warn("could not reach OpenAI", {
         error: error instanceof Error ? error.message : `${error}`,
+        hint: "the key and the models are not checked",
       });
+      return;
     }
   }
 }
 
-const { apiKey, host, port, transcribeModel, transcribeLanguages, refineModel, prices } = config();
+const {
+  apiKey,
+  host,
+  port,
+  transcribeModel,
+  transcribeLanguages,
+  refineModel,
+  prices,
+  stopWithParent,
+} = config();
 const client = new OpenAI({ apiKey });
 await checkOpenAI(client, [transcribeModel, refineModel]);
 
@@ -67,10 +80,20 @@ server.listen(port, host, () => {
   });
 });
 
+function stop(fields: Fields): void {
+  log.info("stopping", fields);
+  server.close();
+  server.closeAllConnections();
+  if (stopWithParent) process.stdin.destroy();
+}
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    log.info("stopping", { signal });
-    server.close();
-    server.closeAllConnections();
-  });
+  process.on(signal, () => stop({ signal }));
+}
+
+// The program that started the server holds its standard input open. The input closes when
+// that program ends, however it ends, and the server stops with it.
+if (stopWithParent) {
+  process.stdin.on("end", () => stop({ reason: "parent ended" }));
+  process.stdin.resume();
 }

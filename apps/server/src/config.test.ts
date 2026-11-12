@@ -20,6 +20,11 @@ test("the prices can be set", () => {
   assert.deepEqual(prices, { transcribeMinute: 0.006, refineInput: 0.2, refineOutput: 1 });
 });
 
+test("the server stops with the program that started it only when asked to", () => {
+  assert.equal(loadConfig({ OPENAI_API_KEY: "key" }).stopWithParent, false);
+  assert.equal(loadConfig({ OPENAI_API_KEY: "key", STOP_WITH_PARENT: "1" }).stopWithParent, true);
+});
+
 test("a price that is not a number is a configuration problem", () => {
   assert.throws(
     () => loadConfig({ OPENAI_API_KEY: "key", REFINE_PRICE_PER_MILLION_INPUT: "cheap" }),

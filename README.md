@@ -42,6 +42,16 @@ Then dictate:
 
 The menu bar menu opens the app's window, with the past transcriptions, the statistics of what was dictated and what it cost, and the settings.
 
+## Using it every day
+
+`pnpm dev` is for working on Voice. To use it, install the production app:
+
+```sh
+pnpm install-app
+```
+
+It builds Voice, puts it in Applications, and opens it. Voice runs its own server, with the OpenAI key in `apps/server/.env`: opening the app starts the server, and quitting it stops the server. Run the command again to update the app. See [the desktop README](apps/desktop/README.md#the-server).
+
 ## Commands
 
 | Command            | What it does                                                        |
