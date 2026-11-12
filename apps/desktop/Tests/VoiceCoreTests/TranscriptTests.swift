@@ -49,6 +49,7 @@ import Testing
     transcript.apply(.done(text: "Hello, world."))
     #expect(transcript.text == "Hello, world.")
     #expect(transcript.isRefined)
+    #expect(transcript.heard == "hello world")
     #expect(transcript.stream.pieces.isEmpty)
 
     transcript.apply(.delta(text: " late"))

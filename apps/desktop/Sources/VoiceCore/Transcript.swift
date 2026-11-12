@@ -6,6 +6,8 @@ public struct Transcript: Equatable, Sendable {
   public private(set) var stream = TextStream()
   /// Until the text is refined it is a draft: shown, but not typed.
   public private(set) var isRefined = false
+  /// The draft the refined text was made from.
+  public private(set) var heard: String?
 
   public init() {}
 
@@ -22,6 +24,7 @@ public struct Transcript: Equatable, Sendable {
     case .delta(let text):
       if !isRefined { stream.append(text, at: time) }
     case .done(let text):
+      heard = self.text
       stream = TextStream(text)
       isRefined = true
     case .ready, .error:

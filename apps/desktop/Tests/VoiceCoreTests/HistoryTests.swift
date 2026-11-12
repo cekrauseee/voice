@@ -53,9 +53,25 @@ import Testing
   }
 
   @Test func survivesBeingWrittenAndRead() throws {
-    let history = History([transcription("one", day: 10), transcription("two", day: 11)])
+    let heard = Transcription(date: noon(day: 12), text: "Three.", heard: "um three", duration: 1)
+    let history = History([transcription("one", day: 10), transcription("two", day: 11), heard])
     #expect(try History(data: history.data) == history)
     #expect(throws: (any Error).self) { try History(data: Data("not json".utf8)) }
+  }
+
+  @Test func readsAHistoryWrittenBeforeWhatWasHeardWasKept() throws {
+    let old = """
+      {"transcriptions":[{"id":"5EED0000-0000-4000-8000-000000000000",\
+      "date":"2026-11-10T12:00:00Z","text":"Hello.","duration":2}]}
+      """
+    let history = try History(data: Data(old.utf8))
+    #expect(history.transcriptions.map(\.text) == ["Hello."])
+    #expect(history.transcriptions[0].heard == nil)
+  }
+
+  @Test func countsTheWords() {
+    #expect(transcription("Hello, world.\nHow are  you?", day: 10).words == 5)
+    #expect(transcription("x", day: 10).words == 1)
   }
 
   @Test func showsTheDurationAsMinutesAndSeconds() {

@@ -19,20 +19,35 @@ interface Transcription {
   /** ISO 8601, without fractions of a second. */
   date: string;
   text: string;
+  /** What was heard, before it was refined into the text. */
+  heard?: string;
   /** The length of the recording, in seconds. */
   duration: number;
 }
 
-/** A sample: how many days ago it was dictated, at what time, and what was said. */
-const samples: [daysAgo: number, time: string, text: string][] = [
-  [0, "10:42", "Can you send me the draft before lunch? I'd like to read it once more."],
+/**
+ * A sample: how many days ago it was dictated, at what time, the text that was typed, and,
+ * for some, what was heard before it was refined.
+ */
+const samples: [daysAgo: number, time: string, text: string, heard?: string][] = [
+  [
+    0,
+    "10:42",
+    "Can you send me the draft before lunch? I'd like to read it once more.",
+    "can you send me the the draft before lunch um I'd like to read it once more",
+  ],
   [
     0,
     "09:15",
     "Bom dia, pessoal. Hoje eu vou focar na janela do aplicativo: revisar o espaçamento da barra lateral, alinhar os títulos dos grupos com o texto das linhas e conferir o cursor em cada botão. Se sobrar tempo, começo a busca nas transcrições.",
   ],
   [0, "08:03", "Remind me to renew the developer certificate on Friday."],
-  [1, "17:48", "Fechado, a gente se fala amanhã às dez."],
+  [
+    1,
+    "17:48",
+    "Fechado, a gente se fala amanhã às dez.",
+    "fechado a gente se fala amanhã às nove não às dez",
+  ],
   [
     1,
     "14:20",
@@ -46,7 +61,12 @@ const samples: [daysAgo: number, time: string, text: string][] = [
     "Notes from the call: the release goes out on Thursday, the server first and the app right after. Ana updates the documentation, and I write the announcement. We meet again on Monday to look at the first feedback.",
   ],
   [4, "18:12", "Não esquece de pausar a música antes de gravar."],
-  [4, "13:37", "Let's move the standup to half past nine."],
+  [
+    4,
+    "13:37",
+    "Let's move the standup to half past nine.",
+    "so let's move the stand up to to half past nine",
+  ],
   [
     6,
     "10:25",
@@ -73,7 +93,7 @@ function isSample(transcription: Transcription): boolean {
 }
 
 function sample(index: number): Transcription {
-  const [daysAgo, time, text] = samples[index] ?? [0, "00:00", ""];
+  const [daysAgo, time, text, heard] = samples[index] ?? [0, "00:00", ""];
   const [hours = 0, minutes = 0] = time.split(":").map(Number);
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
@@ -84,6 +104,7 @@ function sample(index: number): Transcription {
     id: sampleId(index),
     date: date.toISOString().replace(/\.\d+Z$/, "Z"),
     text,
+    ...(heard && { heard }),
     // About fourteen characters are spoken in a second.
     duration: Math.max(1, Math.round(text.length / 14)),
   };

@@ -4,6 +4,10 @@ import SwiftUI
 ///
 /// Everything is drawn in the primary color, at a few opacities over the window's
 /// background. So it follows the theme, and nothing has a color of its own.
+///
+/// Almost nothing moves. What the pointer is over, what is selected, and what a click
+/// shows change at once. Motion is kept for the two places where it says where something
+/// went: a page that opens over a list, and the mark of a choice that moves to another.
 enum Design {
   // Space between and inside things, on a 4-point grid.
   static let tight = 4.0
@@ -19,13 +23,14 @@ enum Design {
   static let controlRadius = 6.0
 
   /// The side of an icon button, and the height of an item of the sidebar.
-  static let control = 28.0
-  static let sidebarWidth = 172.0
-  /// The sidebar when it only shows icons: an icon with the sidebar's padding around it.
-  static let railWidth = control + 2 * small
+  static let control = 30.0
+  static let sidebarWidth = 168.0
+  /// The sidebar when it only shows icons. Its icons are right under the button that
+  /// closes the window.
+  static let railWidth = control + 2 * tight
 
-  /// How the window's parts change shape, like the pill does.
-  static let morph = Animation.spring(duration: 0.32, bounce: 0.16)
+  /// How the few things that move do it: quickly, and slowing into place.
+  static let move = Animation.timingCurve(0.2, 0, 0, 1, duration: 0.18)
 
   /// What a card and a control are filled with.
   static let surface = Color.primary.opacity(0.045)
@@ -144,7 +149,7 @@ struct Segmented<Value: Hashable>: View {
       Design.surface,
       in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
     )
-    .animation(Design.morph, value: selection)
+    .animation(Design.move, value: selection)
   }
 
   private func segment(

@@ -28,9 +28,13 @@ final class HistoryStore {
     }
   }
 
-  /// Keeps a dictation that was just typed.
-  func add(text: String, duration: TimeInterval) {
-    history.add(Transcription(date: .now, text: text, duration: duration))
+  /// Keeps a dictation that was just typed, with what was heard when the text is not it.
+  func add(text: String, heard: String? = nil, duration: TimeInterval) {
+    let heard = heard?.trimmingCharacters(in: .whitespacesAndNewlines)
+    history.add(
+      Transcription(
+        date: .now, text: text, heard: heard == text || heard == "" ? nil : heard,
+        duration: duration))
     save()
   }
 

@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   private func open(_ section: AppSection) {
-    navigation.section = section
+    navigation.show(section)
     mainWindow.show()
   }
 
