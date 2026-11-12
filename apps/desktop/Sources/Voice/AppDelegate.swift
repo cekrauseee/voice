@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let settings = Settings()
   private let permissions = Permissions()
   private let history = HistoryStore()
+  private let meetings = MeetingStore()
   private let statistics = StatisticsStore()
   private let navigation = Navigation()
   private let loginItem = LoginItem()
@@ -14,14 +15,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private lazy var controller = DictationController(
     settings: settings, history: history, statistics: statistics)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
+  private lazy var meeting = MeetingController(settings: settings, store: meetings)
+  private lazy var meetingPanel = MeetingPanel(controller: meeting) { [weak self] in
+    guard let self, let id = meeting.live?.meeting.id else { return }
+    navigation.show(meeting: id)
+    mainWindow.show()
+  }
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
     style: .main(size: NSSize(width: 680, height: 460)),
     content: MainView(
-      navigation: navigation, history: history, statistics: statistics, retry: retry,
-      loginItem: loginItem, settings: settings))
+      navigation: navigation, history: history, meetings: meetings, meeting: meeting,
+      statistics: statistics, retry: retry, loginItem: loginItem, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(
@@ -60,18 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     pill.start()
+    meetingPanel.start()
 
     // Transcriptions older than they are kept for are deleted when the app starts, when
     // the setting changes, and every hour while the app runs.
     track { [settings] in
       settings.retention
-    } onChange: { [history] retention in
+    } onChange: { [history, meetings] retention in
       history.prune(retention)
+      meetings.prune(retention)
     }
-    Task { [settings, history] in
+    Task { [settings, history, meetings] in
       while true {
         try? await Task.sleep(for: .seconds(3600))
         history.prune(settings.retention)
+        meetings.prune(settings.retention)
       }
     }
 
@@ -155,11 +165,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
       menu.addItem(.separator())
     }
-    let (transcriptions, statistics, settings) = (
-      AppSection.transcriptions, AppSection.statistics, AppSection.settings
+    if meeting.isRecording {
+      menu.addItem(item("Stop Meeting", #selector(stopMeeting), symbol: "stop.circle"))
+    } else {
+      menu.addItem(item("Start Meeting", #selector(startMeeting), symbol: "record.circle"))
+    }
+    menu.addItem(.separator())
+    let (transcriptions, meetings, statistics, settings) = (
+      AppSection.transcriptions, AppSection.meetings, AppSection.statistics, AppSection.settings
     )
     menu.addItem(
       item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
+    menu.addItem(item(meetings.title, #selector(openMeetings), symbol: meetings.symbol))
     menu.addItem(item(statistics.title, #selector(openStatistics), symbol: statistics.symbol))
     menu.addItem(
       item("\(settings.title)…", #selector(openSettings), key: ",", symbol: settings.symbol))
@@ -217,8 +234,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     open(.transcriptions)
   }
 
+  @objc private func openMeetings() {
+    open(.meetings)
+  }
+
   @objc private func openStatistics() {
     open(.statistics)
+  }
+
+  /// Starts recording a meeting, and opens its page.
+  @objc private func startMeeting() {
+    meeting.start()
+    if let id = meeting.live?.meeting.id {
+      navigation.show(meeting: id)
+      mainWindow.show()
+    }
+  }
+
+  @objc private func stopMeeting() {
+    meeting.stop()
   }
 
   @objc private func openSettings() {

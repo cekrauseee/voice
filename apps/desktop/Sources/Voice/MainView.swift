@@ -6,6 +6,7 @@ import VoiceCore
 /// A section of the app's window.
 enum AppSection: String, CaseIterable, Identifiable {
   case transcriptions
+  case meetings
   case statistics
   case settings
 
@@ -14,6 +15,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .transcriptions: "Transcriptions"
+    case .meetings: "Meetings"
     case .statistics: "Statistics"
     case .settings: "Settings"
     }
@@ -22,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .transcriptions: "text.quote"
+    case .meetings: "person.2.wave.2"
     case .statistics: "chart.bar"
     case .settings: "gearshape"
     }
@@ -34,11 +37,21 @@ final class Navigation {
   private(set) var section = AppSection.transcriptions
   /// The transcription that is open on its own page, if one is.
   var transcription: Transcription.ID?
+  /// The meeting that is open on its own page, if one is.
+  var meeting: Meeting.ID?
 
   /// Goes to a section, on its first page.
   func show(_ section: AppSection) {
     self.section = section
     transcription = nil
+    meeting = nil
+  }
+
+  /// Opens the page of a meeting.
+  func show(meeting id: Meeting.ID) {
+    section = .meetings
+    transcription = nil
+    meeting = id
   }
 }
 
@@ -47,6 +60,8 @@ final class Navigation {
 struct MainView: View {
   let navigation: Navigation
   let history: HistoryStore
+  let meetings: MeetingStore
+  let meeting: MeetingController
   let statistics: StatisticsStore
   let retry: Retry
   let loginItem: LoginItem
@@ -55,6 +70,7 @@ struct MainView: View {
   @Environment(\.windowButtonsWidth) private var windowButtonsWidth
   @State private var didCopy = false
   @State private var isDeleting = false
+  @State private var isDeletingMeeting = false
   /// The period the statistics are shown for.
   @State private var period = Statistics.Period.week
 
@@ -71,6 +87,7 @@ struct MainView: View {
           Group {
             switch navigation.section {
             case .transcriptions: transcriptions
+            case .meetings: meetingPages
             case .statistics:
               StatisticsView(statistics: statistics.statistics, period: period)
             case .settings: SettingsView(settings: settings, loginItem: loginItem)
@@ -87,6 +104,41 @@ struct MainView: View {
   private var open: Transcription? {
     guard navigation.section == .transcriptions else { return nil }
     return history.history.transcriptions.first { $0.id == navigation.transcription }
+  }
+
+  /// The meeting that is open on its own page: the one being recorded, as the server
+  /// transcribes it, or one from the store.
+  private var openMeeting: Meeting? {
+    guard navigation.section == .meetings, let id = navigation.meeting else { return nil }
+    if let live = meeting.live, live.meeting.id == id { return live.meeting }
+    return meetings.meetings.first { $0.id == id }
+  }
+
+  /// The text heard for the open meeting that is not in a segment yet.
+  private var openDrafts: [Channel: String] {
+    guard let live = meeting.live, live.meeting.id == navigation.meeting else { return [:] }
+    return live.drafts
+  }
+
+  /// The list of meetings, and over it the page of the one that is open.
+  private var meetingPages: some View {
+    ZStack {
+      MeetingsView(
+        meetings: meetings.meetings, open: { navigation.meeting = $0 }, remove: meetings.remove
+      )
+      .opacity(openMeeting == nil ? 1 : 0)
+      .offset(x: openMeeting == nil ? 0 : -Design.large)
+      .animation(openMeeting == nil ? Design.move : nil, value: openMeeting?.id)
+      .allowsHitTesting(openMeeting == nil)
+      .accessibilityHidden(openMeeting != nil)
+      if let openMeeting {
+        MeetingView(meeting: openMeeting, drafts: openDrafts)
+          .transition(
+            .asymmetric(
+              insertion: .offset(x: Design.large).combined(with: .opacity), removal: .identity))
+      }
+    }
+    .animation(Design.move, value: openMeeting?.id)
   }
 
   /// The list, and over it the page of the transcription that is open.
@@ -135,12 +187,15 @@ struct MainView: View {
           settings.isSidebarCollapsed.toggle()
         }
         .keyboardShortcut("s", modifiers: [.control, .command])
-        if open != nil {
-          IconButton(symbol: "chevron.left", help: "Back") { navigation.transcription = nil }
-            .keyboardShortcut(.cancelAction)
+        if open != nil || openMeeting != nil {
+          IconButton(symbol: "chevron.left", help: "Back") {
+            navigation.transcription = nil
+            navigation.meeting = nil
+          }
+          .keyboardShortcut(.cancelAction)
         }
       }
-      Text(open?.date.dayAndTime ?? navigation.section.title)
+      Text((open?.date ?? openMeeting?.date)?.dayAndTime ?? navigation.section.title)
         .font(.voiceTitle)
       Spacer(minLength: 0)
       if navigation.section == .statistics {
@@ -153,7 +208,9 @@ struct MainView: View {
       if let open {
         HStack(spacing: 2) {
           if !open.text.isEmpty {
-            IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") { copy(open) }
+            IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") {
+              copy(open.text)
+            }
           }
           IconButton(symbol: "trash", help: "Delete") { isDeleting = true }
             .confirmationDialog("Delete this transcription?", isPresented: $isDeleting) {
@@ -161,14 +218,33 @@ struct MainView: View {
             }
         }
       }
+      if let openMeeting {
+        HStack(spacing: 2) {
+          if openMeeting.isLive {
+            IconButton(symbol: "stop.circle", help: "Stop recording", action: meeting.stop)
+              .disabled(meeting.isStopping)
+          }
+          if !openMeeting.isEmpty {
+            IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") {
+              copy(openMeeting.text)
+            }
+          }
+          if !openMeeting.isLive {
+            IconButton(symbol: "trash", help: "Delete") { isDeletingMeeting = true }
+              .confirmationDialog("Delete this meeting?", isPresented: $isDeletingMeeting) {
+                Button("Delete", role: .destructive) { meetings.remove(openMeeting.id) }
+              }
+          }
+        }
+      }
     }
     .padding(.leading, windowButtonsWidth + Design.small)
     .padding(.trailing, Design.small)
   }
 
-  private func copy(_ transcription: Transcription) {
+  private func copy(_ text: String) {
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(transcription.text, forType: .string)
+    NSPasteboard.general.setString(text, forType: .string)
     didCopy = true
     Task {
       try? await Task.sleep(for: .seconds(1.2))

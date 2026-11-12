@@ -1,6 +1,6 @@
 # Server
 
-Transcribes and refines dictation. The desktop app streams microphone audio over a WebSocket, and the server answers with text: see [the protocol](../../docs/protocol.md) and [the architecture](../../docs/architecture.md).
+Transcribes and refines dictation, and transcribes meetings. The desktop app streams audio over a WebSocket, and the server answers with text: see [the protocol](../../docs/protocol.md) and [the architecture](../../docs/architecture.md).
 
 ## Running
 
@@ -14,7 +14,7 @@ pnpm start   # runs once
 On start the server checks the key and both models with OpenAI, then prints the address it listens on. If OpenAI cannot be reached, as just after login, it warns and starts anyway:
 
 ```
-16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation transcribe=gpt-live-transcribe refine=gpt-6-luna
+16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation meeting_url=ws://127.0.0.1:8787/v1/meeting transcribe=gpt-live-transcribe refine=gpt-6-luna
 ```
 
 If something is missing it says what to fix:
@@ -62,15 +62,29 @@ The server logs [structured records](../../docs/logging.md): in columns in a ter
 
 Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
+A meeting connection logs the same way, in the `meeting` scope, with the channel on the records about one:
+
+```
+16:30:01.004 INFO  meeting     started meeting=1 first_id=1 offset_me=0 offset_others=0 instructions_chars=0
+16:30:01.812 INFO  meeting     ready meeting=1 ready_ms=808
+16:31:12.400 WARN  meeting     transcription session lost meeting=1 channel=others error="Transcription connection closed" failures=1 retry_ms=1000
+16:58:40.120 INFO  meeting     used meeting=1 audio_seconds=1204.3 input_tokens=0 output_tokens=0 cost=0.341218
+16:58:40.121 INFO  meeting     ended meeting=1 outcome=done segments=312 duration_ms=1719117
+```
+
+`outcome` is `done`, `closed` when the client left to come back on another connection, or the error code sent. Set `LOG_LEVEL=debug` to see each segment, with its length and its number of characters.
+
 ## Tuning
 
 The behavior of the pipeline is set by constants in the source:
 
-| What                                                 | Where                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| What the refiner is told to do                       | `INSTRUCTIONS` in [`refiner.ts`](src/refiner.ts)           |
-| How long the model may go silent during a refinement | `STALL_MS` in [`refiner.ts`](src/refiner.ts)               |
-| Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts) |
+| What                                                             | Where                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------------- |
+| What the refiner is told to do                                   | `INSTRUCTIONS` in [`refiner.ts`](src/refiner.ts)                |
+| How long the model may go silent during a refinement             | `STALL_MS` in [`refiner.ts`](src/refiner.ts)                    |
+| Readiness, transcript, and refinement timeouts                   | The constants at the top of [`session.ts`](src/session.ts)      |
+| Where a meeting's turns are cut: the pause and the length limits | `defaultSegmenterOptions` in [`segmenter.ts`](src/segmenter.ts) |
+| How long a session lives, and how failures are retried           | The constants at the top of [`resilient.ts`](src/resilient.ts)  |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 
@@ -90,6 +104,20 @@ pnpm dictate recording.wav --instructions "Write in a formal tone."
 
 `--instructions` sends the speaker's instructions, as the app does from its settings.
 
+A meeting is replayed from two recordings, one per channel, and prints each segment with its channel and its times. `-` stands for a silent channel, and `--rate` plays faster than real time.
+
+```sh
+pnpm meet me.wav others.wav
+pnpm meet me.wav - --rate 4
+```
+
+```
+  1204ms  ready
+  2940ms  draft    me     "so the plan"
+  4102ms  segment  me     #1 0:00-0:02 "So the plan is simple."
+  6230ms  segment  others #2 0:02-0:04 "Sounds good."
+```
+
 ## Tests
 
 ```sh
@@ -100,13 +128,18 @@ The tests run the real server, session, transcriber, and refiner. The OpenAI API
 
 ## Layout
 
-| File                 | Responsibility                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `src/main.ts`        | Reads the configuration, checks OpenAI, starts the server                            |
-| `src/server.ts`      | HTTP and WebSocket endpoints. One connection is one session                          |
-| `src/session.ts`     | One dictation: drives the transcriber and the refiner, and falls back when one fails |
-| `src/transcriber.ts` | The OpenAI realtime transcription session                                            |
-| `src/refiner.ts`     | The refinement prompt, and its request over the Responses WebSocket                  |
-| `src/protocol.ts`    | The messages exchanged with the app                                                  |
-| `scripts/dictate.ts` | Replays a recording against a running server                                         |
-| `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                       |
+| File                 | Responsibility                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `src/main.ts`        | Reads the configuration, checks OpenAI, starts the server                                     |
+| `src/server.ts`      | HTTP and WebSocket endpoints. One connection is one dictation, or one connection of a meeting |
+| `src/session.ts`     | One dictation: drives the transcriber and the refiner, and falls back when one fails          |
+| `src/meeting.ts`     | One connection of a meeting: two channels in, numbered segments out                           |
+| `src/channel.ts`     | One side of a meeting: its turns, in order, as segments                                       |
+| `src/segmenter.ts`   | Cuts a channel into turns at its pauses, and keeps the time                                   |
+| `src/resilient.ts`   | A transcriber that outlives its provider sessions                                             |
+| `src/transcriber.ts` | The OpenAI realtime transcription session                                                     |
+| `src/refiner.ts`     | The refinement prompt, and its request over the Responses WebSocket                           |
+| `src/protocol.ts`    | The messages exchanged with the app                                                           |
+| `scripts/dictate.ts` | Replays a recording against a running server                                                  |
+| `scripts/meet.ts`    | Replays the two channels of a meeting against a running server                                |
+| `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                                |

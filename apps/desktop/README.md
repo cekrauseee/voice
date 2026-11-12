@@ -1,6 +1,6 @@
 # Desktop
 
-The macOS menu bar app. It records while a shortcut says so, streams the audio to [the server](../server/README.md), shows the pill, and types the text that comes back into the focused field when the recording ends.
+The macOS menu bar app. It records while a shortcut says so, streams the audio to [the server](../server/README.md), shows the pill, and types the text that comes back into the focused field when the recording ends. It also records meetings, with the other side's audio, and shows their transcript as it is written.
 
 ## Builds
 
@@ -56,7 +56,7 @@ The app needs two permissions:
 | Accessibility | To see the shortcuts in any app and to type the text |
 | Microphone    | To record                                            |
 
-A third one, System Audio Recording, mutes the other apps while a dictation records. macOS asks for it the first time another app plays sound during a dictation. Without it, they keep playing.
+A third one, System Audio Recording, covers the sound of the other apps: it mutes them while a dictation records, and records what the meeting app plays during a meeting. macOS asks for it once, the first time another app plays sound during a dictation or the first meeting starts. Without it, the other apps keep playing during a dictation, and a meeting records only the microphone.
 
 On first launch a setup window takes the user through three steps, one at a time:
 
@@ -97,9 +97,10 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 ## The window
 
-The app lives in the menu bar. Its menu opens the app's window on one of its three sections:
+The app lives in the menu bar. Its menu starts and stops a meeting, and opens the app's window on one of its four sections:
 
 - **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
+- **Meetings**: the meetings recorded, day by day, newest first, with the one being recorded first. Clicking one opens its page: when it was, how long it ran, its words and its cost, and the conversation, a paragraph for each turn of it, named `Me` or `Others`. The page of the meeting being recorded follows the text as it comes, with what is being heard dimmed after it, and its header has a button to stop. See [Meetings](#meetings).
 - **Statistics**: how much was dictated today, in the last 7 days, in the last 30 days, or in all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day: of each hour for today, and of each month once there are more than 90 days. Pointing at a bar shows when it is and its words.
 - **Settings**: the settings below.
 
@@ -137,6 +138,18 @@ Settings:
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
 - **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
+
+## Meetings
+
+Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other.
+
+While a meeting records, a small panel floats at the top right of the screen: how long it has run, the last of what was said, with what is being heard dimmed, a button that opens the meeting's page, and Stop. The panel takes clicks but never the focus, and can be dragged. If the Mac's sound could not be tapped, the panel says that only the microphone is recorded. When the meeting starts, its page opens in the window.
+
+The recording never waits for the server. If the connection drops, the app keeps recording, opens another connection after a wait that grows with each failure, and sends again what the server had not confirmed: the transcript catches up, and nothing is shown. The same goes for the server's own sessions with OpenAI, which it replaces by itself. Stopping waits up to 20 s for the last segments.
+
+A meeting is kept in `meetings/`, beside the history: a JSON file with its segments, written as they arrive, and a WAV file for each channel, written as it is recorded, so a meeting survives the app quitting in the middle of it. Recordings take about 3 MB a minute per channel. The History setting deletes meetings and their recordings the same way it deletes transcriptions. Nothing but the app reads the files, and the text is never logged.
+
+Dictating during a meeting works as it always does. Media is not paused for a meeting: the call is the media.
 
 ## Microphone and media
 
@@ -192,38 +205,44 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 
 ## Layout
 
-| Path                                                                | Responsibility                                                   |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `Sources/VoiceCore`                                                 | Logic without system dependencies                                |
-| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                      |
-| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open      |
-| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one              |
-| `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with |
-| `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one             |
-| `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
-| `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
-| `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
-| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
-| `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                             |
-| `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
-| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |
-| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                     |
-| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                      |
-| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                             |
-| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it            |
-| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                |
-| `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                           |
-| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                         |
-| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                      |
-| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                     |
-| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                                 |
-| `Support/Info.plist`                                                | The app bundle's metadata                                        |
-| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them      |
-| `scripts/variants.ts`                                               | The names and identifiers of the two builds                      |
-| `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
-| `scripts/dmg.ts`                                                    | Builds the production app and its disk image                     |
-| `scripts/install.ts`                                                | Installs the production app in Applications, or updates it       |
-| `scripts/quit.ts`                                                   | Quits an app and waits until it is gone                          |
-| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
-| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |
-| `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples  |
+| Path                                                                | Responsibility                                                    |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `Sources/VoiceCore`                                                 | Logic without system dependencies                                 |
+| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                       |
+| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open       |
+| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one               |
+| `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with  |
+| `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one              |
+| `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings  |
+| `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording    |
+| `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                 |
+| `Sources/Voice/MeetingsView.swift`                                  | The list of meetings, and the page of one                         |
+| `Sources/Voice/MeetingController.swift`                             | Runs a meeting: both captures, the link, and what is kept         |
+| `Sources/Voice/MeetingLink.swift`                                   | The meeting's connection to the server, which outlives the socket |
+| `Sources/Voice/MeetingStore.swift`                                  | The files that keep the meetings and their recordings             |
+| `Sources/Voice/SystemAudioCapture.swift`                            | Records what the Mac plays, through a Core Audio tap              |
+| `Sources/Voice/MeetingPanel.swift`                                  | The floating panel of the meeting being recorded                  |
+| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                  |
+| `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                              |
+| `Sources/Voice/OnboardingView.swift`                                | The setup window                                                  |
+| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                  |
+| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                      |
+| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                       |
+| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                              |
+| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it             |
+| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                 |
+| `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                            |
+| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                          |
+| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                       |
+| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                      |
+| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                                  |
+| `Support/Info.plist`                                                | The app bundle's metadata                                         |
+| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them       |
+| `scripts/variants.ts`                                               | The names and identifiers of the two builds                       |
+| `scripts/bundle.ts`                                                 | Builds and signs the app                                          |
+| `scripts/dmg.ts`                                                    | Builds the production app and its disk image                      |
+| `scripts/install.ts`                                                | Installs the production app in Applications, or updates it        |
+| `scripts/quit.ts`                                                   | Quits an app and waits until it is gone                           |
+| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                  |
+| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                        |
+| `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples   |

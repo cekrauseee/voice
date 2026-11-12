@@ -17,13 +17,13 @@
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
+  <string>14.2</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Voice listens to the microphone while you dictate.</string>
   <key>NSAudioCaptureUsageDescription</key>
-  <string>Voice mutes other apps while you dictate.</string>
+  <string>Voice mutes other apps while you dictate, and records what a meeting app plays to transcribe the other side of a meeting.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>

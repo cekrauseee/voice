@@ -58,16 +58,21 @@ public enum Level {
 public enum WAV {
   /// Wraps 16-bit mono PCM in a WAV file.
   public static func file(pcm: Data, sampleRate: Double = AudioFormat.sampleRate) -> Data {
+    header(pcmBytes: pcm.count, sampleRate: sampleRate) + pcm
+  }
+
+  /// The header of a WAV file whose samples take `pcmBytes`: 44 bytes, which a file that is
+  /// still being written gets again, with the final count, once it is complete.
+  public static func header(pcmBytes: Int, sampleRate: Double = AudioFormat.sampleRate) -> Data {
     func bytes<T: FixedWidthInteger>(_ value: T) -> Data {
       withUnsafeBytes(of: value.littleEndian) { Data($0) }
     }
     let rate = UInt32(sampleRate)
-    var file = Data("RIFF".utf8) + bytes(UInt32(36 + pcm.count)) + Data("WAVEfmt ".utf8)
+    var file = Data("RIFF".utf8) + bytes(UInt32(36 + pcmBytes)) + Data("WAVEfmt ".utf8)
     // PCM, one channel, 16 bits a sample.
     file += bytes(UInt32(16)) + bytes(UInt16(1)) + bytes(UInt16(1))
     file += bytes(rate) + bytes(rate * 2) + bytes(UInt16(2)) + bytes(UInt16(16))
-    file += Data("data".utf8) + bytes(UInt32(pcm.count))
-    return file + pcm
+    return file + Data("data".utf8) + bytes(UInt32(pcmBytes))
   }
 
   /// The samples of a WAV file: what its `data` chunk holds, whatever comes before it.
