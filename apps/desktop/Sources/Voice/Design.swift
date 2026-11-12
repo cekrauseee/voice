@@ -10,29 +10,73 @@ enum Design {
   static let small = 8.0
   static let medium = 12.0
   static let large = 16.0
+  static let wide = 20.0
+  static let loose = 24.0
 
   /// The corners of a card.
   static let radius = 8.0
-  /// The corners of what sits in a card or in the sidebar.
+  /// The corners of what sits in a card, in the sidebar, or in the header.
   static let controlRadius = 6.0
 
-  /// The height of the row that holds the window's buttons, and the section's title.
-  static let barHeight = 32.0
-  static let sidebarWidth = 164.0
-  /// The sidebar when it only shows icons. It is as wide as the window's buttons need.
-  static let railWidth = 76.0
+  /// The side of an icon button, and the height of an item of the sidebar.
+  static let control = 28.0
+  static let sidebarWidth = 172.0
+  /// The sidebar when it only shows icons: an icon with the sidebar's padding around it.
+  static let railWidth = control + 2 * small
 
   /// How the window's parts change shape, like the pill does.
   static let morph = Animation.spring(duration: 0.32, bounce: 0.16)
 
-  /// What a card, the sidebar, and a control are filled with.
+  /// What a card and a control are filled with.
   static let surface = Color.primary.opacity(0.045)
-  /// The line around a card and between its rows.
+  /// The line around a card, between its rows, and between the window's parts.
   static let hairline = Color.primary.opacity(0.09)
   /// What is under the pointer.
   static let hover = Color.primary.opacity(0.05)
   /// What is selected.
   static let selected = Color.primary.opacity(0.11)
+}
+
+/// What the pointer looks like over a part of the window.
+enum PointerKind {
+  /// The pointing hand, over what can be clicked.
+  case link
+  /// The text cursor, over text that can be selected.
+  case text
+}
+
+extension View {
+  /// Sets what the pointer looks like over this view.
+  func pointer(_ kind: PointerKind = .link) -> some View {
+    modifier(Pointer(kind: kind))
+  }
+}
+
+private struct Pointer: ViewModifier {
+  let kind: PointerKind
+
+  @State private var isInside = false
+
+  func body(content: Content) -> some View {
+    if #available(macOS 15, *) {
+      content.pointerStyle(kind == .link ? .link : .horizontalText)
+    } else {
+      content
+        .onHover { inside in
+          guard inside != isInside else { return }
+          isInside = inside
+          if inside {
+            (kind == .link ? NSCursor.pointingHand : .iBeam).push()
+          } else {
+            NSCursor.pop()
+          }
+        }
+        .onDisappear {
+          if isInside { NSCursor.pop() }
+          isInside = false
+        }
+    }
+  }
 }
 
 extension Font {
@@ -68,16 +112,15 @@ struct Hairline: View {
   }
 }
 
-/// The name of a group, above its card.
+/// The name of a group, above its card, in line with the text of its rows.
 struct GroupTitle: View {
   let title: String
 
   var body: some View {
-    Text(title.uppercased())
-      .font(.system(size: 10.5, weight: .semibold))
-      .kerning(0.6)
+    Text(title)
+      .font(.voiceLabel)
       .foregroundStyle(.secondary)
-      .padding(.leading, Design.tight)
+      .padding(.leading, Design.medium)
   }
 }
 
@@ -123,6 +166,7 @@ struct Segmented<Value: Hashable>: View {
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .pointer()
     .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 }

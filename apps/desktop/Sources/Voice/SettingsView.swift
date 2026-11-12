@@ -6,7 +6,7 @@ struct SettingsView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: Design.large) {
+      VStack(alignment: .leading, spacing: Design.loose) {
         group("Appearance") {
           SettingRow(title: "Theme") {
             Segmented(options: Theme.allCases.map { ($0, $0.title) }, selection: $settings.theme)
@@ -32,7 +32,7 @@ struct SettingsView: View {
           }
         }
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Design.small) {
           group("Instructions") {
             TextEditor(text: $settings.instructions)
               .font(.voiceBody)
@@ -48,21 +48,21 @@ struct SettingsView: View {
                 }
               }
               .padding(.horizontal, Design.medium - 5)
-              .padding(.vertical, Design.small)
+              .padding(.vertical, 10)
           }
           Text("How to write what you say. Added to the built-in instructions.")
             .font(.voiceCaption)
             .foregroundStyle(.secondary)
-            .padding(.leading, Design.tight)
+            .padding(.leading, Design.medium)
         }
       }
-      .padding([.horizontal, .bottom], Design.large)
-      .padding(.top, Design.tight)
+      .padding(.horizontal, Design.wide)
+      .padding(.vertical, Design.large)
     }
   }
 
   private func group(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Design.small) {
       GroupTitle(title: title)
       Card(content: rows)
     }
@@ -77,7 +77,7 @@ private struct SettingRow<Control: View>: View {
 
   var body: some View {
     HStack(spacing: Design.medium) {
-      VStack(alignment: .leading, spacing: 1) {
+      VStack(alignment: .leading, spacing: 2) {
         Text(title)
           .font(.voiceBody)
         if let detail {
@@ -90,6 +90,6 @@ private struct SettingRow<Control: View>: View {
       control
     }
     .padding(.horizontal, Design.medium)
-    .frame(minHeight: detail == nil ? 36 : 44)
+    .frame(minHeight: detail == nil ? 40 : 52)
   }
 }
