@@ -13,45 +13,43 @@ struct TranscriptionsView: View {
       empty
     } else {
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 22) {
+        LazyVStack(alignment: .leading, spacing: Design.large) {
           ForEach(history.days(in: .current)) { day in
-            VStack(alignment: .leading, spacing: 8) {
-              Text(title(of: day.date))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 12)
-              VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+              GroupTitle(title: title(of: day.date))
+              Card {
                 ForEach(day.transcriptions) { transcription in
-                  if transcription.id != day.transcriptions.first?.id {
-                    Divider().padding(.leading, 12)
-                  }
+                  if transcription.id != day.transcriptions.first?.id { Hairline() }
                   TranscriptionRow(transcription: transcription) { remove(transcription.id) }
                 }
               }
-              .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             }
           }
         }
-        .padding(20)
+        .padding([.horizontal, .bottom], Design.large)
+        .padding(.top, Design.tight)
       }
     }
   }
 
   private var empty: some View {
-    VStack(spacing: 10) {
+    VStack(spacing: Design.small) {
       Image(systemName: "text.quote")
-        .font(.system(size: 28, weight: .medium))
+        .font(.system(size: 22, weight: .medium))
         .foregroundStyle(.tertiary)
       Text("No transcriptions yet")
-        .font(.headline)
+        .font(.voiceTitle)
       HStack(spacing: 5) {
         Text("Hold")
         KeyCaps(labels: pushToTalk.keyCaps)
         Text("and speak")
       }
+      .font(.voiceCaption)
       .foregroundStyle(.secondary)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    // The middle of the window, not of what is left under the title.
+    .padding(.bottom, Design.barHeight)
   }
 
   private func title(of day: Date) -> String {
@@ -66,23 +64,29 @@ struct TranscriptionsView: View {
   }
 }
 
+/// One transcription: when it was typed, its text, and how long the recording was.
+///
+/// The text is cut at three lines. Clicking the row shows all of it, to read or select.
 private struct TranscriptionRow: View {
   let transcription: Transcription
   let remove: () -> Void
 
   @State private var isHovered = false
+  @State private var isExpanded = false
   @State private var didCopy = false
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
+    HStack(alignment: .firstTextBaseline, spacing: Design.medium) {
       Text(transcription.date.formatted(date: .omitted, time: .shortened))
+        .font(.voiceCaption)
         .monospacedDigit()
         .foregroundStyle(.secondary)
-        .frame(width: 44, alignment: .leading)
-      Text(transcription.text)
-        .textSelection(.enabled)
+        .frame(width: 34, alignment: .leading)
+      text
+        .font(.voiceBody)
         .frame(maxWidth: .infinity, alignment: .leading)
       Text(transcription.clock)
+        .font(.voiceCaption)
         .monospacedDigit()
         .foregroundStyle(.tertiary)
         .opacity(isHovered ? 0 : 1)
@@ -90,6 +94,7 @@ private struct TranscriptionRow: View {
           if isHovered {
             Button(action: copy) {
               Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11))
                 .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.borderless)
@@ -98,15 +103,25 @@ private struct TranscriptionRow: View {
           }
         }
     }
-    .font(.callout)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.horizontal, Design.medium)
+    .padding(.vertical, Design.small)
+    .background(isHovered ? Design.hover : .clear)
     .contentShape(Rectangle())
+    .onTapGesture { isExpanded.toggle() }
     .onHover { isHovered = $0 }
     .animation(.easeOut(duration: 0.12), value: isHovered)
+    .animation(Design.morph, value: isExpanded)
     .contextMenu {
       Button("Copy", action: copy)
       Button("Delete", role: .destructive, action: remove)
+    }
+  }
+
+  @ViewBuilder private var text: some View {
+    if isExpanded {
+      Text(transcription.text).textSelection(.enabled)
+    } else {
+      Text(transcription.text).lineLimit(3)
     }
   }
 

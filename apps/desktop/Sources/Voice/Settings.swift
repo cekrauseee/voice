@@ -22,6 +22,11 @@ final class Settings {
     didSet { defaults.set(instructions, forKey: "instructions") }
   }
 
+  /// Whether the window's sidebar only shows icons.
+  var isSidebarCollapsed: Bool {
+    didSet { defaults.set(isSidebarCollapsed, forKey: "isSidebarCollapsed") }
+  }
+
   /// Whether the welcome window was completed.
   var hasOnboarded: Bool {
     didSet { defaults.set(hasOnboarded, forKey: "hasOnboarded") }
@@ -42,6 +47,7 @@ final class Settings {
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
+    isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     serverURL =
       defaults.string(forKey: "serverURL").flatMap(URL.init)
