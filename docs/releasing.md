@@ -11,7 +11,7 @@ git push origin v0.1.0
 The [release workflow](../.github/workflows/release.yml) then:
 
 1. Runs `pnpm verify` on the tagged commit.
-2. Builds `Voice.app` with the tag as its version, and puts it in `Voice.dmg`.
+2. Builds the app with the tag as its version, in a disk image, `Voice.dmg`.
 3. Publishes a GitHub Release named after the tag, with `Voice.dmg` attached and notes generated from the merged pull requests.
 
 A release created on GitHub, with a new tag, works too: the workflow runs for the tag and attaches `Voice.dmg` to that release.

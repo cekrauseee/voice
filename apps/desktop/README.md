@@ -9,7 +9,7 @@ There are two builds of the app. macOS tells them apart, so each has its own per
 |                 | Development                       | Production                       |
 | --------------- | --------------------------------- | -------------------------------- |
 | Command         | `pnpm dev`                        | `pnpm build`, `pnpm install-app` |
-| App             | `build/Voice (Development).app`   | `build/Voice.app`                |
+| App             | `build/Voice (Development).app`   | `build/Voice.dmg`                |
 | Name            | Voice (Development)               | Voice                            |
 | Identifier      | `eu.cekrause.voice.dev`           | `eu.cekrause.voice`              |
 | Icon            | The waveform in amber, marked DEV | The waveform                     |
@@ -18,7 +18,7 @@ There are two builds of the app. macOS tells them apart, so each has its own per
 
 `pnpm dev` builds the development app, opens it, and prints its log. Whenever the sources change it builds the app again and opens the new build, so the app that runs is always the current code. A build that fails leaves the running app alone. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
-`pnpm build` builds the app and puts it in a disk image, `build/Voice.dmg`, with a link to Applications to drag it to. `VERSION` sets the version of the app, which the release workflow takes from the tag.
+`pnpm build` builds the app and puts it in a disk image, `build/Voice.dmg`, with a link to Applications to drag it to. Only the image is kept, so Spotlight finds one Voice: the one installed. `VERSION` sets the version of the app, which the release workflow takes from the tag.
 
 `pnpm install-app` installs the production app on this Mac, or updates it, from the checkout. It builds the app and the disk image the way a release does, quits the app if it runs, copies the app from the image to `/Applications`, and opens it. The version is what `git describe` says of the checkout: `0.1.0` on the tag `v0.1.0`, `0.1.0-2-g1a2b3c4` two commits after it. Built here, the app is signed like a development build, so it keeps its permissions from one update to the next. Like a release, it needs [the server](../server/README.md) running.
 

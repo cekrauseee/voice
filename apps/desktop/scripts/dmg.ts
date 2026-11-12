@@ -1,5 +1,6 @@
 // Builds the production app and puts it in a disk image, build/Voice.dmg, with a link to
 // Applications to drag it to. A release publishes this image, and `install.ts` installs from it.
+// Only the image is kept: an app left in build/ would be a second Voice in Spotlight.
 //
 //   node scripts/dmg.ts
 //
@@ -40,6 +41,7 @@ export function dmg(log: Logger): string {
     createImage(["-volname", name, "-srcfolder", staging, "-format", "UDZO", "-ov", image], log);
   } finally {
     rmSync(staging, { recursive: true, force: true });
+    rmSync(app, { recursive: true, force: true });
   }
 
   log.info("packaged", { image: relative(root, image) });
