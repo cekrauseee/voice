@@ -77,7 +77,7 @@ The text is typed once, when the recording ends and the server has refined it. I
 The app lives in the menu bar. Its menu opens the app's window on one of its three sections:
 
 - **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
-- **Statistics**: how much was dictated in the last 7 days, the last 30 days, or all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day, or of each month once there are more than 90 days. Pointing at a bar shows its day and its words.
+- **Statistics**: how much was dictated today, in the last 7 days, in the last 30 days, or in all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day: of each hour for today, and of each month once there are more than 90 days. Pointing at a bar shows when it is and its words.
 - **Settings**: the settings below.
 
 The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
@@ -94,7 +94,7 @@ A dictation that fails is kept too, marked as failed, with whatever words came b
 
 Recordings take about 3 MB a minute. The History setting deletes transcriptions and their recordings by themselves after 1 day, 7 days, or 30 days, or never, which is the default. The app does that itself, when it starts, when the setting changes, and every hour while it runs.
 
-The statistics are kept in `statistics.json`, beside the history. They are figures by day, never what was said. Each dictation that ends with its text is counted when it does, and so is a failed one that is tried again, so deleting a transcription, by hand or by the History setting, does not change them. The words per minute are the words typed over the time recorded. The tokens and the cost come from the server with each text. The cost is the server's estimate, from the prices in [its configuration](../server/README.md#configuration). A dictation that fails is not counted, though OpenAI may have charged for its audio.
+The statistics are kept in `statistics.json`, beside the history. They are figures by day, and by hour for the last day dictated on, never what was said. Each dictation that ends with its text is counted when it does, and so is a failed one that is tried again, so deleting a transcription, by hand or by the History setting, does not change them. The words per minute are the words typed over the time recorded. The tokens and the cost come from the server with each text. The cost is the server's estimate, from the prices in [its configuration](../server/README.md#configuration). A dictation that fails is not counted, though OpenAI may have charged for its audio.
 
 To work on the window without dictating first, fill the history and the statistics of the development app with samples:
 
@@ -102,7 +102,7 @@ To work on the window without dictating first, fill the history and the statisti
 pnpm seed
 ```
 
-Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The statistics get sample figures for the days of the last 30 that have none: a day with figures is left as it is, so the samples stand beside what was really dictated. Deleting `statistics.json` removes them all. The app reads both files when it starts, so a running app is quit and opened again.
+Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The statistics get sample figures for the days of the last 30 that have none, today's spread over its hours: a day with figures is left as it is, so the samples stand beside what was really dictated. Deleting `statistics.json` removes them all. The app reads both files when it starts, so a running app is quit and opened again.
 
 Settings:
 
@@ -111,7 +111,7 @@ Settings:
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
-- **History**: how long transcriptions and their recordings are kept before they are deleted by themselves.
+- **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
 
 ## Microphone and media
 

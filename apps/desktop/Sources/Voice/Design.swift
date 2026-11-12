@@ -136,6 +136,48 @@ struct Switch: View {
   }
 }
 
+/// A choice between options that are too many, or too long, to stand side by side: the
+/// one chosen, and a menu of them all.
+struct Select<Value: Hashable>: View {
+  let options: [(value: Value, title: String)]
+  @Binding var selection: Value
+
+  var body: some View {
+    Menu {
+      ForEach(options, id: \.value) { option in
+        Toggle(
+          option.title,
+          isOn: Binding {
+            option.value == selection
+          } set: { _ in
+            selection = option.value
+          })
+      }
+    } label: {
+      HStack(spacing: Design.small) {
+        Text(options.first { $0.value == selection }?.title ?? "")
+          .font(.voiceLabel)
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.leading, 10)
+      .padding(.trailing, Design.small)
+      .frame(height: 26)
+      .background(
+        Design.surface,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
+      )
+      .contentShape(Rectangle())
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .pointer()
+  }
+}
+
 /// A choice between a few options, side by side. The selection slides to the one chosen.
 struct Segmented<Value: Hashable>: View {
   let options: [(value: Value, title: String)]

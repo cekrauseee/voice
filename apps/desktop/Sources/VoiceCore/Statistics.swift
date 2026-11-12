@@ -35,13 +35,14 @@ public struct Tally: Codable, Equatable, Sendable {
   }
 }
 
-/// How much was dictated, day by day, and what it cost.
+/// How much was dictated, day by day, and what it cost. Today is also kept hour by hour.
 ///
 /// It is counted as dictations happen and kept apart from the history, so deleting a
 /// transcription does not change it.
 public struct Statistics: Codable, Equatable, Sendable {
   /// The stretch of time the figures are shown for.
   public enum Period: String, CaseIterable, Identifiable, Sendable {
+    case today
     case week
     case month
     case all
@@ -50,6 +51,7 @@ public struct Statistics: Codable, Equatable, Sendable {
 
     public var title: String {
       switch self {
+      case .today: "Today"
       case .week: "7 days"
       case .month: "30 days"
       case .all: "All time"
@@ -59,6 +61,7 @@ public struct Statistics: Codable, Equatable, Sendable {
     /// How many days it goes back, today included. All time has no end.
     var days: Int? {
       switch self {
+      case .today: 1
       case .week: 7
       case .month: 30
       case .all: nil
@@ -66,11 +69,18 @@ public struct Statistics: Codable, Equatable, Sendable {
     }
   }
 
-  /// A bar of the chart: a day, or a month when there are too many days to show.
+  /// A bar of the chart: an hour of today, a day, or a month when there are too many days
+  /// to show.
   public struct Bar: Equatable, Identifiable, Sendable {
-    /// When the day or the month starts.
+    public enum Unit: Sendable {
+      case hour
+      case day
+      case month
+    }
+
+    /// When the hour, the day, or the month starts.
     public let start: Date
-    public let isMonth: Bool
+    public let unit: Unit
     public let tally: Tally
 
     public var id: Date { start }
@@ -81,9 +91,20 @@ public struct Statistics: Codable, Equatable, Sendable {
 
   /// The figures of each day that has any, by its date, such as `2026-11-12`.
   public private(set) var days: [String: Tally]
+  /// The figures of each hour of the last day dictated on, by the day and the hour, such
+  /// as `2026-11-12T09`.
+  public private(set) var hours: [String: Tally]
 
-  public init(days: [String: Tally] = [:]) {
+  public init(days: [String: Tally] = [:], hours: [String: Tally] = [:]) {
     self.days = days
+    self.hours = hours
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    days = try values.decode([String: Tally].self, forKey: .days)
+    // Statistics written before the hours were kept have none.
+    hours = try values.decodeIfPresent([String: Tally].self, forKey: .hours) ?? [:]
   }
 
   /// Reads the statistics as `data` wrote them.
@@ -103,17 +124,21 @@ public struct Statistics: Codable, Equatable, Sendable {
   public mutating func record(
     text: String, seconds: TimeInterval, usage: Usage, at date: Date, in calendar: Calendar
   ) {
-    var tally = days[Self.key(date, in: calendar)] ?? Tally()
-    let words = text.wordCount
-    if words > 0 {
-      tally.dictations += 1
-      tally.words += words
-      tally.seconds += seconds
+    var dictation = Tally()
+    dictation.words = text.wordCount
+    if dictation.words > 0 {
+      dictation.dictations = 1
+      dictation.seconds = seconds
     }
-    tally.inputTokens += usage.inputTokens
-    tally.outputTokens += usage.outputTokens
-    tally.cost += usage.cost
-    days[Self.key(date, in: calendar)] = tally
+    dictation.inputTokens = usage.inputTokens
+    dictation.outputTokens = usage.outputTokens
+    dictation.cost = usage.cost
+
+    let day = Self.key(date, in: calendar)
+    days[day, default: Tally()] += dictation
+    // Only the hours of this day are kept.
+    hours = hours.filter { $0.key.hasPrefix(day) }
+    hours[Self.key(date, hourIn: calendar), default: Tally()] += dictation
   }
 
   /// The figures of a period that ends today.
@@ -129,10 +154,16 @@ public struct Statistics: Codable, Equatable, Sendable {
     return total
   }
 
-  /// The bars of a period that ends today, oldest first. All time starts at the first day
+  /// The bars of a period that ends today, oldest first. Today has a bar for each of its
+  /// hours. All time starts at the first day
   /// with figures, shows a week at least, and goes by month once the days are too many.
   public func bars(_ period: Period, now: Date, in calendar: Calendar) -> [Bar] {
     let today = calendar.startOfDay(for: now)
+    if period == .today {
+      return (0..<24).compactMap { calendar.date(byAdding: .hour, value: $0, to: today) }.map {
+        Bar(start: $0, unit: .hour, tally: hours[Self.key($0, hourIn: calendar)] ?? Tally())
+      }
+    }
     var count = period.days ?? 7
     if period == .all, let first = days.keys.min().flatMap({ Self.date($0, in: calendar) }) {
       let span = (calendar.dateComponents([.day], from: first, to: today).day ?? 0) + 1
@@ -140,7 +171,7 @@ public struct Statistics: Codable, Equatable, Sendable {
       count = max(count, span)
     }
     return Self.days(count, endingAt: now, in: calendar).map { day in
-      Bar(start: day, isMonth: false, tally: days[Self.key(day, in: calendar)] ?? Tally())
+      Bar(start: day, unit: .day, tally: days[Self.key(day, in: calendar)] ?? Tally())
     }
   }
 
@@ -155,7 +186,7 @@ public struct Statistics: Codable, Equatable, Sendable {
     var bars: [Bar] = []
     var month = calendar.dateInterval(of: .month, for: first)?.start ?? first
     while month <= today {
-      bars.append(Bar(start: month, isMonth: true, tally: totals[month] ?? Tally()))
+      bars.append(Bar(start: month, unit: .month, tally: totals[month] ?? Tally()))
       guard let next = calendar.date(byAdding: .month, value: 1, to: month) else { break }
       month = next
     }
@@ -175,6 +206,12 @@ public struct Statistics: Codable, Equatable, Sendable {
     let day = calendar.dateComponents([.year, .month, .day], from: date)
     let (month, number) = (day.month ?? 0, day.day ?? 0)
     return "\(day.year ?? 0)-\(month < 10 ? "0" : "")\(month)-\(number < 10 ? "0" : "")\(number)"
+  }
+
+  /// The hour of a day as the statistics name it, such as `2026-11-12T09`.
+  static func key(_ date: Date, hourIn calendar: Calendar) -> String {
+    let hour = calendar.component(.hour, from: date)
+    return "\(key(date, in: calendar))T\(hour < 10 ? "0" : "")\(hour)"
   }
 
   /// The start of the day a name stands for.

@@ -86,7 +86,7 @@ import Testing
     let bars = statistics.bars(.all, now: noon(day: 12), in: calendar)
     #expect(bars.count == 20)
     #expect(bars.first?.tally.words == 1)
-    #expect(bars.allSatisfy { !$0.isMonth })
+    #expect(bars.allSatisfy { $0.unit == .day })
   }
 
   @Test func allTimeGoesByMonthOnceTheDaysAreTooMany() {
@@ -97,11 +97,49 @@ import Testing
       text: "two three", seconds: 1, usage: usage, at: noon(month: 6, day: 28), in: calendar)
     statistics.record(text: "four", seconds: 1, usage: usage, at: noon(day: 3), in: calendar)
     let bars = statistics.bars(.all, now: noon(day: 12), in: calendar)
-    #expect(bars.allSatisfy { $0.isMonth })
+    #expect(bars.allSatisfy { $0.unit == .month })
     // June to November.
     #expect(bars.map(\.tally.words) == [3, 0, 0, 0, 0, 1])
     #expect(
       bars.first?.start == calendar.date(from: DateComponents(year: 2026, month: 6, day: 1)))
+  }
+
+  @Test func keepsTodayHourByHour() {
+    var statistics = Statistics()
+    statistics.record(
+      text: "old", seconds: 1, usage: usage, at: noon(day: 11), in: calendar)
+    statistics.record(
+      text: "one two", seconds: 1, usage: usage, at: noon(day: 12) - 3 * 3600, in: calendar)
+    statistics.record(text: "three", seconds: 1, usage: usage, at: noon(day: 12), in: calendar)
+    statistics.record(
+      text: "four", seconds: 1, usage: usage, at: noon(day: 12) + 1800, in: calendar)
+
+    // The hours of the day before are gone, and its day is not.
+    #expect(statistics.hours.keys.sorted() == ["2026-11-12T09", "2026-11-12T12"])
+    #expect(statistics.days["2026-11-11"]?.words == 1)
+
+    let bars = statistics.bars(.today, now: noon(day: 12) + 7200, in: calendar)
+    #expect(bars.count == 24)
+    #expect(bars.allSatisfy { $0.unit == .hour })
+    #expect(bars.first?.start == calendar.startOfDay(for: noon(day: 12)))
+    #expect(bars[9].tally.words == 2)
+    #expect(bars[12].tally.words == 2)
+    #expect(bars.map(\.tally.words).reduce(0, +) == 4)
+    #expect(statistics.total(.today, now: noon(day: 12), in: calendar).words == 4)
+    // The next day starts empty.
+    #expect(
+      statistics.bars(.today, now: noon(day: 13), in: calendar).allSatisfy {
+        $0.tally.words == 0
+      })
+  }
+
+  @Test func readsStatisticsWrittenBeforeTheHoursWereKept() throws {
+    let old = Data(
+      #"{"days":{"2026-11-12":{"cost":0.01,"dictations":1,"inputTokens":3,"outputTokens":2,"seconds":4,"words":7}}}"#
+        .utf8)
+    let statistics = try Statistics(data: old)
+    #expect(statistics.days["2026-11-12"]?.words == 7)
+    #expect(statistics.hours.isEmpty)
   }
 
   @Test func isReadAsItWasWritten() throws {

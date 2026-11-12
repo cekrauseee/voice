@@ -72,9 +72,9 @@ struct SettingsView: View {
 
         group("History") {
           SettingRow(
-            title: "Delete after", detail: "Transcriptions and their recordings stay on this Mac"
+            title: "Delete after", detail: "Transcriptions and recordings stay on this Mac"
           ) {
-            Segmented(
+            Select(
               options: Retention.allCases.map { ($0, $0.title) }, selection: $settings.retention)
           }
         }
