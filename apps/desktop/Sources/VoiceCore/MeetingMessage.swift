@@ -6,6 +6,8 @@ public enum MeetingServerMessage: Equatable, Sendable {
   /// The text heard on a channel that is not in a segment yet. It replaces the one before.
   case draft(channel: Channel, text: String)
   case segment(MeetingSegment)
+  /// The segments with ids from `from` to `to`, revised: they replace the ones they cover.
+  case revised(from: Int, to: Int, segments: [MeetingSegment])
   /// What the connection used so far.
   case usage(Usage)
   case done(usage: Usage)
@@ -22,6 +24,9 @@ public enum MeetingServerMessage: Equatable, Sendable {
       var id: Int?
       var start: Double?
       var end: Double?
+      var from: Int?
+      var to: Int?
+      var segments: [MeetingSegment]?
       var code: String?
       var usage: Usage?
     }
@@ -37,6 +42,11 @@ public enum MeetingServerMessage: Equatable, Sendable {
         let end = wire.end, let text = wire.text
       else { return nil }
       self = .segment(MeetingSegment(id: id, channel: channel, start: start, end: end, text: text))
+    case "revised":
+      guard let from = wire.from, let to = wire.to, let segments = wire.segments else {
+        return nil
+      }
+      self = .revised(from: from, to: to, segments: segments)
     case "usage":
       guard let usage = wire.usage else { return nil }
       self = .usage(usage)

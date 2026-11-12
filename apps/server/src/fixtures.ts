@@ -1,6 +1,7 @@
 import { createLogger } from "@voice/log";
 import { type Prices, SAMPLE_RATE, type Usage } from "./protocol.ts";
 import type { CreateRefiner, RefineInput, Refinement } from "./refiner.ts";
+import type { CreateReviser, RevisedPiece, Revision, RevisionInput } from "./reviser.ts";
 import type { CreateTranscriber, Transcriber, TranscriberEvents } from "./transcriber.ts";
 
 /** Audio of a given length. */
@@ -93,6 +94,39 @@ export class FakeRefiner {
           signal,
           resolve: (text, [inputTokens, outputTokens] = [0, 0]) =>
             resolve({ text, inputTokens, outputTokens }),
+          reject,
+        });
+        return promise;
+      },
+      close: () => {
+        this.closed = true;
+      },
+    };
+  };
+}
+
+/** A reviser whose calls resolve when the test says so. */
+export class FakeReviser {
+  readonly calls: {
+    input: RevisionInput;
+    signal: AbortSignal;
+    /** Answers with the pieces, and with the tokens it took: what it read, what it wrote. */
+    resolve(pieces: RevisedPiece[], tokens?: [input: number, output: number]): void;
+    reject(error: Error): void;
+  }[] = [];
+  created = 0;
+  closed = false;
+
+  readonly create: CreateReviser = () => {
+    this.created += 1;
+    return {
+      revise: (input, signal) => {
+        const { promise, resolve, reject } = Promise.withResolvers<Revision>();
+        this.calls.push({
+          input,
+          signal,
+          resolve: (pieces, [inputTokens, outputTokens] = [0, 0]) =>
+            resolve({ pieces, inputTokens, outputTokens }),
           reject,
         });
         return promise;

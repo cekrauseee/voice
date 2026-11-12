@@ -5,6 +5,7 @@ import { WebSocket } from "ws";
 import {
   audio,
   FakeRefiner,
+  FakeReviser,
   FakeTranscriber,
   FakeTranscribers,
   prices,
@@ -22,6 +23,7 @@ async function start(t: TestContext) {
   const server = createServer({
     createTranscriber: transcriber.create,
     createRefiner: refiner.create,
+    createReviser: new FakeReviser().create,
     prices,
     log: silent,
   });
@@ -127,9 +129,11 @@ test("a client that disconnects releases the transcriber and the refiner", async
 
 async function startMeetings(t: TestContext) {
   const transcribers = new FakeTranscribers();
+  const reviser = new FakeReviser();
   const server = createServer({
     createTranscriber: transcribers.create,
     createRefiner: new FakeRefiner().create,
+    createReviser: reviser.create,
     prices,
     log: silent,
   });
@@ -139,7 +143,7 @@ async function startMeetings(t: TestContext) {
     server.closeAllConnections();
   });
   const { port } = server.address() as AddressInfo;
-  return { transcribers, host: `127.0.0.1:${port}` };
+  return { transcribers, reviser, host: `127.0.0.1:${port}` };
 }
 
 /** A binary frame of a meeting: the channel, then the audio. */
@@ -148,7 +152,7 @@ function frame(channel: number, pcm: Buffer): Buffer {
 }
 
 test("a meeting streams the audio of two channels in and segments out, then closes", async (t) => {
-  const { host, transcribers } = await startMeetings(t);
+  const { host, transcribers, reviser } = await startMeetings(t);
   const { ws, messages, closeCode } = await connect(host, "/v1/meeting");
 
   ws.send(JSON.stringify({ type: "start", first_id: 3, offsets: { me: 10, others: 10 } }));
@@ -161,6 +165,11 @@ test("a meeting streams the audio of two channels in and segments out, then clos
   others?.events.final(0, "Hello.");
   me?.events.final(0, "Hi.");
   ws.send(JSON.stringify({ type: "stop" }));
+  await until(() => reviser.calls.length === 1);
+  reviser.calls[0]?.resolve([
+    { anchor: 3, channel: "others", text: "Hello!" },
+    { anchor: 4, channel: "me", text: "Hi!" },
+  ]);
   await until(() => closeCode() !== undefined);
 
   assert.deepEqual(
@@ -169,6 +178,15 @@ test("a meeting streams the audio of two channels in and segments out, then clos
       { type: "ready" },
       { type: "segment", id: 3, channel: "others", start: 10, end: 11.3, text: "Hello." },
       { type: "segment", id: 4, channel: "me", start: 10, end: 11.8, text: "Hi." },
+      {
+        type: "revised",
+        from: 3,
+        to: 4,
+        segments: [
+          { id: 5, channel: "others", start: 10, end: 11.3, text: "Hello!" },
+          { id: 6, channel: "me", start: 10, end: 11.8, text: "Hi!" },
+        ],
+      },
       {
         type: "done",
         usage: { audio_seconds: 3.1, input_tokens: 0, output_tokens: 0, cost: 0.031 },

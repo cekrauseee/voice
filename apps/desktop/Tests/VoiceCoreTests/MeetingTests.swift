@@ -29,6 +29,21 @@ private func segment(
     #expect(meeting.segments.map(\.id) == [5, 2])
   }
 
+  @Test func aRevisionReplacesTheSegmentsItCovers() {
+    var meeting = Meeting(
+      date: .now,
+      segments: [
+        segment(1, .me, 0, 2, "so um the plan"), segment(2, .others, 1, 3, "uh huh"),
+        segment(3, .me, 2, 4, "is simple"), segment(4, .me, 5, 6, "right"),
+      ])
+    meeting.revise(
+      from: 1, to: 3,
+      with: [segment(5, .me, 0, 4, "So the plan is simple."), segment(6, .others, 1, 3, "Uh-huh.")])
+    #expect(meeting.segments.map(\.id) == [5, 6, 4])
+    #expect(meeting.segments.map(\.isRevised) == [true, true, false])
+    #expect(meeting.nextId == 7)
+  }
+
   @Test func joinsConsecutiveSegmentsOfASideIntoParagraphs() {
     let meeting = Meeting(
       date: .now,
@@ -49,6 +64,13 @@ private func segment(
       segments: [segment(1, .me, 0, 2, "Hi.")],
       usage: Usage(audioSeconds: 2, cost: 0.02))
     #expect(try Meeting(data: meeting.data) == meeting)
+    // A meeting written before segments said whether they were revised.
+    let old = #"""
+      {"date":"2026-11-12T10:00:00Z","duration":1,"id":"\#(UUID().uuidString)","isLive":false,
+      "segments":[{"channel":"me","end":1,"id":1,"start":0,"text":"Hi."}],
+      "usage":{"audio_seconds":0,"cost":0,"input_tokens":0,"output_tokens":0}}
+      """#
+    #expect(try Meeting(data: Data(old.utf8)).segments.first?.isRevised == false)
     #expect(meeting.clock == "2:05")
     #expect(TimeInterval(3725).clock == "1:02:05")
   }
@@ -112,6 +134,12 @@ private func segment(
       MeetingServerMessage(
         json: #"{"type":"segment","id":4,"channel":"me","start":1.5,"end":3,"text":"Hi."}"#)
         == .segment(segment(4, .me, 1.5, 3, "Hi.")))
+    #expect(
+      MeetingServerMessage(
+        json:
+          #"{"type":"revised","from":4,"to":5,"segments":[{"id":6,"channel":"others","start":1.5,"end":3,"text":"Hi."}]}"#
+      )
+        == .revised(from: 4, to: 5, segments: [segment(6, .others, 1.5, 3, "Hi.")]))
     let usage = #"{"audio_seconds":2.5,"input_tokens":0,"output_tokens":0,"cost":0.0007}"#
     #expect(
       MeetingServerMessage(json: #"{"type":"usage","usage":\#(usage)}"#)
@@ -126,6 +154,7 @@ private func segment(
 
   @Test func rejectsWhatItDoesNotKnow() {
     #expect(MeetingServerMessage(json: #"{"type":"segment","id":1}"#) == nil)
+    #expect(MeetingServerMessage(json: #"{"type":"revised","from":1}"#) == nil)
     #expect(MeetingServerMessage(json: #"{"type":"draft","channel":"you","text":""}"#) == nil)
     #expect(MeetingServerMessage(json: #"{"type":"other"}"#) == nil)
     #expect(MeetingServerMessage(json: "nope") == nil)

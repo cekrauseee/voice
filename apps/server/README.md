@@ -68,7 +68,8 @@ A meeting connection logs the same way, in the `meeting` scope, with the channel
 16:30:01.004 INFO  meeting     started meeting=1 first_id=1 offset_me=0 offset_others=0 instructions_chars=0
 16:30:01.812 INFO  meeting     ready meeting=1 ready_ms=808
 16:31:12.400 WARN  meeting     transcription session lost meeting=1 channel=others error="Transcription connection closed" failures=1 retry_ms=1000
-16:58:40.120 INFO  meeting     used meeting=1 audio_seconds=1204.3 input_tokens=0 output_tokens=0 cost=0.341218
+16:33:02.410 INFO  meeting     revised meeting=1 from=1 to=38 revise_ms=2210 pieces=21 chars=2140
+16:58:40.120 INFO  meeting     used meeting=1 audio_seconds=1204.3 input_tokens=18210 output_tokens=6120 cost=0.345889
 16:58:40.121 INFO  meeting     ended meeting=1 outcome=done segments=312 duration_ms=1719117
 ```
 
@@ -85,6 +86,8 @@ The behavior of the pipeline is set by constants in the source:
 | Readiness, transcript, and refinement timeouts                   | The constants at the top of [`session.ts`](src/session.ts)      |
 | Where a meeting's turns are cut: the pause and the length limits | `defaultSegmenterOptions` in [`segmenter.ts`](src/segmenter.ts) |
 | How long a session lives, and how failures are retried           | The constants at the top of [`resilient.ts`](src/resilient.ts)  |
+| When a window of a meeting is revised                            | `defaultWindowOptions` in [`windows.ts`](src/windows.ts)        |
+| What the reviser is told to do                                   | `INSTRUCTIONS` in [`reviser.ts`](src/reviser.ts)                |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 
@@ -114,8 +117,11 @@ pnpm meet me.wav - --rate 4
 ```
   1204ms  ready
   2940ms  draft    me     "so the plan"
-  4102ms  segment  me     #1 0:00-0:02 "So the plan is simple."
-  6230ms  segment  others #2 0:02-0:04 "Sounds good."
+  4102ms  segment  me     #1 0:00-0:02 "so the plan is simple"
+  6230ms  segment  others #2 0:02-0:04 "sounds good"
+ 14890ms  revised  #1-#2
+         me     #3 0:00-0:02 "So the plan is simple."
+         others #4 0:02-0:04 "Sounds good."
 ```
 
 ## Tests
@@ -133,12 +139,15 @@ The tests run the real server, session, transcriber, and refiner. The OpenAI API
 | `src/main.ts`        | Reads the configuration, checks OpenAI, starts the server                                     |
 | `src/server.ts`      | HTTP and WebSocket endpoints. One connection is one dictation, or one connection of a meeting |
 | `src/session.ts`     | One dictation: drives the transcriber and the refiner, and falls back when one fails          |
-| `src/meeting.ts`     | One connection of a meeting: two channels in, numbered segments out                           |
+| `src/meeting.ts`     | One connection of a meeting: two channels in, numbered segments out, revised in windows       |
+| `src/windows.ts`     | When a window of segments closes, to be revised                                               |
+| `src/reviser.ts`     | The revision prompt, its answer's shape, and the reading of it                                |
+| `src/responses.ts`   | A request to the Responses API over a WebSocket, for the refiner and the reviser              |
 | `src/channel.ts`     | One side of a meeting: its turns, in order, as segments                                       |
 | `src/segmenter.ts`   | Cuts a channel into turns at its pauses, and keeps the time                                   |
 | `src/resilient.ts`   | A transcriber that outlives its provider sessions                                             |
 | `src/transcriber.ts` | The OpenAI realtime transcription session                                                     |
-| `src/refiner.ts`     | The refinement prompt, and its request over the Responses WebSocket                           |
+| `src/refiner.ts`     | The refinement prompt                                                                         |
 | `src/protocol.ts`    | The messages exchanged with the app                                                           |
 | `scripts/dictate.ts` | Replays a recording against a running server                                                  |
 | `scripts/meet.ts`    | Replays the two channels of a meeting against a running server                                |

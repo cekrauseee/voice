@@ -72,9 +72,10 @@ A meeting is another operation, with its own connection: it lasts hours, carries
 │ system tap (others)│ ───────────▶ │ channel others          │ ──────▶ │ transcription        │
 │                    │  [1] PCM     │   segmenter: cuts turns │ ◀────── │ (gpt-live-transcribe)│
 │ panel, page        │ ◀─────────── │   transcriber that      │  text   └──────────────────────┘
-│ meetings/*.json    │  draft       │   outlives its sessions │
-│ meetings/*.wav     │  segment     │ meeting session         │
-└────────────────────┘              └─────────────────────────┘
+│ meetings/*.json    │  draft       │   outlives its sessions │ window  ┌──────────────────────┐
+│ meetings/*.wav     │  segment     │ meeting session         │ ──────▶ │ language model       │
+│                    │  revised     │   windows, reviser      │ ◀────── │ (Responses API)      │
+└────────────────────┘              └─────────────────────────┘ pieces  └──────────────────────┘
 ```
 
 **Two channels.** On a Mac the two sides of a call are already apart: the speaker is the microphone, and everyone else is what the meeting app plays. The app records both, the second through a Core Audio tap on the sound of every other process, and sends them as two channels. The server transcribes each on its own, so who said what is known without any model guessing it: segments are `me` or `others`.
@@ -82,6 +83,8 @@ A meeting is another operation, with its own connection: it lasts hours, carries
 **Turns.** `gpt-live-transcribe` has no turn detection of its own and no speaker labels, so the server cuts each channel into turns itself: a [segmenter](../apps/server/src/segmenter.ts) opens a turn when the level rises above the room's noise floor and commits it at a pause, or at a length limit when nobody pauses. The text heard while a turn runs is sent as a draft; the complete transcript of a committed turn is a **segment**, with the channel and its start and end in the meeting's clock. Silence between turns is not sent to OpenAI, and not paid for. A turn cut in the middle of a sentence costs nothing here: nothing is typed, and the text can be revised later with the turns around it.
 
 **Sessions that come and go.** A realtime session can fail, and does not last for hours. A [transcriber that outlives its sessions](../apps/server/src/resilient.ts) keeps the audio of every turn until the turn is final; when the session fails, or has lived long enough to be ended by the provider, it opens another and sends those turns again. The [channel](../apps/server/src/channel.ts) above it sees one transcriber, numbers its turns in the order they were cut, and passes the segments on in that order, standing the text heard in for a transcript that does not come in time.
+
+**Revision in windows.** The live text is a draft of a kind: a realtime model does not punctuate well, and the turns are cut at pauses, not at sentences. So the server revises the transcript as the meeting goes, in [windows](../apps/server/src/windows.ts) of a few minutes that close at a pause, once they hold enough: a language model sees the window as a dialog, with the window before it as context, and gives back its pieces, fixed, with fillers removed and the stretches joined or split where the pauses cut them wrong, each anchored to the stretch it begins in. The revised segments replace the ones they came from, in the app as on the page. Windows are revised one at a time, in order, and transcription never waits for them. This is the per-piece refinement that dictation gave up, in the place it fits: nothing is typed, so a revision can replace what was shown, and a window is long enough to read as one text.
 
 **The app keeps the meeting.** A meeting outlives any one connection. The app writes every segment to disk as it arrives, with the recording of each channel, so what was transcribed survives the app and the server. When the socket drops, the app keeps recording, waits a little longer each time, and opens another connection: it tells the server where each channel's segments end, and sends again the audio after that point, which it keeps for the purpose. The server holds nothing between connections. None of this reaches the user: the panel keeps counting, and the text catches up.
 

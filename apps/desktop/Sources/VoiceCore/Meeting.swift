@@ -31,13 +31,30 @@ public struct MeetingSegment: Codable, Equatable, Identifiable, Sendable {
   public let start: TimeInterval
   public let end: TimeInterval
   public var text: String
+  /// Whether the text was revised, with the conversation around it, or is as it was heard.
+  public var isRevised: Bool
 
-  public init(id: Int, channel: Channel, start: TimeInterval, end: TimeInterval, text: String) {
+  public init(
+    id: Int, channel: Channel, start: TimeInterval, end: TimeInterval, text: String,
+    isRevised: Bool = false
+  ) {
     self.id = id
     self.channel = channel
     self.start = start
     self.end = end
     self.text = text
+    self.isRevised = isRevised
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(Int.self, forKey: .id)
+    channel = try values.decode(Channel.self, forKey: .channel)
+    start = try values.decode(TimeInterval.self, forKey: .start)
+    end = try values.decode(TimeInterval.self, forKey: .end)
+    text = try values.decode(String.self, forKey: .text)
+    // A segment the server sends, or one kept before revisions, says nothing of it.
+    isRevised = try values.decodeIfPresent(Bool.self, forKey: .isRevised) ?? false
   }
 }
 
@@ -102,6 +119,17 @@ public struct Meeting: Codable, Equatable, Identifiable, Sendable {
     let index =
       segments.firstIndex { ($0.start, $0.id) > (segment.start, segment.id) } ?? segments.count
     segments.insert(segment, at: index)
+  }
+
+  /// Replaces the segments with ids from `from` to `to` by their revision.
+  public mutating func revise(from: Int, to: Int, with revised: [MeetingSegment]) {
+    segments.removeAll { (from...to).contains($0.id) }
+    for var segment in revised {
+      segment.isRevised = true
+      let index =
+        segments.firstIndex { ($0.start, $0.id) > (segment.start, segment.id) } ?? segments.count
+      segments.insert(segment, at: index)
+    }
   }
 
   /// The id for the next segment: after the highest so far.
@@ -211,6 +239,8 @@ public struct LiveMeeting: Equatable, Sendable {
       drafts[channel] = text.isEmpty ? nil : text
     case .segment(let segment):
       meeting.add(segment)
+    case .revised(let from, let to, let segments):
+      meeting.revise(from: from, to: to, with: segments)
     case .usage(let usage), .done(let usage):
       current = usage
       meeting.usage = earlier + current

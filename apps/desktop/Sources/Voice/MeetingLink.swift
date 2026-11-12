@@ -127,7 +127,7 @@ final class MeetingLink {
     case .error(let code):
       // The server closes after it. The next connection picks the meeting up.
       log.error("server failed", ["code": code])
-    case .draft, .usage:
+    case .draft, .revised, .usage:
       break
     }
     onMessage(message)

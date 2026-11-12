@@ -96,6 +96,8 @@ export type MeetingServerMessage =
   | { type: "ready" }
   | { type: "draft"; channel: Channel; text: string }
   | ({ type: "segment" } & Segment)
+  /** The segments from `from` to `to` are replaced by `segments`, revised. */
+  | { type: "revised"; from: number; to: number; segments: Segment[] }
   | { type: "usage"; usage: Usage }
   | { type: "done"; usage: Usage }
   | { type: "error"; code: ErrorCode; message: string };

@@ -82,6 +82,14 @@ ws.on("message", (data) => {
         `segment  ${message.channel.padEnd(6)} #${message.id} ${clock(message.start)}-${clock(message.end)} ${JSON.stringify(message.text)}`,
       );
       break;
+    case "revised":
+      print(`revised  #${message.from}-#${message.to}`);
+      for (const segment of message.segments) {
+        print(
+          `         ${segment.channel.padEnd(6)} #${segment.id} ${clock(segment.start)}-${clock(segment.end)} ${JSON.stringify(segment.text)}`,
+        );
+      }
+      break;
     case "usage":
       break;
     case "done":

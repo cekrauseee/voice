@@ -13,12 +13,14 @@ import {
   type ServerMessage,
 } from "./protocol.ts";
 import type { CreateRefiner } from "./refiner.ts";
+import type { CreateReviser } from "./reviser.ts";
 import { DictationSession } from "./session.ts";
 import type { CreateTranscriber } from "./transcriber.ts";
 
 export interface ServerDeps {
   createTranscriber: CreateTranscriber;
   createRefiner: CreateRefiner;
+  createReviser: CreateReviser;
   prices: Prices;
   log: Logger;
 }

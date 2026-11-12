@@ -141,7 +141,7 @@ Settings:
 
 ## Meetings
 
-Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other.
+Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other, and revises them a few minutes at a time as the meeting goes: punctuation, misheard words, fillers, and the cuts between turns. The revised text replaces what was heard, on the page as in the file. The Instructions setting goes to the revision too.
 
 While a meeting records, a small panel floats at the top right of the screen: how long it has run, the last of what was said, with what is being heard dimmed, a button that opens the meeting's page, and Stop. The panel takes clicks but never the focus, and can be dragged. If the Mac's sound could not be tapped, the panel says that only the microphone is recorded. When the meeting starts, its page opens in the window.
 

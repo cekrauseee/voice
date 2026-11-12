@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
 import { DICTATION_PATH, MEETING_PATH } from "./protocol.ts";
 import { createOpenAIRefiner } from "./refiner.ts";
+import { createOpenAIReviser } from "./reviser.ts";
 import { createServer } from "./server.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
 
@@ -64,6 +65,7 @@ const server = createServer({
     languages: transcribeLanguages,
   }),
   createRefiner: createOpenAIRefiner(client, { model: refineModel }),
+  createReviser: createOpenAIReviser(client, { model: refineModel }),
   prices,
   log,
 });
