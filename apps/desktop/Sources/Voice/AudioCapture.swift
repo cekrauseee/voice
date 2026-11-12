@@ -118,9 +118,10 @@ private final class Recording: @unchecked Sendable {
       var uid = device as CFString
       let isChosen =
         AudioDevice.withID(device) != nil
-        && AudioQueueSetProperty(
-          queue, kAudioQueueProperty_CurrentDevice, &uid, UInt32(MemoryLayout<CFString>.size))
-          == noErr
+        && withUnsafePointer(to: &uid) {
+          AudioQueueSetProperty(
+            queue, kAudioQueueProperty_CurrentDevice, $0, UInt32(MemoryLayout<CFString>.size))
+        } == noErr
       if !isChosen { log.warn("microphone not connected", ["hint": "recording with the system's"]) }
     }
     let size = UInt32(AudioFormat.chunkSamples * MemoryLayout<Int16>.size)

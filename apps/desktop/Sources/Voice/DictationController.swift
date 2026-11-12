@@ -23,6 +23,8 @@ final class DictationController {
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
+  /// Says the microphone is starting, when it does not deliver sound right away.
+  @ObservationIgnored private var warming: Task<Void, Never>?
   @ObservationIgnored private var startedAt = ContinuousClock.now
 
   init(settings: Settings, history: HistoryStore, statistics: StatisticsStore) {
@@ -35,7 +37,7 @@ final class DictationController {
   }
 
   var isRecording: Bool {
-    pill == .listening
+    pill.isRecording
   }
 
   /// Whether a dictation is recording or finishing, so Escape can cancel it.
@@ -115,19 +117,29 @@ final class DictationController {
     media.pause()
     log.info("started", ["mode": mode])
 
+    // The Mac's own microphone delivers sound in about a tenth of a second, a Bluetooth
+    // headset in about a second, while it switches to call quality. When it takes longer
+    // than a moment, the pill says the microphone is starting, until the sound comes.
+    warming = Task {
+      try? await Task.sleep(for: .milliseconds(250))
+      if !Task.isCancelled, self.session === session, pill == .listening { pill = .starting }
+    }
+
     audio = Task {
       var isLive = false
       for await chunk in chunks {
         // Until then the microphone is starting: what it delivers is nothing at all.
         if !isLive, !Level.isZero(chunk.pcm) {
           isLive = true
+          warming?.cancel()
+          if pill == .starting { pill = .listening }
           log.debug("recording", ["microphone_ms": elapsed])
         }
         session.send(chunk.pcm)
         levels.push(chunk.level)
       }
       guard !Task.isCancelled else { return }
-      if self.session === session, pill == .listening {
+      if self.session === session, pill.isRecording {
         // Nobody stopped the recording: the microphone did not start.
         session.cancel()
         finish(.microphoneUnavailable)
@@ -171,6 +183,7 @@ final class DictationController {
 
   /// Closes the microphone and gives the sound back. The media does not wait for the text.
   private func release() {
+    warming?.cancel()
     capture.stop()
     media.resume()
   }

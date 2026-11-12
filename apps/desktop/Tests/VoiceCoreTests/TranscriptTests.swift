@@ -144,6 +144,13 @@ import Testing
     #expect(Level.normalized(pcm(20_000)) == 1)
   }
 
+  @Test func aMicrophoneThatIsStartingRecords() {
+    #expect(PillState.starting.isRecording)
+    #expect(PillState.listening.isRecording)
+    #expect(!PillState.finishing.isRecording)
+    #expect(!PillState.hidden.isRecording)
+  }
+
   @Test func onlyAMicrophoneThatIsStartingDeliversZeros() {
     #expect(Level.isZero(Data(count: 1920)))
     // A quiet room is below the lowest level, but it is not nothing.
