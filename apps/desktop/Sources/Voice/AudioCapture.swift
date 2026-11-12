@@ -18,16 +18,34 @@ struct AudioChunk: Sendable {
 final class AudioCapture {
   private var recording: Recording?
 
+  /// The identifier of the device the last recording used, which it keeps after it stops.
+  private(set) var device: String?
+
+  /// The microphones connected now.
+  static var microphones: [Microphone] {
+    AVCaptureDevice.DiscoverySession(
+      deviceTypes: [.microphone], mediaType: .audio, position: .unspecified
+    ).devices.map { Microphone(id: $0.uniqueID, name: $0.localizedName) }
+  }
+
   /// Starts recording and returns at once. The chunks follow as soon as the microphone
   /// delivers audio. The stream ends after `stop`, once all of the audio is delivered, or
   /// by itself when the microphone does not start.
-  func start() throws -> AsyncStream<AudioChunk> {
+  ///
+  /// It records with the microphone chosen while it is connected, and with the system's
+  /// otherwise.
+  func start(with microphone: Microphone?) throws -> AsyncStream<AudioChunk> {
     stop()
     let (stream, continuation) = AsyncStream.makeStream(of: AudioChunk.self)
-    guard let device = AVCaptureDevice.default(for: .audio),
+    let chosen = microphone.flatMap { AVCaptureDevice(uniqueID: $0.id) }
+    if microphone != nil && chosen == nil {
+      Log("audio").warn("microphone not connected", ["hint": "recording with the system's"])
+    }
+    guard let device = chosen ?? AVCaptureDevice.default(for: .audio),
       let recording = Recording(device: device, continuation: continuation)
     else { throw DictationError.microphoneUnavailable }
     self.recording = recording
+    self.device = device.uniqueID
     recording.start()
     return stream
   }

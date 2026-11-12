@@ -20,6 +20,10 @@ struct Log: Sendable {
     logger.info("\(logLine(message, fields), privacy: .public)")
   }
 
+  func warn(_ message: String, _ fields: KeyValuePairs<String, Any> = [:]) {
+    logger.warning("\(logLine(message, fields), privacy: .public)")
+  }
+
   func error(_ message: String, _ fields: KeyValuePairs<String, Any> = [:]) {
     logger.error("\(logLine(message, fields), privacy: .public)")
   }

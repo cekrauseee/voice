@@ -1,9 +1,11 @@
+import AVFoundation
 import SwiftUI
 import VoiceCore
 
 struct SettingsView: View {
   @Bindable var settings: Settings
   let loginItem: LoginItem
+  @State private var microphones = AudioCapture.microphones
 
   var body: some View {
     ScrollView {
@@ -17,6 +19,11 @@ struct SettingsView: View {
               } set: {
                 loginItem.set($0)
               })
+          }
+          SettingRow(title: "Microphone", detail: "Records what you dictate") {
+            Select(
+              options: Microphone.options(chosen: settings.microphone, connected: microphones),
+              selection: $settings.microphone)
           }
         }
 
@@ -87,6 +94,14 @@ struct SettingsView: View {
     {
       _ in loginItem.refresh()
     }
+    .onReceive(
+      NotificationCenter.default.publisher(for: AVCaptureDevice.wasConnectedNotification)
+        .merge(
+          with: NotificationCenter.default.publisher(
+            for: AVCaptureDevice.wasDisconnectedNotification)
+        )
+        .receive(on: RunLoop.main)
+    ) { _ in microphones = AudioCapture.microphones }
   }
 
   private func group(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
