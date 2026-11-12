@@ -11,6 +11,9 @@ final class Settings {
   var pillStyle: PillStyle {
     didSet { defaults.set(pillStyle.rawValue, forKey: "pillStyle") }
   }
+  var pillPosition: PillPosition {
+    didSet { defaults.set(pillPosition.rawValue, forKey: "pillPosition") }
+  }
   var pushToTalk: Shortcut {
     didSet { save(pushToTalk, forKey: "pushToTalk") }
   }
@@ -64,6 +67,7 @@ final class Settings {
     self.defaults = defaults
     theme = defaults.string(forKey: "theme").flatMap(Theme.init) ?? .auto
     pillStyle = defaults.string(forKey: "pillStyle").flatMap(PillStyle.init) ?? .minimal
+    pillPosition = defaults.string(forKey: "pillPosition").flatMap(PillPosition.init) ?? .bottom
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
