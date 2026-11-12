@@ -34,6 +34,25 @@ struct SettingsView: View {
           Text("Press to start, press again to stop")
         }
       }
+
+      Section {
+        TextEditor(text: $settings.instructions)
+          .font(.body)
+          .scrollContentBackground(.hidden)
+          .frame(height: 72)
+          .overlay(alignment: .topLeading) {
+            if settings.instructions.isEmpty {
+              Text("Write in a formal tone.")
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 5)
+                .allowsHitTesting(false)
+            }
+          }
+      } header: {
+        Text("Instructions")
+      } footer: {
+        Text("How to write what you say. Added to the built-in instructions.")
+      }
     }
     .formStyle(.grouped)
     .frame(width: 440)

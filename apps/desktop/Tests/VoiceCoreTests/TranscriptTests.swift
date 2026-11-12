@@ -6,16 +6,8 @@ import Testing
 @Suite struct ServerMessageTests {
   @Test func decodesEveryMessage() {
     #expect(ServerMessage(json: #"{"type":"ready"}"#) == .ready)
-    #expect(
-      ServerMessage(json: #"{"type":"delta","segment":1,"text":"hi"}"#)
-        == .delta(segment: 1, text: "hi"))
-    #expect(
-      ServerMessage(json: #"{"type":"final","segment":0,"text":"hi"}"#)
-        == .final(segment: 0, text: "hi"))
-    #expect(
-      ServerMessage(json: #"{"type":"refined","segment":0,"text":""}"#)
-        == .refined(segment: 0, text: ""))
-    #expect(ServerMessage(json: #"{"type":"done"}"#) == .done)
+    #expect(ServerMessage(json: #"{"type":"delta","text":"hi"}"#) == .delta(text: "hi"))
+    #expect(ServerMessage(json: #"{"type":"done","text":""}"#) == .done(text: ""))
     #expect(
       ServerMessage(json: #"{"type":"error","code":"timeout","message":"Transcription timed out"}"#)
         == .error(code: "timeout"))
@@ -23,39 +15,43 @@ import Testing
 
   @Test func rejectsWhatItDoesNotKnow() {
     #expect(ServerMessage(json: #"{"type":"other"}"#) == nil)
-    #expect(ServerMessage(json: #"{"type":"delta","segment":1}"#) == nil)
+    #expect(ServerMessage(json: #"{"type":"delta"}"#) == nil)
+    #expect(ServerMessage(json: #"{"type":"done"}"#) == nil)
     #expect(ServerMessage(json: "not json") == nil)
   }
 }
 
+@Suite struct ClientMessageTests {
+  @Test func encodesEveryMessage() {
+    #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
+    #expect(
+      ClientMessage.start(instructions: "").json == #"{"instructions":"","type":"start"}"#)
+    #expect(
+      ClientMessage.start(instructions: "Say \"hi\".\nUse a/b.").json
+        == #"{"instructions":"Say \"hi\".\nUse a/b.","type":"start"}"#)
+  }
+}
+
 @Suite struct TranscriptTests {
-  @Test func deltasBuildTheLiveTextAndFinalReplacesIt() {
+  @Test func deltasBuildTheDraft() {
     var transcript = Transcript()
     #expect(transcript.isEmpty)
-    #expect(transcript.apply(.delta(segment: 0, text: "hello")) == nil)
-    #expect(transcript.apply(.delta(segment: 0, text: " wor")) == nil)
-    #expect(transcript.segments == [.init(id: 0, text: "hello wor")])
-    #expect(transcript.apply(.final(segment: 0, text: "hello world")) == nil)
-    #expect(transcript.segments == [.init(id: 0, text: "hello world")])
+    transcript.apply(.ready)
+    transcript.apply(.delta(text: "hello"))
+    transcript.apply(.delta(text: " wor"))
+    #expect(transcript.text == "hello wor")
+    #expect(!transcript.isRefined)
   }
 
-  @Test func refinedTextIsTypedWithASpaceBetweenSegments() {
+  @Test func doneReplacesTheDraftWithTheRefinedText() {
     var transcript = Transcript()
-    #expect(transcript.apply(.refined(segment: 0, text: "Hello.")) == "Hello.")
-    #expect(transcript.apply(.refined(segment: 1, text: "")) == nil)
-    #expect(transcript.apply(.refined(segment: 2, text: "Again.")) == " Again.")
-    #expect(transcript.segments.map(\.isRefined) == [true, true, true])
-  }
+    transcript.apply(.delta(text: "hello world"))
+    transcript.apply(.done(text: "Hello, world."))
+    #expect(transcript.text == "Hello, world.")
+    #expect(transcript.isRefined)
 
-  @Test func segmentsStayInOrderAndRefinedTextIsNotOverwritten() {
-    var transcript = Transcript()
-    _ = transcript.apply(.delta(segment: 1, text: "second"))
-    _ = transcript.apply(.refined(segment: 0, text: "First."))
-    _ = transcript.apply(.delta(segment: 0, text: "late"))
-    #expect(
-      transcript.segments == [
-        .init(id: 0, text: "First.", isRefined: true), .init(id: 1, text: "second"),
-      ])
+    transcript.apply(.delta(text: " late"))
+    #expect(transcript.text == "Hello, world.")
   }
 }
 

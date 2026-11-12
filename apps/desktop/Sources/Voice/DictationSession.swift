@@ -5,6 +5,7 @@ import VoiceCore
 @MainActor
 final class DictationSession {
   private let socket: URLSessionWebSocketTask
+  private let instructions: String
   private(set) var transcript = Transcript()
   private var isReady = false
   private var isOver = false
@@ -13,17 +14,19 @@ final class DictationSession {
   var onReady: () -> Void = {}
   /// The transcript changed.
   var onChange: () -> Void = {}
-  /// Text is ready to be typed into the focused field.
+  /// The text of the dictation, to be typed into the focused field.
   var onText: (String) -> Void = { _ in }
   /// The dictation is over, with the reason when it failed.
   var onEnd: (DictationError?) -> Void = { _ in }
 
-  init(server: URL) {
+  init(server: URL, instructions: String) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
+    self.instructions = instructions
   }
 
   func start() {
     socket.resume()
+    send(.start(instructions: instructions))
     Task { await receive() }
   }
 
@@ -31,15 +34,19 @@ final class DictationSession {
     socket.send(.data(pcm)) { _ in }
   }
 
-  /// Tells the server the speaker is done. The remaining text still arrives.
+  /// Tells the server the speaker is done. The text follows.
   func stop() {
-    socket.send(.string(ServerMessage.stop)) { _ in }
+    send(.stop)
   }
 
-  /// Drops the dictation, and the text that has not arrived.
+  /// Drops the dictation. Nothing is typed.
   func cancel() {
     isOver = true
     socket.cancel()
+  }
+
+  private func send(_ message: ClientMessage) {
+    socket.send(.string(message.json)) { _ in }
   }
 
   private func receive() async {
@@ -60,13 +67,15 @@ final class DictationSession {
     case .ready:
       isReady = true
       onReady()
+    case .delta:
+      transcript.apply(message)
+      onChange()
     case .done:
+      transcript.apply(message)
+      onChange()
       end(nil)
     case .error:
       end(.transcriptionFailed)
-    case .delta, .final, .refined:
-      if let text = transcript.apply(message) { onText(text) }
-      onChange()
     }
   }
 
@@ -74,6 +83,9 @@ final class DictationSession {
     guard !isOver else { return }
     isOver = true
     socket.cancel(with: .normalClosure, reason: nil)
+    // Refined when the dictation finished, as heard when it failed: what was said is not lost.
+    let text = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !text.isEmpty { onText(text) }
     onEnd(error)
   }
 }

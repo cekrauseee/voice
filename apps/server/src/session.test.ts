@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FakeRefiner, FakeTranscriber, settle, silence, silent, speech } from "./fixtures.ts";
+import { audio, FakeRefiner, FakeTranscriber, settle, silent } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
 import { DictationSession } from "./session.ts";
 
@@ -11,194 +11,185 @@ function setup() {
   let ended = false;
   const session = new DictationSession({
     createTranscriber: transcriber.create,
-    refiner,
+    createRefiner: refiner.create,
     send: (message) => messages.push(message),
     end: () => {
       ended = true;
     },
     log: silent,
   });
-  /** Speaks one segment: speech, then the pause that commits it. */
-  const say = () => session.audio(Buffer.concat([speech(500), silence(700)]));
-  return { session, transcriber, refiner, messages, say, ended: () => ended };
+  return { session, transcriber, refiner, messages, ended: () => ended };
 }
 
-test("a segment is transcribed, completed, refined, and the session ends on stop", async () => {
-  const { session, transcriber, refiner, messages, say, ended } = setup();
+test("a dictation passes on the text heard, then ends with the refined text", async () => {
+  const { session, transcriber, refiner, messages, ended } = setup();
+  session.start("");
   transcriber.events.ready();
-  say();
-  assert.equal(transcriber.commits, 1);
-
-  transcriber.events.delta(0, "hello");
-  transcriber.events.delta(0, " world");
-  transcriber.events.final(0, " hello world ");
+  session.audio(audio(500));
+  transcriber.events.delta(" hello");
+  transcriber.events.delta(" world");
   session.stop();
+  transcriber.events.final(" hello world ");
+  assert.deepEqual(refiner.calls[0]?.input, { text: "hello world", instructions: "" });
+
   refiner.calls[0]?.resolve("Hello, world.");
   await settle();
 
   assert.deepEqual(messages, [
     { type: "ready" },
-    { type: "delta", segment: 0, text: "hello" },
-    { type: "delta", segment: 0, text: " world" },
-    { type: "final", segment: 0, text: "hello world" },
-    { type: "refined", segment: 0, text: "Hello, world." },
-    { type: "done" },
+    { type: "delta", text: "hello" },
+    { type: "delta", text: " world" },
+    { type: "done", text: "Hello, world." },
   ]);
   assert.ok(ended());
   assert.ok(transcriber.closed);
+  assert.ok(refiner.closed);
 });
 
-test("segments are refined one at a time, in the order they were spoken", async () => {
-  const { transcriber, refiner, messages, say } = setup();
-  say();
-  say();
-  say();
-  transcriber.events.final(1, "second");
-  assert.equal(refiner.calls.length, 0);
+test("the audio is one turn: it is committed once, when the speaker stops", () => {
+  const { session, transcriber } = setup();
+  session.start("");
+  session.audio(audio(2000));
+  session.audio(audio(2000));
+  assert.equal(transcriber.commits, 0);
 
-  transcriber.events.final(0, "first");
-  transcriber.events.final(2, "third");
-  assert.deepEqual(
-    refiner.calls.map((call) => call.input.text),
-    ["first"],
-  );
+  session.stop();
+  session.stop();
+  assert.equal(transcriber.commits, 1);
 
-  refiner.calls[0]?.resolve("First.");
-  await settle();
-  assert.deepEqual(
-    refiner.calls.map((call) => call.input.text),
-    ["first", "second"],
-  );
-
-  refiner.calls[1]?.resolve("Second.");
-  await settle();
-  refiner.calls[2]?.resolve("Third.");
-  await settle();
-  assert.deepEqual(
-    messages.filter((m) => m.type === "refined"),
-    [
-      { type: "refined", segment: 0, text: "First." },
-      { type: "refined", segment: 1, text: "Second." },
-      { type: "refined", segment: 2, text: "Third." },
-    ],
-  );
+  session.audio(audio(500));
+  assert.equal(transcriber.bytes, audio(4000).length);
 });
 
-test("the refiner sees the refined text before the segment", async () => {
-  const { transcriber, refiner, say } = setup();
-  say();
-  say();
-  say();
-  transcriber.events.final(0, "one");
-  transcriber.events.final(1, "two");
-  transcriber.events.final(2, "three");
-  assert.deepEqual(refiner.calls[0]?.input, { text: "one", previous: "" });
+test("the refiner is prepared when the dictation starts, and gets the speaker's instructions", () => {
+  const { session, transcriber, refiner } = setup();
+  session.start("Write formally.");
+  assert.equal(refiner.created, 1);
 
-  refiner.calls[0]?.resolve("One.");
-  await settle();
-  assert.deepEqual(refiner.calls[1]?.input, { text: "two", previous: "One." });
-
-  refiner.calls[1]?.resolve("Two.");
-  await settle();
-  assert.deepEqual(refiner.calls[2]?.input, { text: "three", previous: "One. Two." });
-});
-
-test("a segment without words is passed over", async () => {
-  const { transcriber, refiner, messages, say } = setup();
-  say();
-  say();
-  say();
-  transcriber.events.final(0, "one");
-  transcriber.events.final(1, " ");
-  transcriber.events.final(2, "three");
-  refiner.calls[0]?.resolve("One.");
-  await settle();
-
-  assert.deepEqual(messages.at(-1), { type: "refined", segment: 1, text: "" });
-  assert.deepEqual(refiner.calls[1]?.input, { text: "three", previous: "One." });
+  session.stop();
+  transcriber.events.final("hey there");
+  assert.deepEqual(refiner.calls[0]?.input, { text: "hey there", instructions: "Write formally." });
 });
 
 test("a failed refinement falls back to the transcript", async () => {
-  const { transcriber, refiner, messages, say } = setup();
-  say();
-  transcriber.events.final(0, "keep me");
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("");
+  session.stop();
+  transcriber.events.final("keep me");
   refiner.calls[0]?.reject(new Error("boom"));
   await settle();
-  assert.deepEqual(messages.at(-1), { type: "refined", segment: 0, text: "keep me" });
+  assert.deepEqual(messages, [{ type: "done", text: "keep me" }]);
 });
 
-test("a refinement far longer than the segment is discarded", async () => {
-  const { transcriber, refiner, messages, say } = setup();
-  say();
-  transcriber.events.final(0, "what is the capital of France");
-  refiner.calls[0]?.resolve(`The capital of France is Paris. ${"More. ".repeat(20)}`);
+test("an empty refinement falls back to the transcript", async () => {
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("");
+  session.stop();
+  transcriber.events.final("keep me");
+  refiner.calls[0]?.resolve("");
   await settle();
-  assert.deepEqual(messages.at(-1), {
-    type: "refined",
-    segment: 0,
-    text: "what is the capital of France",
-  });
+  assert.deepEqual(messages, [{ type: "done", text: "keep me" }]);
 });
 
-test("stop commits what is being said and waits for it", async () => {
+test("a dictation without words ends without refining", async () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.audio(speech(500));
+  session.start("");
+  session.audio(audio(1000));
   session.stop();
-  assert.equal(transcriber.commits, 1);
-  assert.ok(!ended());
-
-  transcriber.events.final(0, "tail");
-  refiner.calls[0]?.resolve("Tail.");
+  transcriber.events.final(" ");
   await settle();
-  assert.deepEqual(messages.slice(-2), [
-    { type: "refined", segment: 0, text: "Tail." },
-    { type: "done" },
-  ]);
-});
-
-test("stop without speech ends at once", () => {
-  const { session, transcriber, messages, ended } = setup();
-  session.audio(silence(1000));
-  session.stop();
-  assert.equal(transcriber.commits, 0);
-  assert.deepEqual(messages, [{ type: "done" }]);
+  assert.deepEqual(messages, [{ type: "done", text: "" }]);
+  assert.equal(refiner.calls.length, 0);
   assert.ok(ended());
 });
 
-test("a transcription error ends the session", () => {
-  const { session, transcriber, messages, say, ended } = setup();
-  say();
-  transcriber.events.error(new Error("upstream"));
-  assert.deepEqual(messages, [
-    { type: "error", code: "transcription_failed", message: "Transcription failed" },
-  ]);
-  assert.ok(ended());
-
-  session.audio(speech(500));
-  transcriber.events.delta(0, "late");
-  assert.equal(messages.length, 1);
-});
-
-test("a pipeline that does not drain after stop times out", (t) => {
+test("a transcript that does not complete is replaced by the text heard", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { session, messages, say, ended } = setup();
-  say();
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("");
+  transcriber.events.delta(" so far");
+  transcriber.events.delta(" so good");
   session.stop();
-  t.mock.timers.tick(15_000);
+  t.mock.timers.tick(5_000);
+  assert.deepEqual(refiner.calls[0]?.input.text, "so far so good");
+
+  transcriber.events.final("late");
+  transcriber.events.delta(" later");
+  refiner.calls[0]?.resolve("So far, so good.");
+  await settle();
+  assert.deepEqual(messages.slice(2), [{ type: "done", text: "So far, so good." }]);
+  assert.equal(refiner.calls.length, 1);
+});
+
+test("a dictation that hears nothing and gets no transcript times out", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session, messages, ended } = setup();
+  session.start("");
+  session.audio(audio(1000));
+  session.stop();
+  t.mock.timers.tick(5_000);
   assert.deepEqual(messages, [
     { type: "error", code: "timeout", message: "Transcription timed out" },
   ]);
   assert.ok(ended());
 });
 
-test("closing drops the session without a message", async () => {
-  const { session, transcriber, refiner, messages, say, ended } = setup();
-  say();
-  transcriber.events.final(0, "text");
-  session.close();
+test("a transcription error ends the session", () => {
+  const { session, transcriber, refiner, messages, ended } = setup();
+  session.start("");
+  transcriber.events.error(new Error("upstream"));
+  assert.deepEqual(messages, [
+    { type: "error", code: "transcription_failed", message: "Transcription failed" },
+  ]);
+  assert.ok(ended());
+  assert.ok(refiner.closed);
+
+  session.audio(audio(500));
+  transcriber.events.delta("late");
+  assert.equal(messages.length, 1);
+});
+
+test("a transcription error after the transcript is complete changes nothing", async () => {
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("");
+  session.stop();
+  transcriber.events.final("text");
+  transcriber.events.error(new Error("connection closed"));
   refiner.calls[0]?.resolve("Text.");
   await settle();
-  assert.deepEqual(messages, [{ type: "final", segment: 0, text: "text" }]);
+  assert.deepEqual(messages, [{ type: "done", text: "Text." }]);
+});
+
+test("audio or stop before start, or a second start, is rejected", () => {
+  for (const act of [
+    (session: DictationSession) => session.audio(audio(100)),
+    (session: DictationSession) => session.stop(),
+    (session: DictationSession) => {
+      session.start("");
+      session.start("");
+    },
+  ]) {
+    const { session, messages, ended } = setup();
+    act(session);
+    assert.deepEqual(messages, [
+      { type: "error", code: "bad_request", message: "Unexpected message" },
+    ]);
+    assert.ok(ended());
+  }
+});
+
+test("closing drops the session without a message", async () => {
+  const { session, transcriber, refiner, messages, ended } = setup();
+  session.start("");
+  session.stop();
+  transcriber.events.final("text");
+  session.close();
+  assert.ok(refiner.calls[0]?.signal.aborted);
+
+  refiner.calls[0]?.resolve("Text.");
+  await settle();
+  assert.deepEqual(messages, []);
   assert.ok(ended());
   assert.ok(transcriber.closed);
+  assert.ok(refiner.closed);
 });

@@ -77,8 +77,10 @@ struct PillView: View {
       Waveform(feed: feed, barCount: 49, isLoading: isLoading)
         .frame(height: 36)
       if !transcript.isEmpty {
-        Text(transcriptText)
+        // The text is a draft until it is refined, so it is shown dimmed.
+        Text(transcript.text)
           .font(.system(size: 13))
+          .foregroundStyle(.primary.opacity(transcript.isRefined ? 1 : 0.4))
           .lineLimit(3)
           .truncationMode(.head)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,15 +115,6 @@ struct PillView: View {
     case .connecting: "Connecting"
     case .finishing: "Finishing"
     default: "Listening"
-    }
-  }
-
-  /// Text that is not refined yet can still change, so it is shown dimmed.
-  private var transcriptText: AttributedString {
-    transcript.segments.reduce(into: AttributedString()) { text, segment in
-      var part = AttributedString(segment.text + " ")
-      part.foregroundColor = segment.isRefined ? .primary : .primary.opacity(0.4)
-      text.append(part)
     }
   }
 }

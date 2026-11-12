@@ -17,6 +17,10 @@ final class Settings {
   var toggle: Shortcut {
     didSet { save(toggle, forKey: "toggle") }
   }
+  /// How the user wants their words written, on top of the server's own instructions.
+  var instructions: String {
+    didSet { defaults.set(instructions, forKey: "instructions") }
+  }
 
   /// Whether the welcome window was completed.
   var hasOnboarded: Bool {
@@ -37,6 +41,7 @@ final class Settings {
     pillStyle = defaults.string(forKey: "pillStyle").flatMap(PillStyle.init) ?? .minimal
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
+    instructions = defaults.string(forKey: "instructions") ?? ""
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     serverURL =
       defaults.string(forKey: "serverURL").flatMap(URL.init)

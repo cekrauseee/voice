@@ -1,6 +1,6 @@
 # Voice
 
-Real-time voice dictation for macOS. Hold a key, speak, and the text is typed into the field you are in, cleaned up sentence by sentence while you keep talking.
+Real-time voice dictation for macOS. Hold a key, speak, and when you let go the text is typed into the field you are in, cleaned up the way you want it written.
 
 - `apps/desktop`: the macOS menu bar app. It records, shows the pill, and types the text.
 - `apps/server`: the service that transcribes and refines the speech with OpenAI.

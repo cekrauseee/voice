@@ -16,7 +16,7 @@ final class DictationController {
   @ObservationIgnored private let settings: Settings
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
-  /// The dictation the pill shows. Earlier ones may still be typing their last text.
+  /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
@@ -72,7 +72,8 @@ final class DictationController {
       return fail(.microphoneUnavailable)
     }
 
-    let session = DictationSession(server: settings.serverURL)
+    let session = DictationSession(
+      server: settings.serverURL, instructions: settings.instructions)
     session.onReady = { [weak self, weak session] in
       guard let self, self.session === session, pill == .connecting else { return }
       pill = .listening
@@ -135,7 +136,7 @@ final class DictationController {
       fail(error)
     } else {
       pill = .hidden
-      log.info("finished", ["duration_ms": elapsed, "segments": transcript.segments.count])
+      log.info("finished", ["duration_ms": elapsed, "chars": transcript.text.count])
     }
   }
 
