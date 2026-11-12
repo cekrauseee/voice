@@ -82,9 +82,17 @@ struct SettingsView: View {
             .padding(.horizontal, Design.small)
         }
 
+        group("Meetings") {
+          SettingRow(title: "Detect meetings", detail: "Offers to record when an app starts a call")
+          {
+            Switch(title: "Detect meetings", isOn: $settings.detectsMeetings)
+          }
+        }
+
         group("History") {
           SettingRow(
-            title: "Delete after", detail: "Transcriptions and recordings stay on this Mac"
+            title: "Delete after",
+            detail: "Transcriptions, meetings, and recordings stay on this Mac"
           ) {
             Select(
               options: Retention.allCases.map { ($0, $0.title) }, selection: $settings.retention)

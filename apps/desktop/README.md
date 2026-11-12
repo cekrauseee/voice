@@ -136,20 +136,23 @@ Settings:
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Pill position**: Bottom, the default, shows the pill at the bottom of the screen, above the Dock. Top shows it just under the menu bar, or, on a screen with a notch, out of the notch. Both styles go in either place.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
-- **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
+- **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them, for dictation and for the revision of meetings. Empty by default.
+- **Detect meetings**: whether the app offers to record when another app starts a call. On by default.
 - **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
 
 ## Meetings
 
-Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other, and revises them a few minutes at a time as the meeting goes: punctuation, misheard words, fillers, and the cuts between turns. The revised text replaces what was heard, on the page as in the file. The Instructions setting goes to the revision too.
+Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone chosen in the settings, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other, and revises them a few minutes at a time as the meeting goes: punctuation, misheard words, fillers, and the cuts between turns. The revised text replaces what was heard, on the page as in the file. The Instructions setting goes to the revision too.
 
-While a meeting records, a small panel floats at the top right of the screen: how long it has run, the last of what was said, with what is being heard dimmed, a button that opens the meeting's page, and Stop. The panel takes clicks but never the focus, and can be dragged. If the Mac's sound could not be tapped, the panel says that only the microphone is recorded. When the meeting starts, its page opens in the window.
+When another app starts a call, the app offers to record it: once Zoom, Teams, Slack, Discord, FaceTime, Webex, Skype, WhatsApp, Telegram, or a browser has held the microphone for three seconds, a small panel floats at the top right of the screen, saying which app is in a call, with Start recording and a way to dismiss it. A dismissed call is not asked about again until the app lets the microphone go, and neither is one that was recorded. The Detect meetings setting turns this off.
+
+While a meeting records, the same panel shows the meeting: how long it has run, the last of what was said, with what is being heard dimmed, a button that opens the meeting's page, and Stop. The panel takes clicks but never the focus, and can be dragged. If the Mac's sound could not be tapped, the panel says that only the microphone is recorded. If the microphone does not start, the meeting is not kept, and the panel says `No microphone found` for a moment. When the meeting starts, its page opens in the window.
 
 The recording never waits for the server. If the connection drops, the app keeps recording, opens another connection after a wait that grows with each failure, and sends again what the server had not confirmed: the transcript catches up, and nothing is shown. The same goes for the server's own sessions with OpenAI, which it replaces by itself. Stopping waits up to 20 s for the last segments.
 
 A meeting is kept in `meetings/`, beside the history: a JSON file with its segments, written as they arrive, and a WAV file for each channel, written as it is recorded, so a meeting survives the app quitting in the middle of it. Recordings take about 3 MB a minute per channel. The History setting deletes meetings and their recordings the same way it deletes transcriptions. Nothing but the app reads the files, and the text is never logged.
 
-Dictating during a meeting works as it always does. Media is not paused for a meeting: the call is the media.
+Dictating during a meeting works as it always does, and mutes the other apps, the call with them, while it records. Media is not paused for a meeting: the call is the media.
 
 ## Microphone and media
 
@@ -221,6 +224,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/MeetingLink.swift`                                   | The meeting's connection to the server, which outlives the socket |
 | `Sources/Voice/MeetingStore.swift`                                  | The files that keep the meetings and their recordings             |
 | `Sources/Voice/SystemAudioCapture.swift`                            | Records what the Mac plays, through a Core Audio tap              |
+| `Sources/Voice/MicrophoneMonitor.swift`                             | Asks Core Audio which apps hold the microphone                    |
 | `Sources/Voice/MeetingPanel.swift`                                  | The floating panel of the meeting being recorded                  |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                  |
 | `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                              |

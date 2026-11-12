@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 import VoiceCore
 
-/// The floating window that shows the meeting being recorded: how long it has run, the
-/// last of what was said, and the way to stop it. It takes clicks, but never the focus.
+/// The floating window that offers to record a call, and then shows the meeting being
+/// recorded: how long it has run, the last of what was said, and the way to stop it. It
+/// takes clicks, but never the focus.
 @MainActor
 final class MeetingPanel {
   private let controller: MeetingController
@@ -27,7 +28,7 @@ final class MeetingPanel {
 
   func start() {
     track { [controller] in
-      controller.live != nil || controller.failure != nil
+      controller.live != nil || controller.failure != nil || controller.prompt != nil
     } onChange: { [weak self] isVisible in
       self?.update(isVisible)
     }
@@ -46,7 +47,9 @@ final class MeetingPanel {
     } else {
       Task {
         try? await Task.sleep(for: .milliseconds(400))
-        if controller.live == nil && controller.failure == nil { panel.orderOut(nil) }
+        if controller.live == nil && controller.failure == nil && controller.prompt == nil {
+          panel.orderOut(nil)
+        }
       }
     }
   }
@@ -62,7 +65,7 @@ private struct MeetingPanelView: View {
 
   var body: some View {
     ZStack(alignment: .topTrailing) {
-      if controller.live != nil || controller.failure != nil {
+      if controller.live != nil || controller.failure != nil || controller.prompt != nil {
         content
           .padding(14)
           .frame(width: 340, alignment: .leading)
@@ -78,6 +81,7 @@ private struct MeetingPanelView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     .animation(Self.morph, value: controller.live == nil)
     .animation(Self.morph, value: controller.failure)
+    .animation(Self.morph, value: controller.prompt)
   }
 
   private var shape: RoundedRectangle {
@@ -88,6 +92,19 @@ private struct MeetingPanelView: View {
     if let failure = controller.failure {
       Label(failure.message, systemImage: "exclamationmark.triangle.fill")
         .font(.system(size: 12, weight: .medium))
+    } else if controller.live == nil, let prompt = controller.prompt {
+      HStack(spacing: Design.small) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Meeting detected")
+            .font(.system(size: 12, weight: .medium))
+          Text("\(prompt.name) is using the microphone")
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+        Spacer(minLength: Design.small)
+        PanelButton(title: "Start recording", action: controller.start)
+        IconButton(symbol: "xmark", help: "Dismiss", action: controller.dismissPrompt)
+      }
     } else if let live = controller.live {
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: Design.small) {
@@ -102,16 +119,7 @@ private struct MeetingPanelView: View {
             .foregroundStyle(.secondary)
           Spacer(minLength: 0)
           IconButton(symbol: "arrow.up.forward.square", help: "Open", action: open)
-          Button("Stop", action: controller.stop)
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(
-              Design.selected,
-              in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
-            )
-            .pointer()
+          PanelButton(title: "Stop", action: controller.stop)
             .disabled(controller.isStopping)
         }
         .font(.system(size: 12, weight: .medium))
@@ -145,5 +153,24 @@ private struct MeetingPanelView: View {
       text += piece
     }
     return text
+  }
+}
+
+/// A button of the panel, with a word on it.
+private struct PanelButton: View {
+  let title: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(title, action: action)
+      .buttonStyle(.plain)
+      .font(.system(size: 12, weight: .medium))
+      .padding(.horizontal, 10)
+      .frame(height: 24)
+      .background(
+        Design.selected,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+      )
+      .pointer()
   }
 }

@@ -13,6 +13,8 @@ final class MeetingController {
   private(set) var isMissingSystemAudio = false
   /// The recording ended and the last segments are on their way.
   private(set) var isStopping = false
+  /// The app in a call that the user is offered to record, if one is.
+  private(set) var prompt: MicrophoneUser?
 
   @ObservationIgnored private let log = Log("meeting")
   @ObservationIgnored private let settings: Settings
@@ -26,6 +28,11 @@ final class MeetingController {
   @ObservationIgnored private var startedAt = ContinuousClock.now
   /// Bytes of each channel sent so far: where its clock is.
   @ObservationIgnored private var sent: [Channel: Int] = [:]
+  @ObservationIgnored private var detection = MeetingDetection()
+  @ObservationIgnored private var watch: Task<Void, Never>?
+
+  /// How often the apps holding the microphone are looked at.
+  private static let watching: Duration = .seconds(2)
 
   /// Bytes of audio a second: 16-bit mono at 24 kHz.
   private static let bytesPerSecond = AudioFormat.sampleRate * 2
@@ -33,6 +40,36 @@ final class MeetingController {
   init(settings: Settings, store: MeetingStore) {
     self.settings = settings
     self.store = store
+  }
+
+  /// Watches for a call in another app, while the setting says so.
+  func start(detecting: Bool) {
+    watch?.cancel()
+    watch = nil
+    guard detecting else {
+      if detection.observe([], isRecording: false, at: .now) { prompt = nil }
+      return
+    }
+    watch = Task { [weak self] in
+      while !Task.isCancelled {
+        self?.observe()
+        try? await Task.sleep(for: Self.watching)
+      }
+    }
+  }
+
+  private func observe() {
+    let users = MicrophoneMonitor.users()
+    guard detection.observe(users, isRecording: live != nil, at: .now) else { return }
+    prompt = detection.prompt
+    if let prompt { log.info("detected", ["app": prompt.bundleId]) }
+  }
+
+  /// The user does not want the call recorded.
+  func dismissPrompt() {
+    log.info("dismissed", ["app": prompt?.bundleId ?? ""])
+    detection.dismiss()
+    prompt = nil
   }
 
   var isRecording: Bool {
@@ -70,6 +107,8 @@ final class MeetingController {
 
     let meeting = Meeting(date: .now)
     live = LiveMeeting(meeting)
+    detection.recording()
+    prompt = nil
     store.begin(meeting)
     startedAt = .now
     sent = [.me: 0, .others: 0]

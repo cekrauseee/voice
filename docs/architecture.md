@@ -88,6 +88,8 @@ A meeting is another operation, with its own connection: it lasts hours, carries
 
 **The app keeps the meeting.** A meeting outlives any one connection. The app writes every segment to disk as it arrives, with the recording of each channel, so what was transcribed survives the app and the server. When the socket drops, the app keeps recording, waits a little longer each time, and opens another connection: it tells the server where each channel's segments end, and sends again the audio after that point, which it keeps for the purpose. The server holds nothing between connections. None of this reaches the user: the panel keeps counting, and the text catches up.
 
+**Detection.** Core Audio says which processes record from an input device, which is what the orange dot in the menu bar knows. The app looks every two seconds; when a meeting app or a browser has held the microphone for three seconds and no meeting is being recorded, it offers to record, once per call. The logic is a small state machine in `VoiceCore`, [`MeetingDetection`](../apps/desktop/Sources/VoiceCore/MeetingDetection.swift), which the app feeds.
+
 **Cost.** A meeting is charged for the speech transcribed on both channels, by the minute of audio. The server reports it after each segment, so a connection that is lost loses nothing counted, and the app adds the connections up.
 
 ## Why these choices

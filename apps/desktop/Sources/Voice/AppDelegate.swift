@@ -68,6 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     pill.start()
     meetingPanel.start()
+    track { [settings] in
+      settings.detectsMeetings
+    } onChange: { [weak self] detecting in
+      self?.meeting.start(detecting: detecting)
+    }
 
     // Transcriptions older than they are kept for are deleted when the app starts, when
     // the setting changes, and every hour while the app runs.
