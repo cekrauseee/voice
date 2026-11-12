@@ -136,8 +136,8 @@ test("the transcriber passes on the text heard, the transcript, and failures", a
   const events: unknown[] = [];
   const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })({
     ready() {},
-    delta: (text) => events.push(["delta", text]),
-    final: (text) => events.push(["final", text]),
+    delta: (turn, text) => events.push(["delta", turn, text]),
+    final: (turn, text) => events.push(["final", turn, text]),
     error: (error) => events.push(["error", error.message]),
   });
   await until(() => realtime.socket !== undefined);
@@ -149,9 +149,9 @@ test("the transcriber passes on the text heard, the transcript, and failures", a
   await until(() => events.length === 4);
 
   assert.deepEqual(events, [
-    ["delta", " one"],
-    ["delta", " two"],
-    ["final", "One, two."],
+    ["delta", 0, " one"],
+    ["delta", 0, " two"],
+    ["final", 0, "One, two."],
     ["error", "bad audio"],
   ]);
 
@@ -166,7 +166,7 @@ test("the transcriber completes a recording too short to commit by itself", asyn
   const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })({
     ready() {},
     delta() {},
-    final: (text) => finals.push(text),
+    final: (_turn, text) => finals.push(text),
     error() {},
   });
   t.after(() => transcriber.close());

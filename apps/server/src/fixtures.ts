@@ -1,34 +1,74 @@
 import { createLogger } from "@voice/log";
 import { type Prices, SAMPLE_RATE, type Usage } from "./protocol.ts";
 import type { CreateRefiner, RefineInput, Refinement } from "./refiner.ts";
-import type { CreateTranscriber, TranscriberEvents } from "./transcriber.ts";
+import type { CreateTranscriber, Transcriber, TranscriberEvents } from "./transcriber.ts";
 
 /** Audio of a given length. */
 export function audio(ms: number): Buffer {
   return Buffer.alloc(((SAMPLE_RATE * ms) / 1000) * 2);
 }
 
+/** A loud 220 Hz tone, which the segmenter hears as speech. */
+export function speech(ms: number): Buffer {
+  const samples = (SAMPLE_RATE * ms) / 1000;
+  const buffer = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) {
+    buffer.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 220 * i) / SAMPLE_RATE)), i * 2);
+  }
+  return buffer;
+}
+
+/** Digital silence. */
+export function silence(ms: number): Buffer {
+  return audio(ms);
+}
+
 /** A transcriber driven by the test: it records what it receives and emits what it is told. */
-export class FakeTranscriber {
+export class FakeTranscriber implements Transcriber {
   events!: TranscriberEvents;
-  bytes = 0;
+  /** The audio appended, chunk by chunk. */
+  readonly appended: Buffer[] = [];
   commits = 0;
   closed = false;
 
   readonly create: CreateTranscriber = (events) => {
     this.events = events;
-    return {
-      append: (pcm) => {
-        this.bytes += pcm.length;
-      },
-      commit: () => {
-        this.commits += 1;
-      },
-      close: () => {
-        this.closed = true;
-      },
-    };
+    return this;
   };
+
+  get bytes(): number {
+    return this.appended.reduce((sum, chunk) => sum + chunk.length, 0);
+  }
+
+  append(pcm: Buffer): void {
+    this.appended.push(pcm);
+  }
+
+  commit(): void {
+    this.commits += 1;
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+}
+
+/** Makes a fake transcriber for each session opened, and keeps them all. */
+export class FakeTranscribers {
+  readonly all: FakeTranscriber[] = [];
+
+  readonly create: CreateTranscriber = (events) => {
+    const transcriber = new FakeTranscriber();
+    this.all.push(transcriber);
+    return transcriber.create(events);
+  };
+
+  /** The session opened last. */
+  get last(): FakeTranscriber {
+    const last = this.all.at(-1);
+    if (!last) throw new Error("No transcriber was created");
+    return last;
+  }
 }
 
 /** A refiner whose calls resolve when the test says so. */

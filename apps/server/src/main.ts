@@ -1,7 +1,7 @@
 import { createLogger, type Fields } from "@voice/log";
 import OpenAI from "openai";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
-import { DICTATION_PATH } from "./protocol.ts";
+import { DICTATION_PATH, MEETING_PATH } from "./protocol.ts";
 import { createOpenAIRefiner } from "./refiner.ts";
 import { createServer } from "./server.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
@@ -75,6 +75,7 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 server.listen(port, host, () => {
   log.info("listening", {
     url: `ws://${host}:${port}${DICTATION_PATH}`,
+    meeting_url: `ws://${host}:${port}${MEETING_PATH}`,
     transcribe: transcribeModel,
     refine: refineModel,
   });
