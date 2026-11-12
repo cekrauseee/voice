@@ -1,6 +1,8 @@
+import AudioToolbox
 import CoreAudio
 import Foundation
 import VoiceCore
+import os
 
 /// Asks about and commands the media playing on the Mac, whichever app plays it, and gets
 /// its sound back to normal after a recording.
@@ -52,7 +54,9 @@ enum MediaControl {
   /// seconds. `microphone` is the identifier of the device that recorded.
   ///
   /// A Bluetooth headset plays in call quality while its microphone is open, and macOS
-  /// leaves it there for two seconds after. Media resumed before it is out sounds flat.
+  /// leaves it there for two seconds after. Asked for its best quality, it leaves at once,
+  /// but plays nothing for about a second more, while its link comes back. Media resumed
+  /// before then is cut or flat, so this returns once the headset plays again.
   static func soundIsBack(microphone: String?) async {
     let input = microphone.flatMap(AudioDevice.withID) ?? defaultInput()
     let startedAt = ContinuousClock.now
@@ -69,6 +73,9 @@ enum MediaControl {
         break
       }
       guard (try? await Task.sleep(for: .milliseconds(25))) != nil else { return }
+    }
+    if asked, !Task.isCancelled {
+      await Silence.play(within: .seconds(5) - (ContinuousClock.now - startedAt))
     }
     let waited = Int((ContinuousClock.now - startedAt) / .milliseconds(1))
     Log("media").debug("sound back", ["wait_ms": waited, "asked": asked])
@@ -169,4 +176,72 @@ enum MediaControl {
     else { return nil }
     return unsafeBitCast(symbol, to: SendCommand.self)
   }()
+}
+
+/// A moment of silence played through the device that plays sound, to tell when it plays:
+/// starting a sound waits for the device, about a second for a Bluetooth headset that just
+/// left call quality.
+private final class Silence: @unchecked Sendable {
+  private static let format = AudioStreamBasicDescription(
+    mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+    mFormatFlags: kLinearPCMFormatFlagIsFloat | kLinearPCMFormatFlagIsPacked,
+    mBytesPerPacket: 8, mFramesPerPacket: 1, mBytesPerFrame: 8, mChannelsPerFrame: 2,
+    mBitsPerChannel: 32, mReserved: 0)
+  /// 10 ms.
+  private static let bufferBytes = UInt32(480 * 8)
+
+  private let waiting = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(
+    initialState: nil)
+  private let played = DispatchSemaphore(value: 0)
+
+  /// Returns once the silence plays, after `limit`, or when the task is cancelled.
+  static func play(within limit: Duration) async {
+    let silence = Silence()
+    let limit = DispatchTimeInterval.milliseconds(max(Int(limit / .milliseconds(1)), 0))
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        silence.waiting.withLock { $0 = continuation }
+        DispatchQueue.global().asyncAfter(deadline: .now() + limit) { silence.finish() }
+        DispatchQueue.global(qos: .utility).async { silence.run(within: limit) }
+      }
+    } onCancel: {
+      silence.finish()
+    }
+  }
+
+  private func run(within limit: DispatchTimeInterval) {
+    var format = Self.format
+    var queue: AudioQueueRef?
+    guard
+      AudioQueueNewOutput(
+        &format,
+        { context, _, _ in
+          Unmanaged<Silence>.fromOpaque(context!).takeUnretainedValue().finish()
+        }, Unmanaged.passUnretained(self).toOpaque(), nil, nil, 0, &queue) == noErr,
+      let queue
+    else { return finish() }
+    defer { AudioQueueDispose(queue, true) }
+    for _ in 0..<2 {
+      var buffer: AudioQueueBufferRef?
+      guard AudioQueueAllocateBuffer(queue, Self.bufferBytes, &buffer) == noErr, let buffer
+      else { return finish() }
+      memset(buffer.pointee.mAudioData, 0, Int(Self.bufferBytes))
+      buffer.pointee.mAudioDataByteSize = Self.bufferBytes
+      AudioQueueEnqueueBuffer(queue, buffer, 0, nil)
+    }
+    // Starting waits for the device, and the first buffer played says it plays.
+    guard AudioQueueStart(queue, nil) == noErr else { return finish() }
+    _ = played.wait(timeout: .now() + limit)
+    AudioQueueStop(queue, true)
+  }
+
+  private func finish() {
+    let continuation = waiting.withLock { waiting in
+      defer { waiting = nil }
+      return waiting
+    }
+    guard let continuation else { return }
+    continuation.resume()
+    played.signal()
+  }
 }
