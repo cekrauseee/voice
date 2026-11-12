@@ -1,12 +1,13 @@
 // Builds the development app, runs it, and prints its log. Whenever what the app is built
 // from changes, it builds the app again and runs the new build.
 
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { createLogger, type Level, parseLine } from "@voice/log";
 import { bundle } from "./bundle.ts";
+import { quit } from "./quit.ts";
 import { root, variant } from "./variants.ts";
 
 const log = createLogger({ scope: "desktop" });
@@ -14,22 +15,6 @@ const { identifier, name } = variant("development");
 
 /** The `open` that waits for the running app to quit. */
 let running: ChildProcess | undefined;
-
-function isRunning(): boolean {
-  const answer = execFileSync("osascript", ["-e", `application id "${identifier}" is running`]);
-  return answer.toString().trim() === "true";
-}
-
-/** Quits the app, and waits until it is gone: opening it before that opens nothing. */
-function quit(): void {
-  try {
-    execFileSync("osascript", ["-e", `quit app id "${identifier}"`], { stdio: "ignore" });
-    let tries = 0;
-    while (isRunning() && tries < 100) tries++;
-  } catch {
-    // The app was not running.
-  }
-}
 
 /** Builds the app and runs the new build. A build that fails leaves the running app alone. */
 function run(): void {
@@ -45,7 +30,7 @@ function run(): void {
 
   // The app that quits now is the old build.
   running?.removeAllListeners("exit");
-  quit();
+  quit(identifier);
   log.info("running", { app: name, hint: "it lives in the menu bar" });
   const opened = spawn("open", ["-W", app], { stdio: "ignore" });
   opened.on("exit", () => {
@@ -102,7 +87,7 @@ watch(root, (_event, file) => {
 });
 
 function stop(code: number): never {
-  quit();
+  quit(identifier);
   stream.kill();
   process.exit(code);
 }

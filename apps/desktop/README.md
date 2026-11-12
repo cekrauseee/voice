@@ -6,19 +6,21 @@ The macOS menu bar app. It records while a shortcut says so, streams the audio t
 
 There are two builds of the app. macOS tells them apart, so each has its own permissions and settings, and both can be installed at once.
 
-|                 | Development                       | Production          |
-| --------------- | --------------------------------- | ------------------- |
-| Command         | `pnpm dev`                        | `pnpm build`        |
-| App             | `build/Voice (Development).app`   | `build/Voice.app`   |
-| Name            | Voice (Development)               | Voice               |
-| Identifier      | `eu.cekrause.voice.dev`           | `eu.cekrause.voice` |
-| Icon            | The waveform in amber, marked DEV | The waveform        |
-| Compiled        | For debugging                     | Optimized           |
-| In the menu bar | The waveform with a `DEV` mark    | The waveform        |
+|                 | Development                       | Production                       |
+| --------------- | --------------------------------- | -------------------------------- |
+| Command         | `pnpm dev`                        | `pnpm build`, `pnpm install-app` |
+| App             | `build/Voice (Development).app`   | `build/Voice.app`                |
+| Name            | Voice (Development)               | Voice                            |
+| Identifier      | `eu.cekrause.voice.dev`           | `eu.cekrause.voice`              |
+| Icon            | The waveform in amber, marked DEV | The waveform                     |
+| Compiled        | For debugging                     | Optimized                        |
+| In the menu bar | The waveform with a `DEV` mark    | The waveform                     |
 
 `pnpm dev` builds the development app, opens it, and prints its log. Whenever the sources change it builds the app again and opens the new build, so the app that runs is always the current code. A build that fails leaves the running app alone. The app has no Dock icon: look for the waveform in the menu bar. Start the server too, or run `pnpm dev` at the repository root for both.
 
-`pnpm build` only builds. `VERSION` sets the version of the app, which the release workflow takes from the tag.
+`pnpm build` builds the app and puts it in a disk image, `build/Voice.dmg`, with a link to Applications to drag it to. `VERSION` sets the version of the app, which the release workflow takes from the tag.
+
+`pnpm install-app` installs the production app on this Mac, or updates it, from the checkout. It builds the app and the disk image the way a release does, quits the app if it runs, copies the app from the image to `/Applications`, and opens it. The version is what `git describe` says of the checkout: `0.1.0` on the tag `v0.1.0`, `0.1.0-2-g1a2b3c4` two commits after it. Built here, the app is signed like a development build, so it keeps its permissions from one update to the next. Like a release, it needs [the server](../server/README.md) running.
 
 The app connects to `ws://127.0.0.1:8787`. To use a server elsewhere, with the identifier of the build:
 
@@ -188,6 +190,9 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them      |
 | `scripts/variants.ts`                                               | The names and identifiers of the two builds                      |
 | `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
+| `scripts/dmg.ts`                                                    | Builds the production app and its disk image                     |
+| `scripts/install.ts`                                                | Installs the production app in Applications, or updates it       |
+| `scripts/quit.ts`                                                   | Quits an app and waits until it is gone                          |
 | `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
 | `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |
 | `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples  |

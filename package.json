@@ -6,7 +6,8 @@
     "build": "turbo run build",
     "verify": "biome ci && turbo run check-types lint test",
     "format": "biome check --write && turbo run format",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "install-app": "pnpm --filter @voice/desktop run install-app"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
