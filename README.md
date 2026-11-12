@@ -44,13 +44,14 @@ The menu bar menu opens the app's window, with the past transcriptions, the stat
 
 ## Commands
 
-| Command       | What it does                                                        |
-| ------------- | ------------------------------------------------------------------- |
-| `pnpm dev`    | Runs the server and the app                                         |
-| `pnpm verify` | Checks formatting, lint, types, and tests. CI runs the same command |
-| `pnpm format` | Formats the TypeScript and Swift sources                            |
-| `pnpm test`   | Runs the tests                                                      |
-| `pnpm build`  | Builds `apps/desktop/build/Voice.app` for release                   |
+| Command            | What it does                                                        |
+| ------------------ | ------------------------------------------------------------------- |
+| `pnpm dev`         | Runs the server and the app                                         |
+| `pnpm verify`      | Checks formatting, lint, types, and tests. CI runs the same command |
+| `pnpm format`      | Formats the TypeScript and Swift sources                            |
+| `pnpm test`        | Runs the tests                                                      |
+| `pnpm build`       | Builds the app into a disk image, `apps/desktop/build/Voice.dmg`    |
+| `pnpm install-app` | Installs the app in Applications, or updates it, from this checkout |
 
 Add `--filter @voice/server` or `--filter @voice/desktop` to `pnpm dev` or `pnpm test` to run one app.
 

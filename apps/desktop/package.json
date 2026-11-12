@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.ts",
-    "build": "node scripts/bundle.ts production",
+    "build": "node scripts/dmg.ts",
+    "install-app": "node scripts/install.ts",
     "reset": "node scripts/reset.ts",
     "seed": "node scripts/seed.ts",
     "check-types": "tsc --noEmit",

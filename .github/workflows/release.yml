@@ -20,9 +20,14 @@ jobs:
         run: pnpm build
         env:
           VERSION: ${{ github.ref_name }}
+      # A release created on GitHub, rather than by pushing a tag, already exists: it gets the image.
       - name: Publish the release
         run: |
-          ditto -c -k --keepParent apps/desktop/build/Voice.app Voice.zip
-          gh release create "$GITHUB_REF_NAME" Voice.zip --title "$GITHUB_REF_NAME" --generate-notes
+          image=apps/desktop/build/Voice.dmg
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$image" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$image" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
