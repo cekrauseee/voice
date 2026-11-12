@@ -1,6 +1,7 @@
-/// Pauses the media playing on the Mac for the length of a dictation, and resumes it after.
+/// Pauses the media playing on the Mac while a dictation records. After the recording it
+/// gets sound back to normal, and resumes the media.
 ///
-/// It resumes only what it paused: media that was not playing when the dictation started
+/// It resumes only what it paused: media that was not playing when the recording started
 /// is left alone.
 @MainActor
 public final class MediaPause {
@@ -14,15 +15,15 @@ public final class MediaPause {
   private let soundIsBack: @Sendable () async -> Void
   /// The question of whether media is playing, while it is still out.
   private var check: Task<Void, Never>?
-  /// The wait for sound to be back, before the media resumes.
+  /// Sound getting back to normal, before the media resumes.
   private var resuming: Task<Void, Never>?
   private var didPause = false
 
   /// - Parameters:
   ///   - isPlaying: Whether an app is playing media now.
   ///   - send: Sends a command to the app playing media.
-  ///   - soundIsBack: Returns once sound plays normally again after a recording. A
-  ///     Bluetooth headset takes a moment to leave call quality.
+  ///   - soundIsBack: Gets sound back to normal after a recording, and returns once it
+  ///     is. A Bluetooth headset has to leave call quality.
   public init(
     isPlaying: @escaping @Sendable () async -> Bool,
     send: @escaping (Command) -> Void,
@@ -50,16 +51,18 @@ public final class MediaPause {
     }
   }
 
-  /// The dictation is over: resume the media, if this paused it.
+  /// The recording is over: get sound back to normal, then resume the media, if this
+  /// paused it.
   public func resume() {
-    // A dictation that ends before the answer came has paused nothing.
+    // A recording that ends before the answer came has paused nothing.
     check?.cancel()
     check = nil
-    guard didPause, resuming == nil else { return }
+    guard resuming == nil else { return }
     resuming = Task { [soundIsBack] in
       await soundIsBack()
       guard !Task.isCancelled else { return }
       resuming = nil
+      guard didPause else { return }
       didPause = false
       send(.play)
     }

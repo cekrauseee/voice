@@ -117,9 +117,9 @@ Settings:
 
 The microphone is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
 
-This matters with a Bluetooth headset used as the microphone. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. It goes back to normal a few seconds after the recording ends.
+This matters with a Bluetooth headset used as the microphone. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It is back to normal about a third of a second later. While another app records, the headset is left alone.
 
-While a dictation runs, the media playing on the Mac is paused, and it resumes when the dictation is over. With a Bluetooth headset it resumes once the headset is out of call quality. Media that was not playing is left alone. This works with apps that macOS shows in Now Playing, such as music players and browsers. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
+While a dictation records, the media playing on the Mac is paused, and it resumes when the recording ends, without waiting for the text. With a Bluetooth headset it resumes once the headset is out of call quality, and plays again about a second after the recording ends: the headset and the player both need a moment. Media that was not playing is left alone. This works with apps that macOS shows in Now Playing, such as music players and browsers. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
 
 ## The pill
 

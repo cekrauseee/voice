@@ -11,6 +11,8 @@ private final class FakeMedia {
   /// When set, sound is not back after a recording until `release`.
   var holdsSound = false
   private(set) var commands: [MediaPause.Command] = []
+  /// How many times sound was asked to get back to normal.
+  private(set) var soundReturns = 0
   private var waiting: [CheckedContinuation<Void, Never>] = []
 
   init(isPlaying: Bool) {
@@ -25,6 +27,7 @@ private final class FakeMedia {
       },
       send: { self.commands.append($0) },
       soundIsBack: { @MainActor in
+        self.soundReturns += 1
         if self.holdsSound { await self.hold() }
       })
   }
@@ -68,6 +71,17 @@ private func settle() async {
     await settle()
     pause.resume()
     await settle()
+    #expect(media.commands == [])
+  }
+
+  @Test func getsSoundBackAlsoWhenNothingWasPlaying() async {
+    let media = FakeMedia(isPlaying: false)
+    let pause = media.makePause()
+    pause.pause()
+    await settle()
+    pause.resume()
+    await settle()
+    #expect(media.soundReturns == 1)
     #expect(media.commands == [])
   }
 

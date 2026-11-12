@@ -140,17 +140,18 @@ final class DictationController {
   }
 
   private func stop() {
-    capture.stop()
+    release()
     pill = .finishing
   }
 
   private func cancel() {
-    audio?.cancel()
-    capture.stop()
+    if isRecording {
+      audio?.cancel()
+      release()
+    }
     session?.cancel()
     session = nil
     pill = .hidden
-    media.resume()
     log.info("cancelled", ["duration_ms": elapsed])
   }
 
@@ -158,16 +159,21 @@ final class DictationController {
   private func finish(_ error: DictationError?) {
     if isRecording {
       audio?.cancel()
-      capture.stop()
+      release()
     }
     session = nil
-    media.resume()
     if let error {
       fail(error)
     } else {
       pill = .hidden
       log.info("finished", ["duration_ms": elapsed, "chars": transcript.text.count])
     }
+  }
+
+  /// Closes the microphone and gives the sound back. The media does not wait for the text.
+  private func release() {
+    capture.stop()
+    media.resume()
   }
 
   /// Milliseconds since the dictation started.
