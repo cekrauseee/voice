@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { audio, FakeRefiner, FakeTranscriber, settle, silent } from "./fixtures.ts";
+import { audio, FakeRefiner, FakeTranscriber, prices, settle, silent, unused } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
 import { DictationSession } from "./session.ts";
 
@@ -12,6 +12,7 @@ function setup() {
   const session = new DictationSession({
     createTranscriber: transcriber.create,
     createRefiner: refiner.create,
+    prices,
     send: (message) => messages.push(message),
     end: () => {
       ended = true;
@@ -32,14 +33,19 @@ test("a dictation passes on the text heard, then ends with the refined text", as
   transcriber.events.final(" hello world ");
   assert.deepEqual(refiner.calls[0]?.input, { text: "hello world", instructions: "" });
 
-  refiner.calls[0]?.resolve("Hello, world.");
+  refiner.calls[0]?.resolve("Hello, world.", [3, 2]);
   await settle();
 
   assert.deepEqual(messages, [
     { type: "ready" },
     { type: "delta", text: "hello" },
     { type: "delta", text: " world" },
-    { type: "done", text: "Hello, world." },
+    {
+      type: "done",
+      text: "Hello, world.",
+      // Half a second of audio at a cent a second, 3 tokens read and 2 written.
+      usage: { audio_seconds: 0.5, input_tokens: 3, output_tokens: 2, cost: 0.012 },
+    },
   ]);
   assert.ok(ended());
   assert.ok(transcriber.closed);
@@ -78,7 +84,7 @@ test("a failed refinement falls back to the transcript", async () => {
   transcriber.events.final("keep me");
   refiner.calls[0]?.reject(new Error("boom"));
   await settle();
-  assert.deepEqual(messages, [{ type: "done", text: "keep me" }]);
+  assert.deepEqual(messages, [{ type: "done", text: "keep me", usage: unused }]);
 });
 
 test("an empty refinement falls back to the transcript", async () => {
@@ -86,9 +92,16 @@ test("an empty refinement falls back to the transcript", async () => {
   session.start("");
   session.stop();
   transcriber.events.final("keep me");
-  refiner.calls[0]?.resolve("");
+  refiner.calls[0]?.resolve("", [4, 0]);
   await settle();
-  assert.deepEqual(messages, [{ type: "done", text: "keep me" }]);
+  // The tokens it read were paid for, so they are counted.
+  assert.deepEqual(messages, [
+    {
+      type: "done",
+      text: "keep me",
+      usage: { audio_seconds: 0, input_tokens: 4, output_tokens: 0, cost: 0.004 },
+    },
+  ]);
 });
 
 test("a dictation without words ends without refining", async () => {
@@ -98,7 +111,13 @@ test("a dictation without words ends without refining", async () => {
   session.stop();
   transcriber.events.final(" ");
   await settle();
-  assert.deepEqual(messages, [{ type: "done", text: "" }]);
+  assert.deepEqual(messages, [
+    {
+      type: "done",
+      text: "",
+      usage: { audio_seconds: 1, input_tokens: 0, output_tokens: 0, cost: 0.01 },
+    },
+  ]);
   assert.equal(refiner.calls.length, 0);
   assert.ok(ended());
 });
@@ -118,7 +137,7 @@ test("a transcript that does not complete is replaced by the text heard", async 
   transcriber.events.delta(" later");
   refiner.calls[0]?.resolve("So far, so good.");
   await settle();
-  assert.deepEqual(messages.slice(3), [{ type: "done", text: "So far, so good." }]);
+  assert.deepEqual(messages.slice(3), [{ type: "done", text: "So far, so good.", usage: unused }]);
   assert.equal(refiner.calls.length, 1);
 });
 
@@ -168,7 +187,10 @@ test("a speaker who stops before transcription is ready is waited for", async (t
   transcriber.events.final("made it");
   refiner.calls[0]?.resolve("Made it.");
   await settle();
-  assert.deepEqual(messages, [{ type: "ready" }, { type: "done", text: "Made it." }]);
+  assert.deepEqual(messages, [
+    { type: "ready" },
+    { type: "done", text: "Made it.", usage: { ...unused, audio_seconds: 1, cost: 0.01 } },
+  ]);
 });
 
 test("transcription that does not get ready times out", (t) => {
@@ -206,7 +228,7 @@ test("a transcription error after the transcript is complete changes nothing", a
   transcriber.events.error(new Error("connection closed"));
   refiner.calls[0]?.resolve("Text.");
   await settle();
-  assert.deepEqual(messages, [{ type: "done", text: "Text." }]);
+  assert.deepEqual(messages, [{ type: "done", text: "Text.", usage: unused }]);
 });
 
 test("audio or stop before start, or a second start, is rejected", () => {

@@ -7,7 +7,16 @@ import Testing
   @Test func decodesEveryMessage() {
     #expect(ServerMessage(json: #"{"type":"ready"}"#) == .ready)
     #expect(ServerMessage(json: #"{"type":"delta","text":"hi"}"#) == .delta(text: "hi"))
-    #expect(ServerMessage(json: #"{"type":"done","text":""}"#) == .done(text: ""))
+    #expect(ServerMessage(json: #"{"type":"done","text":""}"#) == .done(text: "", usage: Usage()))
+    #expect(
+      ServerMessage(
+        json: """
+          {"type":"done","text":"Hi.","usage":\
+          {"audio_seconds":2.5,"input_tokens":210,"output_tokens":4,"cost":0.000731}}
+          """)
+        == .done(
+          text: "Hi.",
+          usage: Usage(audioSeconds: 2.5, inputTokens: 210, outputTokens: 4, cost: 0.000731)))
     #expect(
       ServerMessage(json: #"{"type":"error","code":"timeout","message":"Transcription timed out"}"#)
         == .error(code: "timeout"))
@@ -46,7 +55,7 @@ import Testing
   @Test func doneReplacesTheDraftWithTheRefinedText() {
     var transcript = Transcript()
     transcript.apply(.delta(text: "hello world"))
-    transcript.apply(.done(text: "Hello, world."))
+    transcript.apply(.done(text: "Hello, world.", usage: Usage()))
     #expect(transcript.text == "Hello, world.")
     #expect(transcript.isRefined)
     #expect(transcript.stream.pieces.isEmpty)

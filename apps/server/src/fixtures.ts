@@ -1,6 +1,6 @@
 import { createLogger } from "@voice/log";
-import { SAMPLE_RATE } from "./protocol.ts";
-import type { CreateRefiner, RefineInput } from "./refiner.ts";
+import { type Prices, SAMPLE_RATE, type Usage } from "./protocol.ts";
+import type { CreateRefiner, RefineInput, Refinement } from "./refiner.ts";
 import type { CreateTranscriber, TranscriberEvents } from "./transcriber.ts";
 
 /** Audio of a given length. */
@@ -36,7 +36,8 @@ export class FakeRefiner {
   readonly calls: {
     input: RefineInput;
     signal: AbortSignal;
-    resolve(text: string): void;
+    /** Answers with the text, and with the tokens it took: what it read, what it wrote. */
+    resolve(text: string, tokens?: [input: number, output: number]): void;
     reject(error: Error): void;
   }[] = [];
   created = 0;
@@ -46,8 +47,14 @@ export class FakeRefiner {
     this.created += 1;
     return {
       refine: (input, signal) => {
-        const { promise, resolve, reject } = Promise.withResolvers<string>();
-        this.calls.push({ input, signal, resolve, reject });
+        const { promise, resolve, reject } = Promise.withResolvers<Refinement>();
+        this.calls.push({
+          input,
+          signal,
+          resolve: (text, [inputTokens, outputTokens] = [0, 0]) =>
+            resolve({ text, inputTokens, outputTokens }),
+          reject,
+        });
         return promise;
       },
       close: () => {
@@ -56,6 +63,12 @@ export class FakeRefiner {
     };
   };
 }
+
+/** Prices that make round numbers: a cent a second, and a dollar or two a thousand tokens. */
+export const prices: Prices = { transcribeMinute: 0.6, refineInput: 1000, refineOutput: 2000 };
+
+/** A dictation that used nothing. */
+export const unused: Usage = { audio_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0 };
 
 /** Lets pending promise callbacks run. */
 export function settle(): Promise<void> {

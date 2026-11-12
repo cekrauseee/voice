@@ -112,3 +112,4 @@ The development build uses the subsystem `eu.cekrause.voice.dev`.
 | `dictation`   | app     | Each dictation: started, finished, cancelled, failed                   |
 | `history`     | app     | Loading, saving, and pruning the past transcriptions, never their text |
 | `retry`       | app     | Transcribing a failed dictation again                                  |
+| `statistics`  | app     | Loading and saving the figures of what was dictated                    |

@@ -148,7 +148,7 @@ public struct History: Codable, Equatable, Sendable {
 extension Transcription {
   /// How many words the text has.
   public var words: Int {
-    text.split(whereSeparator: \.isWhitespace).count
+    text.wordCount
   }
 
   /// The duration as minutes and seconds, such as `1:05`.

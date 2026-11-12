@@ -10,11 +10,13 @@ final class Retry {
 
   @ObservationIgnored private let settings: Settings
   @ObservationIgnored private let history: HistoryStore
+  @ObservationIgnored private let statistics: StatisticsStore
   @ObservationIgnored private let log = Log("retry")
 
-  init(settings: Settings, history: HistoryStore) {
+  init(settings: Settings, history: HistoryStore, statistics: StatisticsStore) {
     self.settings = settings
     self.history = history
+    self.statistics = statistics
   }
 
   /// Sends the recording of a transcription to the server again. When text comes back,
@@ -28,7 +30,10 @@ final class Retry {
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions)
-    session.onText = { [history, log] text, error in
+    session.onText = { [weak session, history, statistics, log] text, error in
+      if let session, let usage = session.usage {
+        statistics.record(text: text, seconds: session.recorded, usage: usage)
+      }
       if error == nil, !text.isEmpty {
         history.resolve(id, text: text)
         log.info("finished", ["chars": text.count])

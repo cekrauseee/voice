@@ -6,6 +6,7 @@ import VoiceCore
 /// A section of the app's window.
 enum AppSection: String, CaseIterable, Identifiable {
   case transcriptions
+  case statistics
   case settings
 
   var id: Self { self }
@@ -13,6 +14,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .transcriptions: "Transcriptions"
+    case .statistics: "Statistics"
     case .settings: "Settings"
     }
   }
@@ -20,6 +22,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .transcriptions: "text.quote"
+    case .statistics: "chart.bar"
     case .settings: "gearshape"
     }
   }
@@ -44,12 +47,15 @@ final class Navigation {
 struct MainView: View {
   let navigation: Navigation
   let history: HistoryStore
+  let statistics: StatisticsStore
   let retry: Retry
   @Bindable var settings: Settings
 
   @Environment(\.windowButtonsWidth) private var windowButtonsWidth
   @State private var didCopy = false
   @State private var isDeleting = false
+  /// The period the statistics are shown for.
+  @State private var period = Statistics.Period.week
 
   var body: some View {
     GeometryReader { window in
@@ -64,6 +70,8 @@ struct MainView: View {
           Group {
             switch navigation.section {
             case .transcriptions: transcriptions
+            case .statistics:
+              StatisticsView(statistics: statistics.statistics, period: period)
             case .settings: SettingsView(settings: settings)
             }
           }
@@ -113,7 +121,8 @@ struct MainView: View {
   }
 
   /// The button that folds the sidebar, then the name of the section, or the way back
-  /// from a transcription and what can be done with it.
+  /// from a transcription and what can be done with it. The statistics have their period
+  /// here.
   private var header: some View {
     HStack(spacing: Design.small) {
       // Buttons that are icons stand close together, as one group.
@@ -133,6 +142,13 @@ struct MainView: View {
       Text(open?.date.dayAndTime ?? navigation.section.title)
         .font(.voiceTitle)
       Spacer(minLength: 0)
+      if navigation.section == .statistics {
+        Segmented(
+          options: Statistics.Period.allCases.map { ($0, $0.title) }, selection: $period
+        )
+        // Its edge is the edge of the page under it.
+        .padding(.trailing, Design.wide - Design.small)
+      }
       if let open {
         HStack(spacing: 2) {
           if !open.text.isEmpty {

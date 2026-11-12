@@ -8,10 +8,17 @@ export interface RefineInput {
   instructions: string;
 }
 
+/** The rewritten text, and the tokens it took. */
+export interface Refinement {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /** Rewrites the transcript of one dictation. */
 export interface Refiner {
   /** Resolves with the rewritten text. Rejects when the model fails or stops answering. */
-  refine(input: RefineInput, signal: AbortSignal): Promise<string>;
+  refine(input: RefineInput, signal: AbortSignal): Promise<Refinement>;
   close(): void;
 }
 
@@ -55,11 +62,11 @@ export function createOpenAIRefiner(
   return () => {
     let socket: ResponsesWS | undefined;
     // The request in progress: how to end it, and the text received so far.
-    let settle: ((result: string | Error) => void) | undefined;
+    let settle: ((result: Refinement | Error) => void) | undefined;
     let output = "";
     let stall: NodeJS.Timeout | undefined;
 
-    const finish = (result: string | Error) => {
+    const finish = (result: Refinement | Error) => {
       clearTimeout(stall);
       settle?.(result);
       settle = undefined;
@@ -83,7 +90,10 @@ export function createOpenAIRefiner(
       ws.on("response.output_text.delta", (event) => {
         output += event.delta;
       });
-      ws.on("response.completed", () => finish(output));
+      ws.on("response.completed", (event) => {
+        const { input_tokens = 0, output_tokens = 0 } = event.response.usage ?? {};
+        finish({ text: output.trim(), inputTokens: input_tokens, outputTokens: output_tokens });
+      });
       ws.on("response.incomplete", () => finish(new Error("Refinement incomplete")));
       ws.on("response.failed", (event) => {
         finish(new Error(event.response.error?.message ?? "Refinement failed"));
@@ -104,8 +114,8 @@ export function createOpenAIRefiner(
           signal.addEventListener("abort", abort, { once: true });
           settle = (result) => {
             signal.removeEventListener("abort", abort);
-            if (typeof result === "string") resolve(result.trim());
-            else reject(result);
+            if (result instanceof Error) reject(result);
+            else resolve(result);
           };
           output = "";
           // The connection opened at the start may be gone after a long dictation.

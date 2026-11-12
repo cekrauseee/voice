@@ -72,9 +72,10 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 ## The window
 
-The app lives in the menu bar. Its menu opens the app's window on one of its two sections:
+The app lives in the menu bar. Its menu opens the app's window on one of its three sections:
 
 - **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
+- **Statistics**: how much was dictated in the last 7 days, the last 30 days, or all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day, or of each month once there are more than 90 days. Pointing at a bar shows its day and its words.
 - **Settings**: the settings below.
 
 The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
@@ -91,13 +92,15 @@ A dictation that fails is kept too, marked as failed, with whatever words came b
 
 Recordings take about 3 MB a minute. The History setting deletes transcriptions and their recordings by themselves after 1 day, 7 days, or 30 days, or never, which is the default. The app does that itself, when it starts, when the setting changes, and every hour while it runs.
 
-To work on the window without dictating first, fill the history of the development app with sample transcriptions:
+The statistics are kept in `statistics.json`, beside the history. They are figures by day, never what was said. Each dictation that ends with its text is counted when it does, and so is a failed one that is tried again, so deleting a transcription, by hand or by the History setting, does not change them. The words per minute are the words typed over the time recorded. The tokens and the cost come from the server with each text. The cost is the server's estimate, from the prices in [its configuration](../server/README.md#configuration). A dictation that fails is not counted, though OpenAI may have charged for its audio.
+
+To work on the window without dictating first, fill the history and the statistics of the development app with samples:
 
 ```sh
 pnpm seed
 ```
 
-Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The app reads its history when it starts, so a running app is quit and opened again.
+Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The statistics get sample figures for the days of the last 30 that have none: a day with figures is left as it is, so the samples stand beside what was really dictated. Deleting `statistics.json` removes them all. The app reads both files when it starts, so a running app is quit and opened again.
 
 Settings:
 
@@ -150,7 +153,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, the history, the statistics, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -164,6 +167,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one             |
 | `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
 | `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
+| `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |
@@ -182,4 +186,4 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
 | `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
 | `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |
-| `scripts/seed.ts`                                                   | Fills the development app's history with samples                 |
+| `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples  |

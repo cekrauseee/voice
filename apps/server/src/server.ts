@@ -1,7 +1,7 @@
 import { createServer as createHttpServer, type Server } from "node:http";
 import type { Logger } from "@voice/log";
 import { type RawData, WebSocketServer } from "ws";
-import { DICTATION_PATH, parseClientMessage, type ServerMessage } from "./protocol.ts";
+import { DICTATION_PATH, type Prices, parseClientMessage, type ServerMessage } from "./protocol.ts";
 import type { CreateRefiner } from "./refiner.ts";
 import { DictationSession } from "./session.ts";
 import type { CreateTranscriber } from "./transcriber.ts";
@@ -9,6 +9,7 @@ import type { CreateTranscriber } from "./transcriber.ts";
 export interface ServerDeps {
   createTranscriber: CreateTranscriber;
   createRefiner: CreateRefiner;
+  prices: Prices;
   log: Logger;
 }
 
