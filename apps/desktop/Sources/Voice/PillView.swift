@@ -12,6 +12,8 @@ struct PillView: View {
   let transcript: Transcript
   let mode: RecordingMode
   let toggle: Shortcut
+  /// The edge of the screen the pill is at. It grows out of that edge, and away from it.
+  let edge: VerticalEdge
 
   @Environment(\.colorScheme) private var colorScheme
 
@@ -23,21 +25,25 @@ struct PillView: View {
     removal: .opacity.animation(.easeOut(duration: 0.12)))
 
   var body: some View {
-    ZStack(alignment: .bottom) {
+    ZStack(alignment: alignment) {
       if state != .hidden {
         // One container around whichever content is showing, so the surface is a single
         // view that resizes, instead of each content bringing its own.
-        ZStack(alignment: .bottom) { content }
+        ZStack(alignment: alignment) { content }
           .background(colorScheme == .dark ? Color(white: 0.12) : .white)
           .clipShape(shape)
           .overlay(shape.strokeBorder(.primary.opacity(0.12)))
           .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-          .transition(.pill)
+          .transition(.pill(from: edge))
       }
     }
     .animation(Self.morph, value: state)
     .animation(Self.morph, value: style)
     .animation(.smooth(duration: 0.3), value: transcript)
+  }
+
+  private var alignment: Alignment {
+    edge == .bottom ? .bottom : .top
   }
 
   private var shape: RoundedRectangle {
@@ -120,20 +126,23 @@ private struct Hint: View {
   }
 }
 
-/// How the pill comes and goes: it grows out of its bottom edge, coming into focus.
+/// How the pill comes and goes: it grows out of the edge it is at, coming into focus.
 private struct PillPresence: ViewModifier {
   let isPresent: Bool
+  let edge: VerticalEdge
 
   func body(content: Content) -> some View {
     content
-      .scaleEffect(isPresent ? 1 : 0.55, anchor: .bottom)
+      .scaleEffect(isPresent ? 1 : 0.55, anchor: edge == .bottom ? .bottom : .top)
       .blur(radius: isPresent ? 0 : 6)
       .opacity(isPresent ? 1 : 0)
   }
 }
 
 extension AnyTransition {
-  fileprivate static var pill: AnyTransition {
-    .modifier(active: PillPresence(isPresent: false), identity: PillPresence(isPresent: true))
+  fileprivate static func pill(from edge: VerticalEdge) -> AnyTransition {
+    .modifier(
+      active: PillPresence(isPresent: false, edge: edge),
+      identity: PillPresence(isPresent: true, edge: edge))
   }
 }

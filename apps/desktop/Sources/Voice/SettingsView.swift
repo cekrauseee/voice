@@ -35,6 +35,11 @@ struct SettingsView: View {
             Segmented(
               options: PillStyle.allCases.map { ($0, $0.title) }, selection: $settings.pillStyle)
           }
+          SettingRow(title: "Pill position") {
+            Segmented(
+              options: PillPosition.allCases.map { ($0, $0.title) },
+              selection: $settings.pillPosition)
+          }
         }
 
         group("Shortcuts") {

@@ -131,6 +131,7 @@ Settings:
 - **Microphone**: the microphone to dictate with, chosen from a menu of the ones connected. System default, the default, follows the input chosen in macOS. A chosen microphone that is disconnected stays chosen: until it is connected again, the system default records.
 - **Theme**: Auto, Light, or Dark.
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
+- **Pill position**: Bottom, the default, shows the pill at the bottom of the screen, above the Dock. Top shows it just under the menu bar, and under the notch on a Mac that has one. Both styles go in either place.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
 - **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
@@ -145,7 +146,7 @@ While a dictation records, the media playing on the Mac is paused, and it resume
 
 ## The pill
 
-The pill is one surface that changes shape. It grows out of its bottom edge when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
+The pill shows at the center of the screen the pointer is on, at the bottom or at the top, as the settings say. It is one surface that changes shape. It grows out of the edge of the screen it is at when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
 
 In the detailed style the pill shows the last three lines of the text as it is recognized. Each new word comes into focus where it lands. When the text outgrows three lines, all of it moves up a line: the oldest line goes out of focus through the top while the new one comes in at the bottom. With Reduce Motion on, or on macOS 14, the words just appear.
 

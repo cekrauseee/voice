@@ -6,10 +6,12 @@ import VoiceCore
 @MainActor
 final class PillPanel {
   private let controller: DictationController
+  private let settings: Settings
   private let panel: NSPanel
 
   init(controller: DictationController, settings: Settings) {
     self.controller = controller
+    self.settings = settings
     panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 440, height: 240),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -36,11 +38,18 @@ final class PillPanel {
 
   private func update(_ isVisible: Bool) {
     if isVisible {
-      // Bottom center of the screen the pointer is on.
+      // At the center of the screen the pointer is on, at the bottom or at the top.
       let pointer = NSEvent.mouseLocation
-      let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
-      if let area = screen?.visibleFrame {
-        panel.setFrameOrigin(NSPoint(x: area.midX - panel.frame.width / 2, y: area.minY))
+      if let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? .main {
+        let area = screen.visibleFrame
+        let y =
+          switch settings.pillPosition {
+          case .bottom: area.minY
+          // Under the menu bar, and under the notch also when the menu bar is hidden.
+          case .top:
+            min(area.maxY, screen.frame.maxY - screen.safeAreaInsets.top) - panel.frame.height
+          }
+        panel.setFrameOrigin(NSPoint(x: area.midX - panel.frame.width / 2, y: y))
       }
       panel.orderFrontRegardless()
     } else {
@@ -60,9 +69,14 @@ private struct PillContainer: View {
   var body: some View {
     PillView(
       state: controller.pill, style: settings.pillStyle, feed: controller.levels,
-      transcript: controller.transcript, mode: controller.mode, toggle: settings.toggle
+      transcript: controller.transcript, mode: controller.mode, toggle: settings.toggle,
+      edge: edge
     )
-    .padding(.bottom, 24)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    .padding(edge == .bottom ? .bottom : .top, edge == .bottom ? 24 : 8)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .bottom ? .bottom : .top)
+  }
+
+  private var edge: VerticalEdge {
+    settings.pillPosition == .bottom ? .bottom : .top
   }
 }
