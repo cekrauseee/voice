@@ -22,6 +22,11 @@ final class Settings {
     didSet { defaults.set(instructions, forKey: "instructions") }
   }
 
+  /// How long a transcription and its recording are kept.
+  var retention: Retention {
+    didSet { defaults.set(retention.rawValue, forKey: "retention") }
+  }
+
   /// Whether the window's sidebar only shows icons.
   var isSidebarCollapsed: Bool {
     didSet { defaults.set(isSidebarCollapsed, forKey: "isSidebarCollapsed") }
@@ -47,6 +52,7 @@ final class Settings {
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
+    retention = defaults.string(forKey: "retention").flatMap(Retention.init) ?? .never
     isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     serverURL =

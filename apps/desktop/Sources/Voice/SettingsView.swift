@@ -6,12 +6,11 @@ struct SettingsView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: Design.loose) {
+      VStack(alignment: .leading, spacing: Design.wide) {
         group("Appearance") {
           SettingRow(title: "Theme") {
             Segmented(options: Theme.allCases.map { ($0, $0.title) }, selection: $settings.theme)
           }
-          Hairline()
           SettingRow(title: "Pill") {
             Segmented(
               options: PillStyle.allCases.map { ($0, $0.title) }, selection: $settings.pillStyle)
@@ -24,7 +23,6 @@ struct SettingsView: View {
               shortcut: $settings.pushToTalk, fallback: .defaultPushToTalk, taken: settings.toggle,
               isRecording: $settings.isRecordingShortcut)
           }
-          Hairline()
           SettingRow(title: "Toggle recording", detail: "Press to start, press again to stop") {
             ShortcutField(
               shortcut: $settings.toggle, fallback: .defaultToggle, taken: settings.pushToTalk,
@@ -32,39 +30,51 @@ struct SettingsView: View {
           }
         }
 
-        VStack(alignment: .leading, spacing: Design.small) {
-          group("Instructions") {
-            TextEditor(text: $settings.instructions)
-              .font(.voiceBody)
-              .scrollContentBackground(.hidden)
-              .frame(height: 64)
-              .overlay(alignment: .topLeading) {
-                if settings.instructions.isEmpty {
-                  Text("Write in a formal tone.")
-                    .font(.voiceBody)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 5)
-                    .allowsHitTesting(false)
-                }
+        group("Instructions") {
+          TextEditor(text: $settings.instructions)
+            .font(.voiceBody)
+            .scrollContentBackground(.hidden)
+            .frame(height: 64)
+            .overlay(alignment: .topLeading) {
+              if settings.instructions.isEmpty {
+                Text("Write in a formal tone.")
+                  .font(.voiceBody)
+                  .foregroundStyle(.tertiary)
+                  .padding(.leading, 5)
+                  .allowsHitTesting(false)
               }
-              .padding(.horizontal, Design.medium - 5)
-              .padding(.vertical, 10)
-          }
+            }
+            .padding(.horizontal, Design.small - 5)
+            .padding(.vertical, Design.small)
+            .background(
+              Design.surface,
+              in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+            )
+            .padding(.vertical, Design.tight)
           Text("How to write what you say. Added to the built-in instructions.")
             .font(.voiceCaption)
             .foregroundStyle(.secondary)
-            .padding(.leading, Design.medium)
+            .padding(.horizontal, Design.small)
+        }
+
+        group("History") {
+          SettingRow(
+            title: "Delete after", detail: "Transcriptions and their recordings stay on this Mac"
+          ) {
+            Segmented(
+              options: Retention.allCases.map { ($0, $0.title) }, selection: $settings.retention)
+          }
         }
       }
-      .padding(.horizontal, Design.wide)
-      .padding(.vertical, Design.large)
+      .padding(Design.medium)
     }
   }
 
   private func group(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
-    VStack(alignment: .leading, spacing: Design.small) {
+    VStack(alignment: .leading, spacing: 0) {
       GroupTitle(title: title)
-      Card(content: rows)
+        .padding(.bottom, Design.tight)
+      rows()
     }
   }
 }
@@ -89,7 +99,7 @@ private struct SettingRow<Control: View>: View {
       Spacer(minLength: Design.medium)
       control
     }
-    .padding(.horizontal, Design.medium)
-    .frame(minHeight: detail == nil ? 40 : 52)
+    .padding(.horizontal, Design.small)
+    .frame(minHeight: detail == nil ? 34 : 44)
   }
 }

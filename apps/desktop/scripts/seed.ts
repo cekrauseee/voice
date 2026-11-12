@@ -3,11 +3,21 @@
 //
 //   node scripts/seed.ts
 //
-// What the history already holds is kept, and running it again renews the samples. The
-// app reads its history when it starts, so a running app is quit first and opened again.
+// Some samples have a recording, spoken by a system voice, and one of them failed, to try
+// playing and trying again. What the history already holds is kept, and running it again
+// renews the samples. The app reads its history when it starts, so a running app is quit
+// first and opened again.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@voice/log";
@@ -19,39 +29,51 @@ interface Transcription {
   /** ISO 8601, without fractions of a second. */
   date: string;
   text: string;
-  /** What was heard, before it was refined into the text. */
-  heard?: string;
   /** The length of the recording, in seconds. */
   duration: number;
+  /** Whether the dictation failed, and can be tried again from its recording. */
+  failed?: boolean;
 }
 
-/**
- * A sample: how many days ago it was dictated, at what time, the text that was typed, and,
- * for some, what was heard before it was refined.
- */
-const samples: [daysAgo: number, time: string, text: string, heard?: string][] = [
+/** What makes a sample more than text: a recording, spoken by a system voice, or a failure. */
+interface Extra {
+  /** The system voice that speaks the recording. Without one the sample has no recording. */
+  voice?: string;
+  /** What the recording says, when the sample has no text of its own. */
+  spoken?: string;
+  failed?: boolean;
+}
+
+/** A sample: how many days ago it was dictated, at what time, and the text that was typed. */
+const samples: [daysAgo: number, time: string, text: string, extra?: Extra][] = [
   [
     0,
     "10:42",
     "Can you send me the draft before lunch? I'd like to read it once more.",
-    "can you send me the the draft before lunch um I'd like to read it once more",
+    { voice: "Samantha" },
   ],
   [
     0,
     "09:15",
     "Bom dia, pessoal. Hoje eu vou focar na janela do aplicativo: revisar o espaçamento da barra lateral, alinhar os títulos dos grupos com o texto das linhas e conferir o cursor em cada botão. Se sobrar tempo, começo a busca nas transcrições.",
+    { voice: "Luciana" },
   ],
-  [0, "08:03", "Remind me to renew the developer certificate on Friday."],
   [
-    1,
-    "17:48",
-    "Fechado, a gente se fala amanhã às dez.",
-    "fechado a gente se fala amanhã às nove não às dez",
+    0,
+    "08:03",
+    "",
+    {
+      voice: "Samantha",
+      spoken: "This one failed the first time. Open it and try again to see it transcribed.",
+      failed: true,
+    },
   ],
+  [1, "17:48", "Fechado, a gente se fala amanhã às dez."],
   [
     1,
     "14:20",
     "Thanks for the review. I agree with the first two points and I've already pushed the fixes. On the third one, I'd rather keep the timeout where it is until we have numbers from a real recording, because lowering it now would hide the slow cases instead of showing them.",
+    { voice: "Samantha" },
   ],
   [1, "11:06", "Add milk, coffee, and oats to the shopping list."],
   [2, "16:31", "O texto chega cerca de dois segundos depois de soltar a tecla."],
@@ -61,12 +83,7 @@ const samples: [daysAgo: number, time: string, text: string, heard?: string][] =
     "Notes from the call: the release goes out on Thursday, the server first and the app right after. Ana updates the documentation, and I write the announcement. We meet again on Monday to look at the first feedback.",
   ],
   [4, "18:12", "Não esquece de pausar a música antes de gravar."],
-  [
-    4,
-    "13:37",
-    "Let's move the standup to half past nine.",
-    "so let's move the stand up to to half past nine",
-  ],
+  [4, "13:37", "Let's move the standup to half past nine."],
   [
     6,
     "10:25",
@@ -88,25 +105,38 @@ function sampleId(index: number): string {
   return `5EED0000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 }
 
-function isSample(transcription: Transcription): boolean {
-  return transcription.id.startsWith("5EED0000-");
+function isSample(id: string): boolean {
+  return id.startsWith("5EED0000-");
 }
 
-function sample(index: number): Transcription {
-  const [daysAgo, time, text, heard] = samples[index] ?? [0, "00:00", ""];
+/**
+ * Speaks a text into a recording as the app keeps them: 16-bit mono PCM at 24 kHz in a WAV
+ * file. Returns its length in seconds, or nothing when the voice is not installed.
+ */
+function record(text: string, voice: string, file: string): number | undefined {
+  const spoken = spawnSync("say", ["-v", voice, "-o", file, "--data-format=LEI16@24000", text]);
+  if (spoken.status !== 0 || !existsSync(file)) return undefined;
+  return statSync(file).size / 2 / 24_000;
+}
+
+function sample(index: number, recordings: string): Transcription {
+  const [daysAgo, time, text, extra = {}] = samples[index] ?? [0, "00:00", ""];
   const [hours = 0, minutes = 0] = time.split(":").map(Number);
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
   date.setHours(hours, minutes, 0, 0);
   // A sample dated later today would look like it came from the future.
   if (date > new Date()) date.setDate(date.getDate() - 1);
+  const said = extra.spoken ?? text;
+  const recorded =
+    extra.voice && record(said, extra.voice, join(recordings, `${sampleId(index)}.wav`));
   return {
     id: sampleId(index),
     date: date.toISOString().replace(/\.\d+Z$/, "Z"),
     text,
-    ...(heard && { heard }),
     // About fourteen characters are spoken in a second.
-    duration: Math.max(1, Math.round(text.length / 14)),
+    duration: recorded || Math.max(1, Math.round(said.length / 14)),
+    ...(extra.failed && { failed: true }),
   };
 }
 
@@ -123,6 +153,7 @@ try {
   const { app, identifier, name } = variant("development");
   const directory = join(homedir(), "Library", "Application Support", identifier);
   const file = join(directory, "history.json");
+  const recordings = join(directory, "recordings");
 
   // The app writes what it has in memory over the file, so it must not be running.
   const wasRunning = isRunning(identifier);
@@ -133,13 +164,22 @@ try {
 
   const kept: Transcription[] = existsSync(file)
     ? JSON.parse(readFileSync(file, "utf8")).transcriptions.filter(
-        (transcription: Transcription) => !isSample(transcription),
+        (transcription: Transcription) => !isSample(transcription.id),
       )
     : [];
-  const transcriptions = [...kept, ...samples.map((_, index) => sample(index))];
-  mkdirSync(directory, { recursive: true });
+  mkdirSync(recordings, { recursive: true });
+  for (const recording of readdirSync(recordings)) {
+    if (isSample(recording)) rmSync(join(recordings, recording));
+  }
+  const transcriptions = [...kept, ...samples.map((_, index) => sample(index, recordings))];
   writeFileSync(file, `${JSON.stringify({ transcriptions }, null, 2)}\n`);
-  log.info("seeded", { app: name, samples: samples.length, kept: kept.length, file });
+  log.info("seeded", {
+    app: name,
+    samples: samples.length,
+    recordings: readdirSync(recordings).filter(isSample).length,
+    kept: kept.length,
+    file,
+  });
 
   if (wasRunning) {
     execFileSync("open", ["-g", app]);

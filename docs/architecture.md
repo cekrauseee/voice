@@ -15,7 +15,7 @@ Voice turns speech into typed text: the words appear as they are heard, and the 
                                                                    └──────────────────────┘
 ```
 
-The app owns the machine: the shortcuts, the microphone, the pill, typing, and the history of what was typed, which it keeps in a file on the Mac. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
+The app owns the machine: the shortcuts, the microphone, the pill, typing, and the history of what was dictated, which it keeps on the Mac with the recording of each dictation. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
 
 ## A dictation
 
@@ -52,6 +52,7 @@ The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a 
 - A transcription failure ends the dictation with an error. The app types the draft it has, so what was said is not lost, and shows the failure.
 - A transcription session that is not ready within 10 s of the start ends the dictation with a timeout. So does a dictation that hears nothing and gets no transcript within 5 s of the stop.
 - Cancelling types nothing.
+- A dictation that fails is kept in the app's history with its recording. The app can send that recording again, as a new dictation, at once instead of at the pace it was spoken.
 - The app shows a failure in the pill for three seconds: no microphone access, no microphone, server unreachable, or transcription failed.
 
 ## Why these choices

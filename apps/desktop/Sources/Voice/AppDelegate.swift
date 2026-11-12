@@ -9,12 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let history = HistoryStore()
   private let navigation = Navigation()
   private lazy var controller = DictationController(settings: settings, history: history)
+  private lazy var retry = Retry(settings: settings, history: history)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
     style: .main(size: NSSize(width: 680, height: 460)),
-    content: MainView(navigation: navigation, history: history, settings: settings))
+    content: MainView(
+      navigation: navigation, history: history, retry: retry, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(permissions: permissions, settings: settings) { [weak self] in
@@ -50,6 +52,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     pill.start()
+
+    // Transcriptions older than they are kept for are deleted when the app starts, when
+    // the setting changes, and every hour while the app runs.
+    track { [settings] in
+      settings.retention
+    } onChange: { [history] retention in
+      history.prune(retention)
+    }
+    Task { [settings, history] in
+      while true {
+        try? await Task.sleep(for: .seconds(3600))
+        history.prune(settings.retention)
+      }
+    }
 
     track { [permissions] in
       permissions.accessibility

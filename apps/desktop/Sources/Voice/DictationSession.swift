@@ -7,8 +7,13 @@ final class DictationSession {
   private let socket: URLSessionWebSocketTask
   private let instructions: String
   private(set) var transcript = Transcript()
-  /// How much audio was sent, in seconds.
-  private(set) var recorded = 0.0
+  /// The audio that was sent: 16-bit mono PCM at 24 kHz.
+  private(set) var recording = Data()
+
+  /// How long the recording is, in seconds.
+  var recorded: TimeInterval {
+    Double(recording.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
+  }
   private var isReady = false
   private var isOver = false
 
@@ -16,8 +21,8 @@ final class DictationSession {
   var onReady: () -> Void = {}
   /// The transcript changed.
   var onChange: () -> Void = {}
-  /// The text of the dictation, to be typed into the focused field.
-  var onText: (String) -> Void = { _ in }
+  /// The dictation has its text, which is empty when it failed before any word came back.
+  var onText: (String, DictationError?) -> Void = { _, _ in }
   /// The dictation is over, with the reason when it failed.
   var onEnd: (DictationError?) -> Void = { _ in }
 
@@ -33,7 +38,7 @@ final class DictationSession {
   }
 
   func send(_ pcm: Data) {
-    recorded += Double(pcm.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
+    recording.append(pcm)
     socket.send(.data(pcm)) { _ in }
   }
 
@@ -87,8 +92,7 @@ final class DictationSession {
     isOver = true
     socket.cancel(with: .normalClosure, reason: nil)
     // Refined when the dictation finished, as heard when it failed: what was said is not lost.
-    let text = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !text.isEmpty { onText(text) }
+    onText(transcript.text.trimmingCharacters(in: .whitespacesAndNewlines), error)
     onEnd(error)
   }
 }

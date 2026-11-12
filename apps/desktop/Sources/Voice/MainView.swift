@@ -44,6 +44,7 @@ final class Navigation {
 struct MainView: View {
   let navigation: Navigation
   let history: HistoryStore
+  let retry: Retry
   @Bindable var settings: Settings
 
   @Environment(\.windowButtonsWidth) private var windowButtonsWidth
@@ -56,16 +57,10 @@ struct MainView: View {
         // As tall as the title bar, which only holds the button that closes the window.
         header
           .frame(height: window.safeAreaInsets.top)
-        Rectangle()
-          .fill(Design.hairline)
-          .frame(height: 1)
         HStack(spacing: 0) {
           Sidebar(
             section: navigation.section, isCollapsed: settings.isSidebarCollapsed,
             select: navigation.show)
-          Rectangle()
-            .fill(Design.hairline)
-            .frame(width: 1)
           Group {
             switch navigation.section {
             case .transcriptions: transcriptions
@@ -103,10 +98,15 @@ struct MainView: View {
       .allowsHitTesting(open == nil)
       .accessibilityHidden(open != nil)
       if let open {
-        TranscriptionView(transcription: open)
-          .transition(
-            .asymmetric(
-              insertion: .offset(x: Design.large).combined(with: .opacity), removal: .identity))
+        TranscriptionView(
+          transcription: open, recording: history.recording(of: open.id),
+          isRetrying: retry.running.contains(open.id)
+        ) {
+          retry.start(open.id)
+        }
+        .transition(
+          .asymmetric(
+            insertion: .offset(x: Design.large).combined(with: .opacity), removal: .identity))
       }
     }
     .animation(Design.move, value: open?.id)
@@ -135,7 +135,9 @@ struct MainView: View {
       Spacer(minLength: 0)
       if let open {
         HStack(spacing: 2) {
-          IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") { copy(open) }
+          if !open.text.isEmpty {
+            IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") { copy(open) }
+          }
           IconButton(symbol: "trash", help: "Delete") { isDeleting = true }
             .confirmationDialog("Delete this transcription?", isPresented: $isDeleting) {
               Button("Delete", role: .destructive) { history.remove(open.id) }

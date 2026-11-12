@@ -87,11 +87,15 @@ final class DictationController {
       guard let self, let session, self.session === session else { return }
       transcript = session.transcript
     }
-    session.onText = { [weak session, inserter, history, log] text in
-      inserter.insert(text)
-      log.debug("typed", ["chars": text.count])
+    session.onText = { [weak session, inserter, history, log] text, error in
+      if !text.isEmpty {
+        inserter.insert(text)
+        log.debug("typed", ["chars": text.count])
+      }
+      guard let session else { return }
       history.add(
-        text: text, heard: session?.transcript.heard, duration: session?.recorded ?? 0)
+        text: text, duration: session.recorded, recording: session.recording,
+        failed: error != nil)
     }
     session.onEnd = { [weak self, weak session] error in
       guard let self, self.session === session else { return }

@@ -49,7 +49,6 @@ import Testing
     transcript.apply(.done(text: "Hello, world."))
     #expect(transcript.text == "Hello, world.")
     #expect(transcript.isRefined)
-    #expect(transcript.heard == "hello world")
     #expect(transcript.stream.pieces.isEmpty)
 
     transcript.apply(.delta(text: " late"))
@@ -85,6 +84,25 @@ import Testing
     #expect(TextStream.progress(since: start, at: start) == 0)
     #expect(TextStream.progress(since: start, at: start + TextStream.appearance / 2) == 0.5)
     #expect(TextStream.progress(since: start, at: start + 10) == 1)
+  }
+}
+
+@Suite struct WAVTests {
+  @Test func wrapsThePCMInAFileAndGivesItBack() {
+    let pcm = Data([1, 0, 2, 0, 3, 0])
+    let file = WAV.file(pcm: pcm)
+    #expect(file.count == 44 + pcm.count)
+    #expect(String(decoding: file.prefix(4), as: UTF8.self) == "RIFF")
+    #expect(String(decoding: file[8..<16], as: UTF8.self) == "WAVEfmt ")
+    // 24 kHz, in little-endian bytes.
+    #expect(Array(file[24..<28]) == [0xC0, 0x5D, 0, 0])
+    #expect(WAV.pcm(file: file) == pcm)
+    #expect(WAV.pcm(file: Data("not a file".utf8)) == nil)
+
+    // A file from another program can have other chunks before the samples.
+    let filler = Data("FLLR".utf8) + Data([3, 0, 0, 0, 9, 9, 9, 0])
+    let other = file.prefix(36) + filler + file.dropFirst(36)
+    #expect(WAV.pcm(file: Data(other)) == pcm)
   }
 }
 

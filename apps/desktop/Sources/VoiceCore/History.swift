@@ -1,25 +1,65 @@
 import Foundation
 
-/// A dictation that was typed, kept to be read again.
+/// A dictation, kept to be read again, and to be transcribed again when it failed.
 public struct Transcription: Codable, Equatable, Identifiable, Sendable {
   public let id: UUID
-  /// When it was typed.
+  /// When it was dictated.
   public let date: Date
-  public let text: String
-  /// What was heard, before it was refined into the text. Absent when it was not kept, or
-  /// when the words were typed as heard.
-  public let heard: String?
+  /// What was typed. Empty when the dictation failed before any word came back.
+  public var text: String
   /// How long the recording was, in seconds.
   public let duration: TimeInterval
+  /// Whether the dictation failed. Its recording can then be transcribed again.
+  public var failed: Bool
 
   public init(
-    id: UUID = UUID(), date: Date, text: String, heard: String? = nil, duration: TimeInterval
+    id: UUID = UUID(), date: Date, text: String, duration: TimeInterval, failed: Bool = false
   ) {
     self.id = id
     self.date = date
     self.text = text
-    self.heard = heard
     self.duration = duration
+    self.failed = failed
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    date = try values.decode(Date.self, forKey: .date)
+    text = try values.decode(String.self, forKey: .text)
+    duration = try values.decode(TimeInterval.self, forKey: .duration)
+    // A history written before failures were kept has none.
+    failed = try values.decodeIfPresent(Bool.self, forKey: .failed) ?? false
+  }
+}
+
+/// How long a transcription is kept before it is deleted by itself.
+public enum Retention: String, CaseIterable, Identifiable, Sendable {
+  case day
+  case week
+  case month
+  case never
+
+  public var id: Self { self }
+
+  public var title: String {
+    switch self {
+    case .day: "1 day"
+    case .week: "7 days"
+    case .month: "30 days"
+    case .never: "Never"
+    }
+  }
+
+  /// The moment before which a transcription is too old to keep, if any is.
+  public func cutoff(from now: Date) -> Date? {
+    let day = 24.0 * 60 * 60
+    switch self {
+    case .day: return now - day
+    case .week: return now - 7 * day
+    case .month: return now - 30 * day
+    case .never: return nil
+    }
   }
 }
 
@@ -59,15 +99,35 @@ public struct History: Codable, Equatable, Sendable {
     transcriptions.isEmpty
   }
 
-  /// Adds a transcription. One without words is not kept.
-  public mutating func add(_ transcription: Transcription) {
-    guard !transcription.text.allSatisfy(\.isWhitespace) else { return }
+  /// Adds a transcription. One without words is only kept when it failed, to be tried
+  /// again. Returns whether it was kept.
+  @discardableResult
+  public mutating func add(_ transcription: Transcription) -> Bool {
+    guard transcription.failed || !transcription.text.allSatisfy(\.isWhitespace) else {
+      return false
+    }
     let index = transcriptions.firstIndex { $0.date <= transcription.date } ?? transcriptions.count
     transcriptions.insert(transcription, at: index)
+    return true
   }
 
   public mutating func remove(_ id: Transcription.ID) {
     transcriptions.removeAll { $0.id == id }
+  }
+
+  /// Gives a transcription that failed the text it got on another try.
+  public mutating func resolve(_ id: Transcription.ID, text: String) {
+    guard let index = transcriptions.firstIndex(where: { $0.id == id }) else { return }
+    transcriptions[index].text = text
+    transcriptions[index].failed = false
+  }
+
+  /// Removes the transcriptions dictated before a moment. Returns the ones removed.
+  @discardableResult
+  public mutating func prune(before cutoff: Date) -> [Transcription.ID] {
+    let old = transcriptions.filter { $0.date < cutoff }.map(\.id)
+    transcriptions.removeAll { $0.date < cutoff }
+    return old
   }
 
   /// The transcriptions day by day, newest first.

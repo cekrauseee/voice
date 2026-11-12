@@ -52,21 +52,50 @@ import Testing
     #expect(days.map { $0.transcriptions.map(\.text) } == [["evening", "morning"], ["before"]])
   }
 
+  @Test func keepsAFailedTranscriptionWithoutWordsAndResolvesIt() {
+    let failed = Transcription(date: noon(day: 10), text: "", duration: 4, failed: true)
+    var history = History()
+    let keptFailed = history.add(failed)
+    let keptEmpty = history.add(Transcription(date: noon(day: 10), text: "", duration: 4))
+    #expect(keptFailed)
+    #expect(!keptEmpty)
+    history.resolve(failed.id, text: "At last.")
+    #expect(history.transcriptions.map(\.text) == ["At last."])
+    #expect(!history.transcriptions[0].failed)
+  }
+
+  @Test func prunesWhatIsOlderThanItIsKeptFor() {
+    let old = transcription("old", day: 2)
+    var history = History([old, transcription("recent", day: 11)])
+    let now = noon(day: 12)
+    #expect(Retention.never.cutoff(from: now) == nil)
+    let afterMonth = history.prune(before: Retention.month.cutoff(from: now)!)
+    #expect(afterMonth == [])
+    let afterWeek = history.prune(before: Retention.week.cutoff(from: now)!)
+    #expect(afterWeek == [old.id])
+    #expect(history.transcriptions.map(\.text) == ["recent"])
+    // The recent one was dictated a day before `now`, to the second.
+    let afterDay = history.prune(before: Retention.day.cutoff(from: now)!)
+    #expect(afterDay == [])
+    let anHourLater = history.prune(before: Retention.day.cutoff(from: now + 3600)!)
+    #expect(anHourLater.count == 1)
+  }
+
   @Test func survivesBeingWrittenAndRead() throws {
-    let heard = Transcription(date: noon(day: 12), text: "Three.", heard: "um three", duration: 1)
-    let history = History([transcription("one", day: 10), transcription("two", day: 11), heard])
+    let failed = Transcription(date: noon(day: 12), text: "", duration: 1, failed: true)
+    let history = History([transcription("one", day: 10), transcription("two", day: 11), failed])
     #expect(try History(data: history.data) == history)
     #expect(throws: (any Error).self) { try History(data: Data("not json".utf8)) }
   }
 
-  @Test func readsAHistoryWrittenBeforeWhatWasHeardWasKept() throws {
+  @Test func readsAHistoryWrittenBeforeFailuresWereKept() throws {
     let old = """
       {"transcriptions":[{"id":"5EED0000-0000-4000-8000-000000000000",\
-      "date":"2026-11-10T12:00:00Z","text":"Hello.","duration":2}]}
+      "date":"2026-11-10T12:00:00Z","text":"Hello.","heard":"hello","duration":2}]}
       """
     let history = try History(data: Data(old.utf8))
     #expect(history.transcriptions.map(\.text) == ["Hello."])
-    #expect(history.transcriptions[0].heard == nil)
+    #expect(!history.transcriptions[0].failed)
   }
 
   @Test func countsTheWords() {
