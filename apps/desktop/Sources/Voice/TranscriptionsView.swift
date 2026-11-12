@@ -14,25 +14,22 @@ struct TranscriptionsView: View {
       empty
     } else {
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: Design.loose) {
+        LazyVStack(alignment: .leading, spacing: Design.wide) {
           ForEach(history.days(in: .current)) { day in
-            VStack(alignment: .leading, spacing: Design.small) {
+            VStack(alignment: .leading, spacing: 2) {
               GroupTitle(title: day.date.dayTitle)
-              Card {
-                ForEach(day.transcriptions) { transcription in
-                  if transcription.id != day.transcriptions.first?.id { Hairline() }
-                  TranscriptionRow(transcription: transcription) {
-                    open(transcription.id)
-                  } remove: {
-                    remove(transcription.id)
-                  }
+                .padding(.bottom, Design.tight)
+              ForEach(day.transcriptions) { transcription in
+                TranscriptionRow(transcription: transcription) {
+                  open(transcription.id)
+                } remove: {
+                  remove(transcription.id)
                 }
               }
             }
           }
         }
-        .padding(.horizontal, Design.wide)
-        .padding(.vertical, Design.large)
+        .padding(Design.medium)
       }
     }
   }
@@ -56,8 +53,9 @@ struct TranscriptionsView: View {
   }
 }
 
-/// One transcription in the list: when it was typed, the start of its text, and how long
-/// the recording was. Under the pointer, the length gives way to a button that copies it.
+/// One transcription in the list: when it was dictated, the start of its text, and how
+/// long the recording was. Under the pointer, the length gives way to a button that copies
+/// the text.
 private struct TranscriptionRow: View {
   let transcription: Transcription
   let open: () -> Void
@@ -74,26 +72,40 @@ private struct TranscriptionRow: View {
           .monospacedDigit()
           .foregroundStyle(.secondary)
           .frame(width: 36, alignment: .leading)
-        Text(transcription.text)
-          .font(.voiceBody)
-          .lineLimit(3)
-          .multilineTextAlignment(.leading)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        Text(transcription.clock)
-          .font(.voiceCaption)
-          .monospacedDigit()
-          .foregroundStyle(.tertiary)
-          .opacity(isHovered ? 0 : 1)
+        Group {
+          if transcription.text.isEmpty {
+            Text("Not transcribed").foregroundStyle(.secondary)
+          } else {
+            Text(transcription.text)
+          }
+        }
+        .font(.voiceBody)
+        .lineLimit(3)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: Design.tight) {
+          if transcription.failed {
+            Image(systemName: "exclamationmark.triangle")
+              .help("This dictation failed")
+          }
+          Text(transcription.clock)
+            .monospacedDigit()
+        }
+        .font(.voiceCaption)
+        .foregroundStyle(.tertiary)
+        .opacity(isHovered && canCopy ? 0 : 1)
       }
-      .padding(.horizontal, Design.medium)
-      .padding(.vertical, 10)
-      .background(isHovered ? Design.hover : .clear)
+      .padding(Design.small)
+      .background(
+        isHovered ? Design.hover : .clear,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+      )
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .pointer()
     .overlay(alignment: .topTrailing) {
-      if isHovered {
+      if isHovered && canCopy {
         Button(action: copy) {
           Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
             .font(.system(size: 11))
@@ -104,15 +116,19 @@ private struct TranscriptionRow: View {
         .buttonStyle(.plain)
         .pointer()
         .help("Copy")
-        .padding(.top, 6)
-        .padding(.trailing, Design.small)
+        .padding(.top, 4)
+        .padding(.trailing, Design.tight)
       }
     }
     .onHover { isHovered = $0 }
     .contextMenu {
-      Button("Copy", action: copy)
+      if canCopy { Button("Copy", action: copy) }
       Button("Delete", role: .destructive, action: remove)
     }
+  }
+
+  private var canCopy: Bool {
+    !transcription.text.isEmpty
   }
 
   private func copy() {

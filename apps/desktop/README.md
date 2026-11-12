@@ -74,7 +74,7 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 The app lives in the menu bar. Its menu opens the app's window on one of its two sections:
 
-- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was typed, the start of its text, and how long the recording was. Clicking one opens its page, with all of the text to read and select, the date, the length, and the number of words, and what was heard before it was refined. The page's header has the way back, which Escape also takes, and buttons to copy and delete it. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
+- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
 - **Settings**: the settings below.
 
 The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
@@ -85,7 +85,11 @@ Almost nothing in the window moves: what is under the pointer, what is selected,
 
 While the window is open, the app is also in the Dock and the app switcher, and it leaves them when the window closes. Opening the app again while it runs, from Finder or Spotlight, shows the window.
 
-The past transcriptions are kept in `history.json`, in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. The file stays on the Mac: nothing but the app reads it, and its text is never logged. A transcription is kept when its text is typed, with what was heard when the text was refined from it, also when a dictation failed and the words were typed as heard. A cancelled dictation is not kept.
+The past transcriptions are kept in `history.json`, and the recording of each one in `recordings/`, as a WAV file. Both are in `~/Library/Application Support/` under the identifier of the build, so the two builds have separate histories. They stay on the Mac: nothing but the app reads them, and their text is never logged. A dictation is kept when its text is typed. A cancelled one is not.
+
+A dictation that fails is kept too, marked as failed, with whatever words came back. Its page has Try Again, which sends the recording to the server once more, so a failure does not lose what was said. The new text is not typed anywhere: it is in the history, to copy.
+
+Recordings take about 3 MB a minute. The History setting deletes transcriptions and their recordings by themselves after 1 day, 7 days, or 30 days, or never, which is the default. The app does that itself, when it starts, when the setting changes, and every hour while it runs.
 
 To work on the window without dictating first, fill the history of the development app with sample transcriptions:
 
@@ -93,7 +97,7 @@ To work on the window without dictating first, fill the history of the developme
 pnpm seed
 ```
 
-It keeps what the history holds, and running it again renews the samples. The app reads its history when it starts, so a running app is quit and opened again.
+Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The app reads its history when it starts, so a running app is quit and opened again.
 
 Settings:
 
@@ -101,6 +105,7 @@ Settings:
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
+- **History**: how long transcriptions and their recordings are kept before they are deleted by themselves.
 
 ## Microphone and media
 
@@ -157,7 +162,8 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one              |
 | `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with |
 | `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one             |
-| `Sources/Voice/HistoryStore.swift`                                  | The file that keeps the past transcriptions                      |
+| `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
+| `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |

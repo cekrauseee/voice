@@ -3,7 +3,9 @@ import SwiftUI
 /// The look of the app's window: quiet, neutral, and compact.
 ///
 /// Everything is drawn in the primary color, at a few opacities over the window's
-/// background. So it follows the theme, and nothing has a color of its own.
+/// background. So it follows the theme, and nothing has a color of its own. There are no
+/// boxes around groups and no lines between rows: space and type tell things apart, and a
+/// fill is kept for what can be clicked or typed in.
 ///
 /// Almost nothing moves. What the pointer is over, what is selected, and what a click
 /// shows change at once. Motion is kept for the two places where it says where something
@@ -17,9 +19,7 @@ enum Design {
   static let wide = 20.0
   static let loose = 24.0
 
-  /// The corners of a card.
-  static let radius = 8.0
-  /// The corners of what sits in a card, in the sidebar, or in the header.
+  /// The corners of what can be clicked or typed in.
   static let controlRadius = 6.0
 
   /// The side of an icon button, and the height of an item of the sidebar.
@@ -32,10 +32,8 @@ enum Design {
   /// How the few things that move do it: quickly, and slowing into place.
   static let move = Animation.timingCurve(0.2, 0, 0, 1, duration: 0.18)
 
-  /// What a card and a control are filled with.
+  /// What a control and a place to type are filled with.
   static let surface = Color.primary.opacity(0.045)
-  /// The line around a card, between its rows, and between the window's parts.
-  static let hairline = Color.primary.opacity(0.09)
   /// What is under the pointer.
   static let hover = Color.primary.opacity(0.05)
   /// What is selected.
@@ -94,30 +92,7 @@ extension Font {
   static let voiceCaption = Font.system(size: 11)
 }
 
-/// A group of rows on one surface. Put a `Hairline` between the rows.
-struct Card<Content: View>: View {
-  @ViewBuilder let content: Content
-
-  var body: some View {
-    let shape = RoundedRectangle(cornerRadius: Design.radius, style: .continuous)
-    VStack(spacing: 0) { content }
-      .background(Design.surface)
-      .clipShape(shape)
-      .overlay(shape.strokeBorder(Design.hairline))
-  }
-}
-
-/// The line between two rows of a card.
-struct Hairline: View {
-  var body: some View {
-    Rectangle()
-      .fill(Design.hairline)
-      .frame(height: 1)
-      .padding(.leading, Design.medium)
-  }
-}
-
-/// The name of a group, above its card, in line with the text of its rows.
+/// The name of a group of rows, in line with their text.
 struct GroupTitle: View {
   let title: String
 
@@ -125,7 +100,7 @@ struct GroupTitle: View {
     Text(title)
       .font(.voiceLabel)
       .foregroundStyle(.secondary)
-      .padding(.leading, Design.medium)
+      .padding(.horizontal, Design.small)
   }
 }
 

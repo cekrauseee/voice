@@ -46,3 +46,40 @@ public enum Level {
     return Float(min(max((decibels + 50) / 40, 0), 1))
   }
 }
+
+/// A recording as a WAV file: the PCM the server expects, with the header that lets any
+/// player read it.
+public enum WAV {
+  /// Wraps 16-bit mono PCM in a WAV file.
+  public static func file(pcm: Data, sampleRate: Double = AudioFormat.sampleRate) -> Data {
+    func bytes<T: FixedWidthInteger>(_ value: T) -> Data {
+      withUnsafeBytes(of: value.littleEndian) { Data($0) }
+    }
+    let rate = UInt32(sampleRate)
+    var file = Data("RIFF".utf8) + bytes(UInt32(36 + pcm.count)) + Data("WAVEfmt ".utf8)
+    // PCM, one channel, 16 bits a sample.
+    file += bytes(UInt32(16)) + bytes(UInt16(1)) + bytes(UInt16(1))
+    file += bytes(rate) + bytes(rate * 2) + bytes(UInt16(2)) + bytes(UInt16(16))
+    file += Data("data".utf8) + bytes(UInt32(pcm.count))
+    return file + pcm
+  }
+
+  /// The samples of a WAV file: what its `data` chunk holds, whatever comes before it.
+  public static func pcm(file: Data) -> Data? {
+    let file = Data(file)
+    guard file.count >= 12, file.prefix(4) == Data("RIFF".utf8) else { return nil }
+    var offset = 12
+    while offset + 8 <= file.count {
+      let size = file[offset + 4..<offset + 8].enumerated().reduce(0) {
+        $0 | Int($1.element) << (8 * $1.offset)
+      }
+      let body = offset + 8
+      if file[offset..<offset + 4] == Data("data".utf8) {
+        return file.subdata(in: body..<min(body + size, file.count))
+      }
+      // Chunks are padded to an even length.
+      offset = body + size + size % 2
+    }
+    return nil
+  }
+}
