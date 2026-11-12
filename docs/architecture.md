@@ -15,7 +15,7 @@ Voice turns speech into typed text: the words appear as they are heard, and the 
                                                                    └──────────────────────┘
 ```
 
-The app owns the machine: the shortcuts, the microphone, the pill, and typing. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
+The app owns the machine: the shortcuts, the microphone, the pill, typing, and the history of what was typed, which it keeps in a file on the Mac. The server owns the speech pipeline and the OpenAI key. They talk over one WebSocket per dictation, described in [the protocol](protocol.md).
 
 ## A dictation
 

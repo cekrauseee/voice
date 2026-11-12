@@ -6,11 +6,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let log = Log("app")
   private let settings = Settings()
   private let permissions = Permissions()
-  private lazy var controller = DictationController(settings: settings)
+  private let history = HistoryStore()
+  private let navigation = Navigation()
+  private lazy var controller = DictationController(settings: settings, history: history)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
-  private lazy var settingsWindow = AppWindow(
-    title: "Settings", content: SettingsView(settings: settings))
+  private lazy var mainWindow = AppWindow(
+    title: AppInfo.name,
+    style: .main(size: NSSize(width: 820, height: 560), minimum: NSSize(width: 640, height: 420)),
+    content: MainView(navigation: navigation, history: history, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(permissions: permissions, settings: settings) { [weak self] in
@@ -67,13 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   private func showSetup() {
-    // The app has no Dock icon. During the setup it gets one, so the window is easy to
-    // come back to from System Settings.
-    NSApp.setActivationPolicy(.regular)
-    setupWindow.onClose = { [log] in
-      NSApp.setActivationPolicy(.accessory)
-      log.info("setup closed")
-    }
+    setupWindow.onClose = { [log] in log.info("setup closed") }
     setupWindow.show()
     log.info("setup shown")
   }
@@ -103,14 +101,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(item("Finish Setup…", #selector(openSetup)))
       menu.addItem(.separator())
     }
+    menu.addItem(item("Transcriptions", #selector(openTranscriptions)))
     menu.addItem(item("Settings…", #selector(openSettings), key: ","))
     menu.addItem(.separator())
     menu.addItem(item("Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q"))
   }
 
+  /// The app was opened again while it runs, from Finder, Spotlight, or the Dock.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+    if needsSetup { showSetup() } else { mainWindow.show() }
+    return false
+  }
+
   /// The windows need a main menu for the standard shortcuts, such as ⌘V and ⌘W.
   private func mainMenu() -> NSMenu {
     let app = NSMenu()
+    app.addItem(item("Settings…", #selector(openSettings), key: ","))
+    app.addItem(.separator())
     app.addItem(item("Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q"))
 
     let file = NSMenu(title: "File")
@@ -138,8 +145,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     NSMenuItem(title: title, action: action, keyEquivalent: key)
   }
 
+  @objc private func openTranscriptions() {
+    open(.transcriptions)
+  }
+
   @objc private func openSettings() {
-    settingsWindow.show()
+    open(.settings)
+  }
+
+  private func open(_ section: AppSection) {
+    navigation.section = section
+    mainWindow.show()
   }
 
   @objc private func openSetup() {
