@@ -37,7 +37,7 @@ struct PillView: View {
     }
     .animation(Self.morph, value: state)
     .animation(Self.morph, value: style)
-    .animation(.smooth(duration: 0.25), value: transcript)
+    .animation(.smooth(duration: 0.3), value: transcript)
   }
 
   private var shape: RoundedRectangle {
@@ -77,14 +77,7 @@ struct PillView: View {
       Waveform(feed: feed, barCount: 49, isLoading: isLoading)
         .frame(height: 36)
       if !transcript.isEmpty {
-        // The text is a draft until it is refined, so it is shown dimmed.
-        Text(transcript.text)
-          .font(.system(size: 13))
-          .foregroundStyle(.primary.opacity(transcript.isRefined ? 1 : 0.4))
-          .lineLimit(3)
-          .truncationMode(.head)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .contentTransition(.interpolate)
+        TranscriptView(transcript: transcript)
           .transition(.blurReplace)
       }
       HStack(spacing: 12) {

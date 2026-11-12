@@ -89,6 +89,8 @@ While a dictation runs, the media playing on the Mac is paused, and it resumes w
 
 The pill is one surface that changes shape. It grows out of its bottom edge when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
 
+In the detailed style the pill shows the last three lines of the text as it is recognized. Each new word comes into focus where it lands. When the text outgrows three lines, all of it moves up a line: the oldest line goes out of focus through the top while the new one comes in at the bottom. With Reduce Motion on, or on macOS 14, the words just appear.
+
 The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the text is being refined, a ripple runs through the bars. With Reduce Motion on, the bars only show the level, a few times a second.
 
 | State     | Shown                                                                                                                                     |
@@ -118,7 +120,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, audio chunking, how the text streams in, and when media is paused and resumed. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -135,6 +137,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it       |
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                           |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                    |
+| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                 |
 | `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                |
 | `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                            |
 | `Support/Info.plist`                                                | The app bundle's metadata                                   |

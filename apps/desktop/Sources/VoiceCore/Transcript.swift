@@ -1,21 +1,28 @@
+import Foundation
+
 /// The text of one dictation: what is heard while the speaker talks, then the refined text.
 public struct Transcript: Equatable, Sendable {
-  public private(set) var text = ""
+  /// The text as it arrived, so that what is new in it can be shown appearing.
+  public private(set) var stream = TextStream()
   /// Until the text is refined it is a draft: shown, but not typed.
   public private(set) var isRefined = false
 
   public init() {}
 
+  public var text: String {
+    stream.text
+  }
+
   public var isEmpty: Bool {
     text.isEmpty
   }
 
-  public mutating func apply(_ message: ServerMessage) {
+  public mutating func apply(_ message: ServerMessage, at time: Date = .now) {
     switch message {
     case .delta(let text):
-      if !isRefined { self.text += text }
+      if !isRefined { stream.append(text, at: time) }
     case .done(let text):
-      self.text = text
+      stream = TextStream(text)
       isRefined = true
     case .ready, .error:
       break
