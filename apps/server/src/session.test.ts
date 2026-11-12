@@ -107,6 +107,7 @@ test("a transcript that does not complete is replaced by the text heard", async 
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, transcriber, refiner, messages } = setup();
   session.start("");
+  transcriber.events.ready();
   transcriber.events.delta(" so far");
   transcriber.events.delta(" so good");
   session.stop();
@@ -117,17 +118,65 @@ test("a transcript that does not complete is replaced by the text heard", async 
   transcriber.events.delta(" later");
   refiner.calls[0]?.resolve("So far, so good.");
   await settle();
-  assert.deepEqual(messages.slice(2), [{ type: "done", text: "So far, so good." }]);
+  assert.deepEqual(messages.slice(3), [{ type: "done", text: "So far, so good." }]);
   assert.equal(refiner.calls.length, 1);
 });
 
 test("a dictation that hears nothing and gets no transcript times out", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { session, messages, ended } = setup();
+  const { session, transcriber, messages, ended } = setup();
   session.start("");
+  transcriber.events.ready();
   session.audio(audio(1000));
   session.stop();
   t.mock.timers.tick(5_000);
+  assert.deepEqual(messages, [
+    { type: "ready" },
+    { type: "error", code: "timeout", message: "Transcription timed out" },
+  ]);
+  assert.ok(ended());
+});
+
+test("text that keeps coming after the stop keeps the transcript awaited", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session, transcriber, refiner } = setup();
+  session.start("");
+  transcriber.events.ready();
+  session.stop();
+  for (const word of [" a", " long", " recording"]) {
+    t.mock.timers.tick(4_000);
+    transcriber.events.delta(word);
+  }
+  assert.equal(refiner.calls.length, 0);
+
+  transcriber.events.final("A long recording.");
+  assert.equal(refiner.calls[0]?.input.text, "A long recording.");
+});
+
+test("a speaker who stops before transcription is ready is waited for", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session, transcriber, refiner, messages, ended } = setup();
+  session.start("");
+  session.audio(audio(1000));
+  session.stop();
+  assert.equal(transcriber.commits, 1);
+  t.mock.timers.tick(8_000);
+  assert.ok(!ended());
+
+  transcriber.events.ready();
+  t.mock.timers.tick(4_000);
+  transcriber.events.final("made it");
+  refiner.calls[0]?.resolve("Made it.");
+  await settle();
+  assert.deepEqual(messages, [{ type: "ready" }, { type: "done", text: "Made it." }]);
+});
+
+test("transcription that does not get ready times out", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session, messages, ended } = setup();
+  session.start("");
+  session.audio(audio(1000));
+  t.mock.timers.tick(10_000);
   assert.deepEqual(messages, [
     { type: "error", code: "timeout", message: "Transcription timed out" },
   ]);

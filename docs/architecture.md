@@ -34,7 +34,9 @@ The [transcriber](../apps/server/src/transcriber.ts) streams all the audio to an
 
 `gpt-live-transcribe` writes text while it listens, a little behind the voice, and that text only grows. Because the whole dictation is one turn, the model hears each sentence together with what comes next. It punctuates across pauses, and it recognizes words better than it does on audio cut into pieces: a pause in the middle of a sentence does not end the sentence.
 
-After the commit the model returns the complete transcript. If it does not come within 5 s, the text heard so far stands in for it.
+After the commit the model returns the complete transcript. If the model goes silent for 5 s before it comes, the text heard so far stands in for it.
+
+Recording never waits for a connection. The app records from the moment the shortcut is pressed and sends the audio as it comes. Audio that arrives before the transcription session is ready waits for it, and a speaker who stops before then is waited for too: the audio is transcribed once the session is ready, up to 10 s after the start.
 
 ## Refinement
 
@@ -48,7 +50,7 @@ The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a 
 ## Failure
 
 - A transcription failure ends the dictation with an error. The app types the draft it has, so what was said is not lost, and shows the failure.
-- A dictation that hears nothing and gets no transcript within 5 s of the stop ends with a timeout.
+- A transcription session that is not ready within 10 s of the start ends the dictation with a timeout. So does a dictation that hears nothing and gets no transcript within 5 s of the stop.
 - Cancelling types nothing.
 - The app shows a failure in the pill for three seconds: no microphone access, no microphone, server unreachable, or transcription failed.
 

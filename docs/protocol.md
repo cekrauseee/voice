@@ -38,7 +38,7 @@ A text message. The speaker is done.
 { "type": "stop" }
 ```
 
-After `stop` the server ignores further audio, completes the transcript, refines it, and sends `done`.
+After `stop` the server ignores further audio, completes the transcript, refines it, and sends `done`. `stop` can come before `ready`: the audio sent so far waits for transcription to be ready, and the dictation goes on from there.
 
 To cancel instead, close the socket. Nothing more is sent.
 
@@ -64,11 +64,11 @@ All server messages are JSON text.
 
 ### Errors
 
-| Code                   | Meaning                                                                      |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| `bad_request`          | The client sent a message that is not part of the protocol, or out of order. |
-| `transcription_failed` | The transcription provider failed or disconnected.                           |
-| `timeout`              | Nothing was heard, and no transcript came within 5 s of `stop`.              |
+| Code                   | Meaning                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `bad_request`          | The client sent a message that is not part of the protocol, or out of order.                                                     |
+| `transcription_failed` | The transcription provider failed or disconnected.                                                                               |
+| `timeout`              | Transcription was not ready within 10 s of `start`. Or nothing was heard, and the transcriber sent nothing for 5 s after `stop`. |
 
 An error ends the dictation without a `done`. The client still has the draft from the `delta` messages.
 

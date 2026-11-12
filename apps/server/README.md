@@ -63,7 +63,7 @@ The behavior of the pipeline is set by constants in the source:
 | ---------------------------------------------------- | ---------------------------------------------------------- |
 | What the refiner is told to do                       | `INSTRUCTIONS` in [`refiner.ts`](src/refiner.ts)           |
 | How long the model may go silent during a refinement | `STALL_MS` in [`refiner.ts`](src/refiner.ts)               |
-| Transcript timeout and refinement timeout            | The constants at the top of [`session.ts`](src/session.ts) |
+| Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts) |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 
