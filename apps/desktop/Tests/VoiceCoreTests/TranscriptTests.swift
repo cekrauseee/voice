@@ -49,9 +49,41 @@ import Testing
     transcript.apply(.done(text: "Hello, world."))
     #expect(transcript.text == "Hello, world.")
     #expect(transcript.isRefined)
+    #expect(transcript.stream.pieces.isEmpty)
 
     transcript.apply(.delta(text: " late"))
     #expect(transcript.text == "Hello, world.")
+  }
+}
+
+@Suite struct TextStreamTests {
+  private let start = Date(timeIntervalSinceReferenceDate: 0)
+
+  @Test func newPiecesStayApartWhileTheyAppear() {
+    var stream = TextStream()
+    stream.append("so", at: start)
+    stream.append(" the", at: start + 0.1)
+    stream.append("", at: start + 0.2)
+    #expect(stream.settled == "")
+    #expect(stream.pieces.map(\.text) == ["so", " the"])
+    #expect(stream.text == "so the")
+  }
+
+  @Test func piecesThatHaveAppearedSettleWhenTheNextOneArrives() {
+    var stream = TextStream()
+    stream.append("so", at: start)
+    stream.append(" the", at: start + 0.3)
+    stream.append(" plan", at: start + TextStream.appearance)
+    #expect(stream.settled == "so")
+    #expect(stream.pieces.map(\.text) == [" the", " plan"])
+    #expect(stream.text == "so the plan")
+  }
+
+  @Test func aPieceAppearsOverTheAppearance() {
+    #expect(TextStream.progress(since: start, at: start - 1) == 0)
+    #expect(TextStream.progress(since: start, at: start) == 0)
+    #expect(TextStream.progress(since: start, at: start + TextStream.appearance / 2) == 0.5)
+    #expect(TextStream.progress(since: start, at: start + 10) == 1)
   }
 }
 
