@@ -12,12 +12,14 @@ struct PillView: View {
   let transcript: Transcript
   let mode: RecordingMode
   let toggle: Shortcut
+  /// When the recording started and stopped, for the time it shows.
+  let started: Date?
+  let stopped: Date?
   /// The edge of the screen the pill is at. It grows out of that edge, and away from it.
   let edge: VerticalEdge
   /// The notch the pill opens out of, black like it, instead of being a pill of its own.
   let notch: Notch?
 
-  @Environment(\.colorScheme) private var colorScheme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   fileprivate static let morph = Animation.spring(duration: 0.42, bounce: 0.24)
@@ -38,11 +40,14 @@ struct PillView: View {
       } else if state != .hidden {
         // One container around whichever content is showing, so the surface is a single
         // view that resizes, instead of each content bringing its own.
+        // Black in both themes, like the notch, with a fine edge to set it apart on a dark
+        // screen.
         ZStack(alignment: alignment) { content }
-          .background(colorScheme == .dark ? Color(white: 0.12) : .white)
+          .background(Design.lamp)
           .clipShape(shape)
-          .overlay(shape.strokeBorder(.primary.opacity(0.12)))
-          .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+          .overlay(shape.strokeBorder(.white.opacity(0.1)))
+          .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+          .environment(\.colorScheme, .dark)
           .transition(.pill(from: edge))
       }
     }
@@ -56,7 +61,7 @@ struct PillView: View {
   }
 
   private var shape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: isCompact ? 14 : 20, style: .continuous)
+    RoundedRectangle(cornerRadius: isCompact ? 17 : 22, style: .continuous)
   }
 
   private var isCompact: Bool {
@@ -70,22 +75,26 @@ struct PillView: View {
 
   @ViewBuilder private var content: some View {
     if case .failed(let error) = state {
-      Label(error.message, systemImage: "exclamationmark.triangle.fill")
-        .font(.system(size: 12, weight: .medium))
-        .padding(.horizontal, 12)
-        .frame(height: notch == nil ? 28 : 34)
-        .padding(.horizontal, notch == nil ? 0 : 8)
-        // Out past the notch on either side, so its corners round out.
-        .frame(minWidth: notch.map { CGFloat($0.width + 48) })
-        .padding(.top, notch?.height ?? 0)
-        .padding(.bottom, notch == nil ? 0 : 4)
-        .transition(Self.content)
+      HStack(spacing: Design.small) {
+        Image(systemName: "exclamationmark.triangle")
+          .foregroundStyle(.white.opacity(0.75))
+        Text(error.message)
+      }
+      .font(.system(size: 12.5, weight: .medium))
+      .foregroundStyle(.white)
+      .padding(.leading, 13)
+      .padding(.trailing, Design.large)
+      .frame(height: notch == nil ? 34 : 34)
+      .padding(.horizontal, notch == nil ? 0 : 8)
+      // Out past the notch on either side, so its corners round out.
+      .frame(minWidth: notch.map { CGFloat($0.width + 48) })
+      .padding(.top, notch?.height ?? 0)
+      .padding(.bottom, notch == nil ? 0 : 4)
+      .transition(Self.content)
     } else if style == .minimal, let notch {
       // On either side of the notch, which hides what is under it, and a little below it.
       HStack(spacing: 0) {
-        Image(systemName: "mic.fill")
-          .font(.system(size: 12))
-          .foregroundStyle(.secondary)
+        Lamp(isLit: state == .listening)
           .frame(width: 48)
         Color.clear.frame(width: notch.width)
         Waveform(feed: feed, barCount: 5, isLoading: isLoading)
@@ -95,11 +104,16 @@ struct PillView: View {
       .frame(height: notch.height + 10)
       .transition(Self.content)
     } else if style == .minimal {
-      Waveform(feed: feed, barCount: 7, isLoading: isLoading)
-        .frame(width: 40, height: 16)
-        .padding(.horizontal, 12)
-        .frame(height: 28)
-        .transition(Self.content)
+      HStack(spacing: 10) {
+        Lamp(isLit: state == .listening)
+        Waveform(feed: feed, barCount: 7, isLoading: isLoading)
+          .frame(width: 36, height: 16)
+      }
+      .foregroundStyle(.white)
+      .padding(.leading, 13)
+      .padding(.trailing, 14)
+      .frame(height: 34)
+      .transition(Self.content)
     } else {
       detailed
         .padding(.top, notch?.height ?? 0)
@@ -108,17 +122,33 @@ struct PillView: View {
   }
 
   private var detailed: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Waveform(feed: feed, barCount: 49, isLoading: isLoading)
-        .frame(height: 36)
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        HStack(spacing: 9) {
+          Lamp(isLit: state == .listening)
+          Text(status)
+            .contentTransition(.interpolate)
+        }
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.white.opacity(0.8))
+        Spacer()
+        if let started {
+          TimelineView(.periodic(from: started, by: 1)) { context in
+            Text(clock((stopped ?? context.date).timeIntervalSince(started)))
+          }
+          .font(.voiceMono(12))
+          .foregroundStyle(.white.opacity(0.5))
+        }
+      }
+      Waveform(feed: feed, barCount: 48, isLoading: isLoading)
+        .frame(height: 30)
+        .foregroundStyle(.white)
       if !transcript.isEmpty {
         TranscriptView(transcript: transcript)
+          .foregroundStyle(.white)
           .transition(.blurReplace)
       }
       HStack(spacing: 12) {
-        Label(status, systemImage: "mic.fill")
-          .contentTransition(.interpolate)
-        Spacer()
         if state != .finishing {
           Group {
             if mode == .toggle {
@@ -130,18 +160,24 @@ struct PillView: View {
           .id(mode)
           .transition(reduceMotion ? .identity : AnyTransition(.blurReplace))
         }
+        Spacer()
         Hint(title: "Cancel", keyCaps: ["esc"])
       }
-      .font(.system(size: 11))
-      .foregroundStyle(.secondary)
+      .font(.system(size: 11.5))
+      .foregroundStyle(.white.opacity(0.5))
       .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: mode)
     }
     .padding(
       notch == nil
-        ? EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
-        : EdgeInsets(top: 10, leading: 22, bottom: 20, trailing: 22)
+        ? EdgeInsets(top: 14, leading: 16, bottom: 13, trailing: 16)
+        : EdgeInsets(top: 10, leading: 22, bottom: 18, trailing: 22)
     )
-    .frame(width: notch == nil ? 340 : 380)
+    .frame(width: notch == nil ? 372 : 400)
+  }
+
+  private func clock(_ seconds: TimeInterval) -> String {
+    let seconds = max(Int(seconds), 0)
+    return "\(seconds / 60):" + (seconds % 60 < 10 ? "0" : "") + "\(seconds % 60)"
   }
 
   private var status: String {
@@ -158,9 +194,10 @@ private struct Hint: View {
   let keyCaps: [String]
 
   var body: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: 6) {
       Text(title)
       KeyCaps(labels: keyCaps)
+        .foregroundStyle(.white)
     }
   }
 }

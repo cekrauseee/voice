@@ -45,11 +45,6 @@ final class Settings {
     didSet { defaults.set(retention.rawValue, forKey: "retention") }
   }
 
-  /// Whether the window's sidebar only shows icons.
-  var isSidebarCollapsed: Bool {
-    didSet { defaults.set(isSidebarCollapsed, forKey: "isSidebarCollapsed") }
-  }
-
   /// Whether the welcome window was completed.
   var hasOnboarded: Bool {
     didSet { defaults.set(hasOnboarded, forKey: "hasOnboarded") }
@@ -85,7 +80,6 @@ final class Settings {
       try? JSONDecoder().decode(Microphone.self, from: $0)
     }
     retention = defaults.string(forKey: "retention").flatMap(Retention.init) ?? .never
-    isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     let otherServer = defaults.string(forKey: "serverURL").flatMap(URL.init)
     runsServer = otherServer == nil && !AppInfo.isDevelopment

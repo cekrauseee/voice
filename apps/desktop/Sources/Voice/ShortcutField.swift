@@ -15,25 +15,41 @@ struct ShortcutField: View {
   @State private var recorder = ShortcutRecorder()
 
   var body: some View {
-    HStack(spacing: 8) {
-      if shortcut != fallback && fallback != taken {
-        Button("Reset", systemImage: "arrow.counterclockwise") { shortcut = fallback }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .pointer()
-      }
+    HStack(spacing: Design.small) {
       Button {
         if monitor == nil { begin() } else { end() }
       } label: {
-        if monitor == nil {
-          KeyCaps(labels: shortcut.keyCaps)
-        } else {
-          Text("Press shortcut").foregroundStyle(.secondary)
+        Group {
+          if monitor == nil {
+            KeyCaps(labels: shortcut.keyCaps, size: .large)
+              .foregroundStyle(Design.ink)
+          } else {
+            Text("Press keys")
+              .font(.voiceLabel)
+              .foregroundStyle(Design.ink2)
+              .padding(.horizontal, 10)
+              .frame(height: 30)
+              .overlay {
+                RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+                  .strokeBorder(Design.ink3, lineWidth: 1.5)
+              }
+          }
         }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
       .buttonStyle(.plain)
       .pointer()
+      .help("Record a new shortcut")
+      if shortcut != fallback && fallback != taken && monitor == nil {
+        Button("Reset", systemImage: "arrow.counterclockwise") { shortcut = fallback }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .foregroundStyle(Design.ink2)
+          .pointer()
+          .help("Back to \(fallback.keyCaps.joined(separator: " "))")
+      }
     }
+    .animation(Motion.snappy, value: monitor == nil)
     .onDisappear(perform: end)
   }
 

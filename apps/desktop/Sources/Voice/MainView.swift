@@ -3,47 +3,94 @@ import Observation
 import SwiftUI
 import VoiceCore
 
-/// A section of the app's window.
-enum AppSection: String, CaseIterable, Identifiable {
+/// A page of the app's window.
+enum Page: Hashable {
+  /// The past transcriptions, with today's figures over them.
   case transcriptions
+  /// One transcription, to read and to listen to.
+  case transcription(Transcription.ID)
   case statistics
   case settings
-
-  var id: Self { self }
-
-  var title: String {
-    switch self {
-    case .transcriptions: "Transcriptions"
-    case .statistics: "Statistics"
-    case .settings: "Settings"
-    }
-  }
-
-  var symbol: String {
-    switch self {
-    case .transcriptions: "text.quote"
-    case .statistics: "chart.bar"
-    case .settings: "gearshape"
-    }
-  }
 }
 
-/// Where the window is: on which section, and on which of its pages.
+/// Where the window is.
+///
+/// The transcriptions are always there, under the page opened over them. Opening a page
+/// takes two steps, so that what the list and the page share can travel between them: the
+/// page is first laid out with those elements where the list has them, then comes forward.
+/// Going back reverses the two steps, and takes the page away once everything has landed.
 @MainActor @Observable
 final class Navigation {
-  private(set) var section = AppSection.transcriptions
-  /// The transcription that is open on its own page, if one is.
-  var transcription: Transcription.ID?
+  /// The page over the list, while it shows or is on its way in or out.
+  private(set) var top: Page?
+  /// Whether that page is in front. What it shares with the list belongs to it then.
+  private(set) var isOpen = false
+  /// Whether the recording of the transcription being opened plays once it is open.
+  var playsWhenOpen = false
+  /// How docked today's figures are over the list, from 0 to 1, for the statistics to take
+  /// them from the size they are seen at.
+  var dockProgress = 0.0
 
-  /// Goes to a section, on its first page.
-  func show(_ section: AppSection) {
-    self.section = section
-    transcription = nil
+  /// Counts the ways back, so that a page opened while another goes is not taken away.
+  @ObservationIgnored private var closing = 0
+
+  /// The page the window is on.
+  var page: Page {
+    isOpen ? top ?? .transcriptions : .transcriptions
+  }
+
+  /// Goes to a page. Without animation, as when the window is not on screen, it is there at
+  /// once.
+  func show(_ page: Page, animated: Bool = true) {
+    guard page != .transcriptions else {
+      animated ? back() : close()
+      return
+    }
+    closing += 1
+    if !animated {
+      top = page
+      isOpen = true
+    } else if top != nil, isOpen {
+      // From one page to another: the new one fades in over the old one.
+      withAnimation(Motion.leave) { top = page }
+    } else {
+      top = page
+      isOpen = false
+    }
+  }
+
+  /// The second step of opening a page: it comes forward. The page calls it once it is laid
+  /// out.
+  func present() {
+    guard top != nil, !isOpen else { return }
+    withAnimation(Motion.morph) { isOpen = true }
+  }
+
+  /// Goes back to the list, then does `then` once the page is gone.
+  func back(then: (() -> Void)? = nil) {
+    guard top != nil else {
+      then?()
+      return
+    }
+    closing += 1
+    let way = closing
+    withAnimation(Motion.morph, completionCriteria: .logicallyComplete) {
+      isOpen = false
+    } completion: { [weak self] in
+      guard let self, closing == way else { return }
+      top = nil
+      then?()
+    }
+  }
+
+  private func close() {
+    closing += 1
+    top = nil
+    isOpen = false
   }
 }
 
-/// The app's window: a header beside the button that closes it, and under it the sections
-/// on the left and the selected one beside them.
+/// The app's window: the transcriptions, and the page opened over them.
 struct MainView: View {
   let navigation: Navigation
   let history: HistoryStore
@@ -52,220 +99,103 @@ struct MainView: View {
   let loginItem: LoginItem
   @Bindable var settings: Settings
 
-  @Environment(\.windowButtonsWidth) private var windowButtonsWidth
-  @State private var didCopy = false
-  @State private var isDeleting = false
-  /// The period the statistics are shown for.
-  @State private var period = Statistics.Period.week
+  @Namespace private var shared
 
   var body: some View {
     GeometryReader { window in
-      VStack(spacing: 0) {
-        // As tall as the title bar, which only holds the button that closes the window.
-        header
-          .frame(height: window.safeAreaInsets.top)
-        HStack(spacing: 0) {
-          Sidebar(
-            section: navigation.section, isCollapsed: settings.isSidebarCollapsed,
-            select: navigation.show)
-          Group {
-            switch navigation.section {
-            case .transcriptions: transcriptions
-            case .statistics:
-              StatisticsView(statistics: statistics.statistics, period: period)
-            case .settings: SettingsView(settings: settings, loginItem: loginItem)
-            }
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      ZStack(alignment: .topLeading) {
+        TranscriptionsPage(
+          navigation: navigation, history: history, statistics: statistics.statistics,
+          settings: settings, retry: retry, shared: shared)
+        if let top = navigation.top {
+          page(top)
+            .id(top)
+            .transition(.opacity)
         }
+        UndoToast(history: history)
       }
+      .environment(\.titleBarHeight, window.safeAreaInsets.top)
       .ignoresSafeArea(edges: .top)
     }
+    .background(Design.ground)
   }
 
-  /// The transcription that is open on its own page, if it is still in the history.
-  private var open: Transcription? {
-    guard navigation.section == .transcriptions else { return nil }
-    return history.history.transcriptions.first { $0.id == navigation.transcription }
+  @ViewBuilder private func page(_ page: Page) -> some View {
+    switch page {
+    case .transcription(let id):
+      if let transcription = history.history.transcriptions.first(where: { $0.id == id }) {
+        TranscriptionPage(
+          transcription: transcription, navigation: navigation, history: history, retry: retry,
+          shared: shared)
+      }
+    case .statistics:
+      StatisticsPage(statistics: statistics.statistics, navigation: navigation, shared: shared)
+    case .settings:
+      SettingsPage(settings: settings, loginItem: loginItem, navigation: navigation)
+    case .transcriptions:
+      EmptyView()
+    }
+  }
+}
+
+extension View {
+  /// Shows a part of the page over the list as the page comes forward, a beat after what it
+  /// shares with the list, and takes it away at once when the page goes.
+  func pagePart(isOpen: Bool) -> some View {
+    animation(isOpen ? Motion.arrive : Motion.leave) {
+      $0
+        .opacity(isOpen ? 1 : 0)
+        .offset(y: isOpen ? 0 : 8)
+    }
   }
 
-  /// The list, and over it the page of the transcription that is open.
-  ///
-  /// What is left goes at once, and what is come to moves in: the page from the right,
-  /// the list from the left. So only one of them is ever seen, and it is clear which way
-  /// it went.
-  private var transcriptions: some View {
+  /// Shows what a page shares with the list: its copy takes over at once as the page comes
+  /// forward, and hands back to the list's copy as it goes.
+  func sharedPart(isOpen: Bool) -> some View {
+    animation(isOpen ? Motion.takeOver : Motion.handOff) {
+      $0.opacity(isOpen ? 1 : 0)
+    }
+  }
+}
+
+/// Says a transcription was deleted, with the way to bring it back, until it is gone for good.
+private struct UndoToast: View {
+  let history: HistoryStore
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
     ZStack {
-      // The list stays under the page, to be where it was left on the way back.
-      TranscriptionsView(
-        history: history.history, pushToTalk: settings.pushToTalk,
-        open: { navigation.transcription = $0 }, remove: history.remove
-      )
-      .opacity(open == nil ? 1 : 0)
-      .offset(x: open == nil ? 0 : -Design.large)
-      .animation(open == nil ? Design.move : nil, value: open?.id)
-      .allowsHitTesting(open == nil)
-      .accessibilityHidden(open != nil)
-      if let open {
-        TranscriptionView(
-          transcription: open, recording: history.recording(of: open.id),
-          isRetrying: retry.running.contains(open.id)
-        ) {
-          retry.start(open.id)
+      if history.deleted != nil {
+        HStack(spacing: Design.medium) {
+          Text("Transcription deleted")
+            .font(.voiceBody)
+          Button("Undo") { withAnimation(Motion.settle) { history.restore() } }
+            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .semibold))
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .contentShape(Rectangle())
+            .pointer()
         }
+        .foregroundStyle(Design.ground)
+        .padding(.leading, Design.large)
+        .padding(.trailing, 5)
+        .frame(height: 38)
+        .background(Design.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
         .transition(
-          .asymmetric(
-            insertion: .offset(x: Design.large).combined(with: .opacity), removal: .identity))
+          reduceMotion
+            ? .opacity
+            : .asymmetric(
+              insertion: .opacity.combined(with: .offset(y: 10)).combined(
+                with: .scale(scale: 0.98)),
+              removal: .opacity.combined(with: .offset(y: 6))))
       }
     }
-    .animation(Design.move, value: open?.id)
-  }
-
-  /// The button that folds the sidebar, then the name of the section, or the way back
-  /// from a transcription and what can be done with it. The statistics have their period
-  /// here.
-  private var header: some View {
-    HStack(spacing: Design.small) {
-      // Buttons that are icons stand close together, as one group.
-      HStack(spacing: 2) {
-        IconButton(
-          symbol: "sidebar.left",
-          help: settings.isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
-        ) {
-          settings.isSidebarCollapsed.toggle()
-        }
-        .keyboardShortcut("s", modifiers: [.control, .command])
-        if open != nil {
-          IconButton(symbol: "chevron.left", help: "Back") { navigation.transcription = nil }
-            .keyboardShortcut(.cancelAction)
-        }
-      }
-      Text(open?.date.dayAndTime ?? navigation.section.title)
-        .font(.voiceTitle)
-      Spacer(minLength: 0)
-      if navigation.section == .statistics {
-        Segmented(
-          options: Statistics.Period.allCases.map { ($0, $0.title) }, selection: $period
-        )
-        // Its edge is the edge of the page under it.
-        .padding(.trailing, Design.wide - Design.small)
-      }
-      if let open {
-        HStack(spacing: 2) {
-          if !open.text.isEmpty {
-            IconButton(symbol: didCopy ? "checkmark" : "doc.on.doc", help: "Copy") { copy(open) }
-          }
-          IconButton(symbol: "trash", help: "Delete") { isDeleting = true }
-            .confirmationDialog("Delete this transcription?", isPresented: $isDeleting) {
-              Button("Delete", role: .destructive) { history.remove(open.id) }
-            }
-        }
-      }
-    }
-    .padding(.leading, windowButtonsWidth + Design.small)
-    .padding(.trailing, Design.small)
-  }
-
-  private func copy(_ transcription: Transcription) {
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(transcription.text, forType: .string)
-    didCopy = true
-    Task {
-      try? await Task.sleep(for: .seconds(1.2))
-      didCopy = false
-    }
-  }
-}
-
-/// The sections, as icons with their names, or as icons alone when folded.
-private struct Sidebar: View {
-  let section: AppSection
-  let isCollapsed: Bool
-  let select: (AppSection) -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      ForEach(AppSection.allCases) { item in
-        SidebarItem(
-          title: item.title, symbol: item.symbol, isSelected: item == section,
-          isCollapsed: isCollapsed
-        ) {
-          select(item)
-        }
-      }
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, Design.tight)
-    .padding(.vertical, Design.small)
-    .frame(width: isCollapsed ? Design.railWidth : Design.sidebarWidth, alignment: .leading)
-  }
-}
-
-/// A section in the sidebar. Its icon is in the same place whether the sidebar is folded
-/// or not.
-private struct SidebarItem: View {
-  let title: String
-  let symbol: String
-  let isSelected: Bool
-  let isCollapsed: Bool
-  let action: () -> Void
-
-  @State private var isHovered = false
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 2) {
-        Image(systemName: symbol)
-          .font(.system(size: 13))
-          .foregroundStyle(isSelected ? .primary : .secondary)
-          .frame(width: Design.control, height: Design.control)
-        if !isCollapsed {
-          Text(title)
-            .font(.voiceLabel)
-            .lineLimit(1)
-        }
-      }
-      .frame(maxWidth: isCollapsed ? nil : .infinity, alignment: .leading)
-      .background(
-        isSelected ? Design.selected : isHovered ? Design.hover : .clear,
-        in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
-      )
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .onHover { isHovered = $0 }
-    .pointer()
-    .help(isCollapsed ? title : "")
-    .accessibilityLabel(title)
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
-  }
-}
-
-/// A button that is an icon, with a quiet highlight under the pointer.
-struct IconButton: View {
-  let symbol: String
-  let help: String
-  let action: () -> Void
-
-  @State private var isHovered = false
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: symbol)
-        .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .frame(width: Design.control, height: Design.control)
-        .background(
-          isHovered ? Design.hover : .clear,
-          in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
-        )
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .onHover { isHovered = $0 }
-    .pointer()
-    .help(help)
-    .accessibilityLabel(help)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    .padding(.bottom, Design.wide)
+    .animation(Motion.snappy, value: history.deleted?.id)
   }
 }
 
@@ -283,15 +213,13 @@ extension Date {
     return formatted(isThisYear ? format : format.year())
   }
 
-  /// The day and the time, such as `Today at 10:42`.
-  var dayAndTime: String {
-    "\(dayTitle) at \(formatted(date: .omitted, time: .shortened))"
+  /// The time of day, as the Mac writes it, such as `10:42`.
+  var time: String {
+    formatted(date: .omitted, time: .shortened)
   }
 
-  /// The whole date and the time, such as `Thursday, November 12, 2026 at 10:42`.
-  var dateAndTime: String {
-    let format = Date.FormatStyle(locale: Locale(identifier: "en_US"))
-      .weekday(.wide).day().month(.wide).year()
-    return "\(formatted(format)) at \(formatted(date: .omitted, time: .shortened))"
-  }
+  /// Whether the Mac writes times with AM and PM, which takes more room.
+  static let usesTwelveHours =
+    DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)?.contains("a")
+    ?? false
 }

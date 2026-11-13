@@ -1,8 +1,9 @@
 import AppKit
+import SwiftUI
 import VoiceCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
   private let log = Log("app")
   private let settings = Settings()
   private let permissions = Permissions()
@@ -18,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
-    style: .main(size: NSSize(width: 680, height: 460)),
+    style: .main(size: NSSize(width: 720, height: 600)),
     content: MainView(
       navigation: navigation, history: history, statistics: statistics, retry: retry,
       loginItem: loginItem, settings: settings))
@@ -30,6 +31,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.finishSetup()
     })
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+  /// The light on Voice in the menu bar, lit while it records.
+  private let lamp = NSView()
+  private lazy var panel: NSPopover = {
+    let popover = NSPopover()
+    popover.behavior = .transient
+    popover.animates = true
+    let content = NSHostingController(
+      rootView: MenuBarPanel(
+        controller: controller, settings: settings, permissions: permissions,
+        statistics: statistics, history: history,
+        open: { [weak self] page in self?.openFromPanel(page) },
+        openSetup: { [weak self] in
+          self?.panel.performClose(nil)
+          self?.showSetup()
+        }))
+    content.sizingOptions = .preferredContentSize
+    popover.contentViewController = content
+    return popover
+  }()
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     log.info(
@@ -46,8 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       statusItem.button?.font = .systemFont(ofSize: 9, weight: .semibold)
       statusItem.button?.imagePosition = .imageLeading
     }
-    statusItem.menu = NSMenu()
-    statusItem.menu?.delegate = self
+    statusItem.button?.target = self
+    statusItem.button?.action = #selector(togglePanel)
+    addLamp()
 
     track { [settings] in
       settings.theme
@@ -147,28 +168,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
   }
 
-  func menuNeedsUpdate(_ menu: NSMenu) {
-    menu.removeAllItems()
-    // Every item has an icon, so their names line up. A section has the icon it has in the
-    // window's sidebar.
-    if needsSetup {
-      menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
-      menu.addItem(.separator())
-    }
-    let (transcriptions, statistics, settings) = (
-      AppSection.transcriptions, AppSection.statistics, AppSection.settings
-    )
-    menu.addItem(
-      item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
-    menu.addItem(item(statistics.title, #selector(openStatistics), symbol: statistics.symbol))
-    menu.addItem(
-      item("\(settings.title)…", #selector(openSettings), key: ",", symbol: settings.symbol))
-    menu.addItem(.separator())
-    menu.addItem(
-      item(
-        "Quit \(AppInfo.name)", #selector(NSApplication.terminate), key: "q", symbol: "power"))
-  }
-
   /// The app was opened again while it runs, from Finder, Spotlight, or the Dock.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
     if needsSetup { showSetup() } else { mainWindow.show() }
@@ -213,24 +212,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     return item
   }
 
-  @objc private func openTranscriptions() {
-    open(.transcriptions)
-  }
-
-  @objc private func openStatistics() {
-    open(.statistics)
-  }
-
   @objc private func openSettings() {
     open(.settings)
   }
 
-  private func open(_ section: AppSection) {
-    navigation.show(section)
+  /// Opens the window on a page. A window already on screen goes to it, with the page's
+  /// transition.
+  private func open(_ page: Page) {
+    navigation.show(page, animated: mainWindow.isVisible)
     mainWindow.show()
   }
 
-  @objc private func openSetup() {
-    showSetup()
+  private func openFromPanel(_ page: Page) {
+    panel.performClose(nil)
+    open(page)
+  }
+
+  @objc private func togglePanel(_ sender: NSStatusBarButton) {
+    if panel.isShown {
+      panel.performClose(sender)
+    } else {
+      // The panel takes the keyboard, for its shortcuts.
+      NSApp.activate(ignoringOtherApps: true)
+      panel.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+    }
+  }
+
+  /// A dot in the signal at the corner of Voice in the menu bar, lit while it records.
+  private func addLamp() {
+    guard let button = statusItem.button else { return }
+    lamp.wantsLayer = true
+    lamp.layer?.backgroundColor = Design.signalColor.cgColor
+    lamp.layer?.cornerRadius = 2.5
+    lamp.alphaValue = 0
+    lamp.frame = NSRect(x: button.bounds.maxX - 8, y: button.bounds.maxY - 9, width: 5, height: 5)
+    lamp.autoresizingMask = [.minXMargin, .minYMargin]
+    button.addSubview(lamp)
+    track { [controller] in
+      controller.isRecording
+    } onChange: { [lamp] isRecording in
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.16
+        lamp.animator().alphaValue = isRecording ? 1 : 0
+      }
+    }
   }
 }

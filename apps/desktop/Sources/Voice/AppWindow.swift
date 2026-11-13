@@ -38,7 +38,7 @@ final class AppWindow: NSObject, NSWindowDelegate {
       // An empty toolbar makes the title bar tall enough for a header, with the window's
       // button in the middle of it.
       window.toolbar = NSToolbar()
-      window.toolbarStyle = .unifiedCompact
+      window.toolbarStyle = .unified
       window.collectionBehavior.insert(.fullScreenNone)
       window.standardWindowButton(.miniaturizeButton)?.isHidden = true
       window.standardWindowButton(.zoomButton)?.isHidden = true
@@ -49,6 +49,7 @@ final class AppWindow: NSObject, NSWindowDelegate {
     }
     super.init()
     window.title = title
+    window.backgroundColor = Design.groundColor
     window.isReleasedWhenClosed = false
     window.delegate = self
     window.center()

@@ -112,4 +112,39 @@ import Testing
     #expect(clock(65) == "1:05")
     #expect(clock(600) == "10:00")
   }
+
+  @Test func findsTheTranscriptionsThatHoldEveryWordOfAQuery() {
+    let history = History([
+      transcription("Revisar o PR do pill", day: 10),
+      transcription("Send the numbers before the call", day: 11),
+      transcription("The pill opens at the notch", day: 12),
+    ])
+    #expect(
+      history.matching("pill").transcriptions.map(\.text) == [
+        "The pill opens at the notch", "Revisar o PR do pill",
+      ])
+    #expect(
+      history.matching("pill notch").transcriptions.map(\.text) == [
+        "The pill opens at the notch"
+      ])
+    #expect(history.matching("pill numbers").isEmpty)
+  }
+
+  @Test func searchesWhateverTheCaseAndAccents() {
+    let history = History([transcription("Testar a animação no notch", day: 10)])
+    #expect(history.matching("ANIMACAO").transcriptions.count == 1)
+    #expect(history.matching("animação").transcriptions.count == 1)
+  }
+
+  @Test func aQueryWithoutWordsFindsEverything() {
+    let history = History([transcription("one", day: 10), transcription("two", day: 11)])
+    #expect(history.matching("").transcriptions.count == 2)
+    #expect(history.matching("  ").transcriptions.count == 2)
+  }
+
+  @Test func aFailedTranscriptionWithoutWordsIsNotFound() {
+    var failed = transcription("", day: 10)
+    failed.failed = true
+    #expect(History([failed]).matching("not").isEmpty)
+  }
 }

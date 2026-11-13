@@ -115,6 +115,7 @@ private struct PillContainer: View {
     PillView(
       state: placement.state, style: settings.pillStyle, feed: controller.levels,
       transcript: controller.transcript, mode: controller.mode, toggle: settings.toggle,
+      started: controller.recordingStarted, stopped: controller.recordingStopped,
       edge: edge, notch: placement.notch
     )
     .padding(edge == .bottom ? .bottom : .top, padding)
