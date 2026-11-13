@@ -55,6 +55,23 @@ struct SettingsView: View {
           }
         }
 
+        group("Transcription") {
+          SettingRow(
+            title: "Keep on clipboard", detail: "Replaces the previous clipboard contents"
+          ) {
+            Switch(title: "Keep on clipboard", isOn: $settings.keepOnClipboard)
+          }
+          SettingRow(
+            title: "Press Enter",
+            detail: settings.enterBehavior == .withShift
+              ? "Hold Shift when you stop recording" : "After pasting the transcription"
+          ) {
+            Select(
+              options: EnterBehavior.allCases.map { ($0, $0.title) },
+              selection: $settings.enterBehavior)
+          }
+        }
+
         group("Instructions") {
           TextEditor(text: $settings.instructions)
             .font(.voiceBody)

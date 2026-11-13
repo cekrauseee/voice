@@ -183,4 +183,36 @@ extension HotkeyEngine {
     #expect(engine.handle(down(KeyCode.escape)) == .init(actions: [.cancel], consume: true))
     #expect(engine.handle(.keyUp(keyCode: KeyCode.escape)) == .init(consume: true))
   }
+  @Test func shiftCanBeHeldWhileStoppingAToggleRecording() {
+    var engine = defaults()
+    engine.allowsShiftToStop = true
+    #expect(
+      engine.handle(down(space, [.option, .shift]))
+        == .init(actions: [.toggle], consume: true))
+    #expect(engine.handle(down(space, [.option, .shift], isRepeat: true)).actions.isEmpty)
+    #expect(engine.handle(.keyUp(keyCode: space)) == .init(consume: true))
+  }
+
+  @Test func shiftDoesNotCancelAnEarlyPushWhenUsedToSubmit() {
+    var engine = defaults()
+    _ = engine.handle(press(.rightOption))
+    engine.allowsShiftToStop = true
+    #expect(engine.handle(press(.leftShift, with: .option), at: soon).actions.isEmpty)
+    #expect(
+      engine.handle(release(.rightOption, leaving: .shift), at: soon).actions == [.pushEnd])
+  }
+
+  @Test func shiftWorksWithAModifierToggle() {
+    var engine = HotkeyEngine(
+      pushToTalk: .defaultPushToTalk, toggle: Shortcut(keyCode: ModifierKey.rightCommand.rawValue))
+    engine.allowsShiftToStop = true
+    _ = engine.handle(press(.leftShift))
+    _ = engine.handle(press(.rightCommand, with: .shift))
+    #expect(engine.handle(release(.rightCommand, leaving: .shift)).actions == [.toggle])
+    _ = engine.handle(release(.leftShift))
+    _ = engine.handle(press(.rightCommand))
+    _ = engine.handle(press(.leftShift, with: .command))
+    #expect(engine.handle(release(.rightCommand, leaving: .shift)).actions == [.toggle])
+  }
+
 }

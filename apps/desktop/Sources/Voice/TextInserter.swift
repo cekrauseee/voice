@@ -1,25 +1,34 @@
 import AppKit
 
-/// Types text into the focused field by pasting it, then puts the clipboard back.
+/// Pastes each dictation with its own clipboard and Enter preferences.
 @MainActor
 final class TextInserter {
   /// Marks the key events this app posts, so its own shortcuts ignore them.
   nonisolated static let eventMarker: Int64 = 0x566F_6963_65
 
-  private var pending = ""
+  private struct Insertion {
+    let text: String
+    let keepOnClipboard: Bool
+    let pressEnter: Bool
+  }
+
+  private var pending: [Insertion] = []
   private var isPasting = false
 
-  func insert(_ text: String) {
-    pending += text
+  func insert(_ text: String, keepOnClipboard: Bool = false, pressEnter: Bool = false) {
+    guard !text.isEmpty else { return }
+    pending.append(Insertion(text: text, keepOnClipboard: keepOnClipboard, pressEnter: pressEnter))
     guard !isPasting else { return }
     isPasting = true
     Task {
-      await paste()
+      while !pending.isEmpty {
+        await paste(pending.removeFirst())
+      }
       isPasting = false
     }
   }
 
-  private func paste() async {
+  private func paste(_ insertion: Insertion) async {
     let pasteboard = NSPasteboard.general
     let saved = pasteboard.pasteboardItems?.map { item in
       item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { contents, type in
@@ -27,15 +36,16 @@ final class TextInserter {
       }
     }
 
-    while !pending.isEmpty {
-      pasteboard.clearContents()
-      pasteboard.setString(pending, forType: .string)
-      pending = ""
-      pressCommandV()
-      // Give the focused app time to read the clipboard before it changes again.
-      try? await Task.sleep(for: .milliseconds(150))
-    }
+    pasteboard.clearContents()
+    pasteboard.setString(insertion.text, forType: .string)
+    let changeCount = pasteboard.changeCount
+    press(9, flags: .maskCommand)
+    // Give the focused app time to read the clipboard before Enter or restoration.
+    try? await Task.sleep(for: .milliseconds(150))
+    if insertion.pressEnter { press(36) }
 
+    // A newer copy by the user or another app takes precedence over restoration.
+    guard !insertion.keepOnClipboard, pasteboard.changeCount == changeCount else { return }
     pasteboard.clearContents()
     pasteboard.writeObjects(
       (saved ?? []).map { contents in
@@ -45,11 +55,11 @@ final class TextInserter {
       })
   }
 
-  private func pressCommandV() {
+  private func press(_ keyCode: CGKeyCode, flags: CGEventFlags = []) {
     let source = CGEventSource(stateID: .privateState)
     for keyDown in [true, false] {
-      let event = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: keyDown)
-      event?.flags = .maskCommand
+      let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
+      event?.flags = flags
       event?.setIntegerValueField(.eventSourceUserData, value: Self.eventMarker)
       event?.post(tap: .cghidEventTap)
     }

@@ -22,6 +22,7 @@ final class DictationController {
   @ObservationIgnored private let others = OtherAudio()
   /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
+  @ObservationIgnored private var delivery: DictationDelivery?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
   /// Says the microphone is starting, when it does not deliver sound right away.
@@ -42,27 +43,31 @@ final class DictationController {
     pill.isRecording
   }
 
+  var allowsShiftToStop: Bool {
+    isRecording && delivery?.enterBehavior == .withShift
+  }
+
   /// Whether a dictation is recording or finishing, so Escape can cancel it.
   var isActive: Bool {
     isRecording || pill == .finishing
   }
 
-  func handle(_ action: HotkeyEngine.Action) {
+  func handle(_ action: HotkeyEngine.Action, shiftHeld: Bool = false) {
     switch action {
     case .pushStart:
       start(.push)
     case .pushEnd:
-      if isRecording && mode == .push { stop() }
+      if isRecording && mode == .push { stop(shiftHeld: shiftHeld) }
     case .pushLock:
       if isRecording && mode == .push {
         mode = .toggle
       } else {
-        handle(.toggle)
+        handle(.toggle, shiftHeld: shiftHeld)
       }
     case .pushCancel:
       if isRecording && mode == .push { cancel() }
     case .toggle:
-      if isRecording { stop() } else { start(.toggle) }
+      if isRecording { stop(shiftHeld: shiftHeld) } else { start(.toggle) }
     case .cancel:
       cancel()
     }
@@ -103,9 +108,14 @@ final class DictationController {
       guard let self, let session, self.session === session else { return }
       transcript = session.transcript
     }
-    session.onText = { [weak session, inserter, history, statistics, log] text, error in
+    let delivery = DictationDelivery(
+      keepOnClipboard: settings.keepOnClipboard, enterBehavior: settings.enterBehavior)
+    self.delivery = delivery
+    session.onText = { [weak session, inserter, history, statistics, log, delivery] text, error in
       if !text.isEmpty {
-        inserter.insert(text)
+        inserter.insert(
+          text, keepOnClipboard: delivery.keepOnClipboard,
+          pressEnter: delivery.pressesEnter(text: text, failed: error != nil))
         log.debug("typed", ["chars": text.count])
       }
       guard let session else { return }
@@ -158,7 +168,8 @@ final class DictationController {
     }
   }
 
-  private func stop() {
+  private func stop(shiftHeld: Bool) {
+    delivery?.stop(shiftHeld: shiftHeld)
     release()
     pill = .finishing
   }

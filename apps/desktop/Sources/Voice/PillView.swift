@@ -18,6 +18,7 @@ struct PillView: View {
   let notch: Notch?
 
   @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   fileprivate static let morph = Animation.spring(duration: 0.42, bounce: 0.24)
   /// Going away it does not bounce, so it does not linger.
@@ -126,12 +127,14 @@ struct PillView: View {
               Text("Release to stop")
             }
           }
-          .transition(.blurReplace)
+          .id(mode)
+          .transition(reduceMotion ? .identity : AnyTransition(.blurReplace))
         }
         Hint(title: "Cancel", keyCaps: ["esc"])
       }
       .font(.system(size: 11))
       .foregroundStyle(.secondary)
+      .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: mode)
     }
     .padding(
       notch == nil
