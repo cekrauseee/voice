@@ -18,11 +18,19 @@ public enum DictationError: Error, Equatable {
 /// What the pill shows.
 public enum PillState: Equatable, Sendable {
   case hidden
+  /// Recording, while the microphone starts: it delivers no sound yet, and what is said
+  /// meanwhile is not heard.
+  case starting
   /// Recording. The server may still be getting ready: the audio waits for it.
   case listening
   /// Recording ended, while the text is on its way.
   case finishing
   case failed(DictationError)
+
+  /// Whether the microphone records, whether it delivers sound yet or not.
+  public var isRecording: Bool {
+    self == .starting || self == .listening
+  }
 }
 
 /// How a recording was started, which decides how it ends.

@@ -56,6 +56,8 @@ The app needs two permissions:
 | Accessibility | To see the shortcuts in any app and to type the text |
 | Microphone    | To record                                            |
 
+A third one, System Audio Recording, mutes the other apps while a dictation records. macOS asks for it the first time another app plays sound during a dictation. Without it, they keep playing.
+
 On first launch a setup window takes the user through three steps, one at a time:
 
 1. **Accessibility.** Open Settings adds the app to the Accessibility list in System Settings and opens that page. The user turns the app on there.
@@ -138,11 +140,15 @@ Settings:
 
 ## Microphone and media
 
-The microphone is the one chosen in the settings, or the input chosen in macOS. It is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between.
+The microphone is the one chosen in the settings, or the input chosen in macOS. It is open only while a recording runs. Each recording opens it and releases it when it ends, so the app holds no audio device in between. Opening and closing the microphone wait for the device, so they happen behind the pill, which shows as soon as the shortcut is pressed. While the microphone opens and closes, the indicator macOS shows in the menu bar has a camera for a moment, whatever the app records with.
 
-This matters with a Bluetooth headset used as the microphone, whether it is the one chosen or the system's. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It is back to normal about a third of a second later. While another app records, the headset is left alone.
+The Mac's own microphone delivers sound about a tenth of a second after it opens. A Bluetooth headset takes about a second, while it switches to call quality, and an iPhone almost as long. Until the sound comes, the pill says the microphone is starting, and what is said is not heard. The `recording` record in the log says when the sound came. With a headset on, choosing the Mac's own microphone in the settings starts faster and leaves the headset's sound as it is.
 
-While a dictation records, the media playing on the Mac is paused, and it resumes when the recording ends, without waiting for the text. With a Bluetooth headset it resumes once the headset is out of call quality, and plays again about a second after the recording ends: the headset and the player both need a moment. Media that was not playing is left alone. This works with apps that macOS shows in Now Playing, such as music players and browsers. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
+This matters with a Bluetooth headset used as the microphone, whether it is the one chosen or the system's. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It leaves call quality about a quarter of a second later, and plays again about a second after that, once its link is back: 1.2 seconds after the recording ends, instead of 3. While another app records, the headset is left alone.
+
+While a dictation records, the media playing on the Mac is paused, and it resumes when the recording ends, without waiting for the text. With a Bluetooth headset it resumes once the headset plays again, so it comes back in full quality, about 1.2 seconds after the recording ends. The app knows by playing a moment of silence through the headset: starting it waits until the headset plays. Media that was not playing is left alone. This works with the app that macOS shows in Now Playing, such as a music player or a browser. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
+
+Only that app can be paused. Another one keeps playing: a music player, say, while a browser holds Now Playing because it was played last. So while a dictation records, the other apps are muted, and they are heard again with the media, once the headset plays in full quality. What they play goes on meanwhile, unheard. The app mutes them with a Core Audio tap on their sound, from which it reads nothing, on macOS 14.2 or later. macOS takes that for recording: it asks for the System Audio Recording permission, and shows the app in the menu bar while the tap lasts. So it taps only while another app plays sound. If the app quits during a dictation, the tap goes, and the sound comes back by itself.
 
 ## The pill
 
@@ -152,10 +158,11 @@ At the top of a screen with a notch, the pill is part of the notch: black like i
 
 In the detailed style the pill shows the last three lines of the text as it is recognized. Each new word comes into focus where it lands. When the text outgrows three lines, all of it moves up a line: the oldest line goes out of focus through the top while the new one comes in at the bottom. With Reduce Motion on, or on macOS 14, the words just appear.
 
-The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the text is being refined, a ripple runs through the bars. With Reduce Motion on, the bars only show the level, a few times a second.
+The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the microphone starts and while the text is being refined, the bars ripple, dimmed. The ripple comes and goes the way the voice does, in at the center and out through the edges, so one turns into the other without a jump. With Reduce Motion on, the bars only show the level, a few times a second, and dim instead of rippling.
 
 | State     | Shown                                                                                                                                     |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Starting  | A rippling waveform, while the microphone starts and delivers no sound yet. What is said then is not heard                                |
 | Listening | The waveform follows the microphone                                                                                                       |
 | Finishing | A rippling waveform. Recording ended, the text is being refined                                                                           |
 | Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |

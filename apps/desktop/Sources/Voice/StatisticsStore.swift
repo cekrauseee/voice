@@ -13,6 +13,9 @@ final class StatisticsStore {
 
   @ObservationIgnored private let file: URL
   @ObservationIgnored private let log = Log("statistics")
+  /// The file is written here, in order, away from the main thread: a dictation that ends
+  /// does not wait for the disk.
+  @ObservationIgnored private let disk = DispatchQueue(label: "eu.cekrause.voice.statistics")
 
   init(directory: URL = HistoryStore.defaultDirectory) {
     file = directory.appending(path: "statistics.json")
@@ -32,12 +35,20 @@ final class StatisticsStore {
   /// Counts a dictation that just ended with its text.
   func record(text: String, seconds: TimeInterval, usage: Usage) {
     statistics.record(text: text, seconds: seconds, usage: usage, at: .now, in: .current)
-    do {
-      try FileManager.default.createDirectory(
-        at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try statistics.data.write(to: file, options: .atomic)
-    } catch {
-      log.error("not saved", ["error": error.localizedDescription])
+    let (statistics, file, log) = (statistics, file, log)
+    disk.async {
+      do {
+        try FileManager.default.createDirectory(
+          at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try statistics.data.write(to: file, options: .atomic)
+      } catch {
+        log.error("not saved", ["error": error.localizedDescription])
+      }
     }
+  }
+
+  /// Waits for the file still being written.
+  func flush() {
+    disk.sync {}
   }
 }

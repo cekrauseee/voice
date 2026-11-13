@@ -14,6 +14,9 @@ final class HistoryStore {
   @ObservationIgnored private let file: URL
   @ObservationIgnored private let recordings: URL
   @ObservationIgnored private let log = Log("history")
+  /// The files are written here, in order, away from the main thread: a dictation that
+  /// ends does not wait for the disk.
+  @ObservationIgnored private let disk = DispatchQueue(label: "eu.cekrause.voice.history")
 
   /// A failed dictation shorter than this, in seconds, holds nothing to try again.
   private static let shortestKept = 0.5
@@ -42,11 +45,15 @@ final class HistoryStore {
     guard !failed || !text.isEmpty || duration >= Self.shortestKept,
       history.add(transcription)
     else { return }
-    do {
-      try FileManager.default.createDirectory(at: recordings, withIntermediateDirectories: true)
-      try WAV.file(pcm: recording).write(to: url(of: transcription.id), options: .atomic)
-    } catch {
-      log.error("recording not saved", ["error": error.localizedDescription])
+    let (recordings, file, log) = (recordings, url(of: transcription.id), log)
+    disk.async {
+      do {
+        try FileManager.default.createDirectory(
+          at: recordings, withIntermediateDirectories: true)
+        try WAV.file(pcm: recording).write(to: file, options: .atomic)
+      } catch {
+        log.error("recording not saved", ["error": error.localizedDescription])
+      }
     }
     save()
   }
@@ -65,7 +72,7 @@ final class HistoryStore {
 
   func remove(_ id: Transcription.ID) {
     history.remove(id)
-    try? FileManager.default.removeItem(at: url(of: id))
+    delete([id])
     save()
   }
 
@@ -74,7 +81,7 @@ final class HistoryStore {
     guard let cutoff = retention.cutoff(from: .now) else { return }
     let old = history.prune(before: cutoff)
     guard !old.isEmpty else { return }
-    for id in old { try? FileManager.default.removeItem(at: url(of: id)) }
+    delete(old)
     save()
     log.info("pruned", ["transcriptions": old.count, "retention": retention.rawValue])
   }
@@ -83,13 +90,28 @@ final class HistoryStore {
     recordings.appending(path: "\(id.uuidString).wav")
   }
 
+  /// Waits for the files still being written.
+  func flush() {
+    disk.sync {}
+  }
+
+  private func delete(_ ids: [Transcription.ID]) {
+    let files = ids.map(url(of:))
+    disk.async {
+      for file in files { try? FileManager.default.removeItem(at: file) }
+    }
+  }
+
   private func save() {
-    do {
-      try FileManager.default.createDirectory(
-        at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try history.data.write(to: file, options: .atomic)
-    } catch {
-      log.error("not saved", ["error": error.localizedDescription])
+    let (history, file, log) = (history, file, log)
+    disk.async {
+      do {
+        try FileManager.default.createDirectory(
+          at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try history.data.write(to: file, options: .atomic)
+      } catch {
+        log.error("not saved", ["error": error.localizedDescription])
+      }
     }
   }
 

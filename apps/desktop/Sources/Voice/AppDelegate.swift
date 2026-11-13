@@ -113,6 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     if settings.runsServer { server.stop() }
+    history.flush()
+    statistics.flush()
   }
 
   /// The setup is shown until it is completed, and again whenever a permission is missing.

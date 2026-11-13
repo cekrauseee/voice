@@ -143,4 +143,19 @@ import Testing
     #expect(Level.normalized(pcm(1000)) < Level.normalized(pcm(5000)))
     #expect(Level.normalized(pcm(20_000)) == 1)
   }
+
+  @Test func aMicrophoneThatIsStartingRecords() {
+    #expect(PillState.starting.isRecording)
+    #expect(PillState.listening.isRecording)
+    #expect(!PillState.finishing.isRecording)
+    #expect(!PillState.hidden.isRecording)
+  }
+
+  @Test func onlyAMicrophoneThatIsStartingDeliversZeros() {
+    #expect(Level.isZero(Data(count: 1920)))
+    // A quiet room is below the lowest level, but it is not nothing.
+    let room = Data([1, 0] + [UInt8](repeating: 0, count: 1918))
+    #expect(Level.normalized(room) == 0)
+    #expect(!Level.isZero(room))
+  }
 }

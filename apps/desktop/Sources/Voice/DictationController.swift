@@ -19,10 +19,13 @@ final class DictationController {
   @ObservationIgnored private let capture = AudioCapture()
   @ObservationIgnored private let inserter = TextInserter()
   @ObservationIgnored private let media: MediaPause
+  @ObservationIgnored private let others = OtherAudio()
   /// The dictation the pill shows.
   @ObservationIgnored private var session: DictationSession?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
+  /// Says the microphone is starting, when it does not deliver sound right away.
+  @ObservationIgnored private var warming: Task<Void, Never>?
   @ObservationIgnored private var startedAt = ContinuousClock.now
 
   init(settings: Settings, history: HistoryStore, statistics: StatisticsStore) {
@@ -31,11 +34,12 @@ final class DictationController {
     self.statistics = statistics
     media = MediaPause(
       isPlaying: MediaControl.isPlaying, send: MediaControl.send,
-      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) })
+      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) },
+      muteOthers: { [others] in $0 ? others.mute() : others.unmute() })
   }
 
   var isRecording: Bool {
-    pill == .listening
+    pill.isRecording
   }
 
   /// Whether a dictation is recording or finishing, so Escape can cancel it.
@@ -73,12 +77,15 @@ final class DictationController {
       return fail(.microphoneDenied)
     }
 
-    let chunks: AsyncStream<AudioChunk>
-    do {
-      chunks = try capture.start(with: settings.microphone)
-    } catch {
-      return fail(.microphoneUnavailable)
-    }
+    // The pill shows at once. The microphone opens behind it, and the recording does not
+    // wait for the server: the audio is sent as it comes, and what comes before the server
+    // is ready waits for it on the way.
+    self.mode = mode
+    transcript = Transcript()
+    dismissal?.cancel()
+    pill = .listening
+    startedAt = .now
+    let chunks = capture.start(with: settings.microphone)
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions)
@@ -108,28 +115,33 @@ final class DictationController {
       finish(error)
     }
     session.start()
-
     self.session = session
-    self.mode = mode
-    transcript = Transcript()
-    dismissal?.cancel()
-    // The recording does not wait for the server: the audio is sent as it comes, and
-    // what comes before the server is ready waits for it on the way.
-    pill = .listening
-    startedAt = .now
     media.pause()
     log.info("started", ["mode": mode])
 
+    // The Mac's own microphone delivers sound in about a tenth of a second, a Bluetooth
+    // headset in about a second, while it switches to call quality. When it takes longer
+    // than a moment, the pill says the microphone is starting, until the sound comes.
+    warming = Task {
+      try? await Task.sleep(for: .milliseconds(250))
+      if !Task.isCancelled, self.session === session, pill == .listening { pill = .starting }
+    }
+
     audio = Task {
-      var isFirst = true
+      var isLive = false
       for await chunk in chunks {
-        if isFirst { log.debug("recording", ["microphone_ms": elapsed]) }
-        isFirst = false
+        // Until then the microphone is starting: what it delivers is nothing at all.
+        if !isLive, !Level.isZero(chunk.pcm) {
+          isLive = true
+          warming?.cancel()
+          if pill == .starting { pill = .listening }
+          log.debug("recording", ["microphone_ms": elapsed])
+        }
         session.send(chunk.pcm)
         levels.push(chunk.level)
       }
       guard !Task.isCancelled else { return }
-      if self.session === session, pill == .listening {
+      if self.session === session, pill.isRecording {
         // Nobody stopped the recording: the microphone did not start.
         session.cancel()
         finish(.microphoneUnavailable)
@@ -173,6 +185,7 @@ final class DictationController {
 
   /// Closes the microphone and gives the sound back. The media does not wait for the text.
   private func release() {
+    warming?.cancel()
     capture.stop()
     media.resume()
   }

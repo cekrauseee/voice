@@ -11,6 +11,9 @@ private final class FakeMedia {
   /// When set, sound is not back after a recording until `release`.
   var holdsSound = false
   private(set) var commands: [MediaPause.Command] = []
+  /// Whether the other apps are muted, and how many times that changed.
+  private(set) var othersMuted = false
+  private(set) var muteChanges = 0
   /// How many times sound was asked to get back to normal.
   private(set) var soundReturns = 0
   private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -29,6 +32,10 @@ private final class FakeMedia {
       soundIsBack: { @MainActor in
         self.soundReturns += 1
         if self.holdsSound { await self.hold() }
+      },
+      muteOthers: {
+        self.othersMuted = $0
+        self.muteChanges += 1
       })
   }
 
@@ -128,6 +135,49 @@ private func settle() async {
     media.release()
     await settle()
     #expect(media.commands == [.pause, .play])
+  }
+
+  @Test func mutesTheOtherAppsUntilSoundIsBack() async {
+    let media = FakeMedia(isPlaying: false)
+    media.holdsAnswer = true
+    media.holdsSound = true
+    let pause = media.makePause()
+    pause.pause()
+    // At once, without waiting to know whether media plays.
+    #expect(media.othersMuted)
+    pause.resume()
+    media.release()
+    await settle()
+    #expect(media.othersMuted)
+    media.release()
+    await settle()
+    #expect(!media.othersMuted)
+  }
+
+  @Test func theOtherAppsAreHeardAgainWithTheMedia() async {
+    let media = FakeMedia(isPlaying: true)
+    let pause = media.makePause()
+    pause.pause()
+    await settle()
+    pause.resume()
+    await settle()
+    #expect(media.commands == [.pause, .play])
+    #expect(!media.othersMuted)
+  }
+
+  @Test func aDictationThatStartsBeforeTheMediaResumedKeepsTheOthersMuted() async {
+    let media = FakeMedia(isPlaying: true)
+    media.holdsSound = true
+    let pause = media.makePause()
+    pause.pause()
+    await settle()
+    pause.resume()
+    await settle()
+    pause.pause()
+    media.release()
+    await settle()
+    #expect(media.othersMuted)
+    #expect(media.muteChanges == 1)
   }
 
   @Test func theNextDictationPausesAgain() async {
