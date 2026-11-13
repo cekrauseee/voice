@@ -16,6 +16,9 @@ final class MeetingController {
   /// The app in a call that the user is offered to record, if one is.
   private(set) var prompt: MicrophoneUser?
 
+  /// The levels of both channels, for the waveform.
+  @ObservationIgnored let levels = LevelFeed()
+
   @ObservationIgnored private let log = Log("meeting")
   @ObservationIgnored private let settings: Settings
   @ObservationIgnored private let store: MeetingStore
@@ -74,6 +77,14 @@ final class MeetingController {
 
   var isRecording: Bool {
     live != nil && !isStopping
+  }
+
+  /// What the meeting is up to, for the pill.
+  var status: MeetingStatus {
+    if let failure { return .failed(failure) }
+    if live != nil { return isStopping ? .finishing : .recording }
+    if let prompt { return .offered(prompt) }
+    return .idle
   }
 
   /// How long the meeting has run, in seconds.
@@ -165,6 +176,7 @@ final class MeetingController {
       sent[channel, default: 0] += chunk.pcm.count
       link.send(channel, chunk.pcm, at: time)
       store.append(channel, chunk.pcm)
+      levels.push(chunk.level)
     }
     guard channel == .me, !Task.isCancelled, live != nil, !isStopping else { return }
     if isFirst {

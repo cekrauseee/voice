@@ -16,13 +16,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     settings: settings, history: history, statistics: statistics)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
   private lazy var meeting = MeetingController(settings: settings, store: meetings)
-  private lazy var meetingPanel = MeetingPanel(controller: meeting) { [weak self] in
+  private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
+  private lazy var pill = PillPanel(controller: controller, meeting: meeting, settings: settings) {
+    [weak self] in
     guard let self, let id = meeting.live?.meeting.id else { return }
     navigation.show(meeting: id)
     mainWindow.show()
   }
-  private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
-  private lazy var pill = PillPanel(controller: controller, settings: settings)
   private lazy var mainWindow = AppWindow(
     title: AppInfo.name,
     style: .main(size: NSSize(width: 680, height: 460)),
@@ -67,7 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     pill.start()
-    meetingPanel.start()
     track { [settings] in
       settings.detectsMeetings
     } onChange: { [weak self] detecting in

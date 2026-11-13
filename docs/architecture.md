@@ -71,7 +71,7 @@ A meeting is another operation, with its own connection: it lasts hours, carries
 │ microphone  (me)   │ ───────────▶ │ channel me              │ ──────▶ │ realtime             │
 │ system tap (others)│ ───────────▶ │ channel others          │ ──────▶ │ transcription        │
 │                    │  [1] PCM     │   segmenter: cuts turns │ ◀────── │ (gpt-live-transcribe)│
-│ panel, page        │ ◀─────────── │   transcriber that      │  text   └──────────────────────┘
+│ pill, page         │ ◀─────────── │   transcriber that      │  text   └──────────────────────┘
 │ meetings/*.json    │  draft       │   outlives its sessions │ window  ┌──────────────────────┐
 │ meetings/*.wav     │  segment     │ meeting session         │ ──────▶ │ language model       │
 │                    │  revised     │   windows, reviser      │ ◀────── │ (Responses API)      │

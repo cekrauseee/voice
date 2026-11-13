@@ -144,9 +144,9 @@ Settings:
 
 Start Meeting, in the menu bar menu, records a meeting until Stop Meeting, or the Stop button, ends it. Two channels are recorded: the microphone chosen in the settings, which is `Me`, and what the Mac plays but for the app's own sound, which is `Others`: the other participants, whatever app the call is in. Both are streamed to the server, which transcribes them as [segments](../../docs/protocol.md#meeting) of one side or the other, and revises them a few minutes at a time as the meeting goes: punctuation, misheard words, fillers, and the cuts between turns. The revised text replaces what was heard, on the page as in the file. The Instructions setting goes to the revision too.
 
-When another app starts a call, the app offers to record it: once Zoom, Teams, Slack, Discord, FaceTime, Webex, Skype, WhatsApp, Telegram, or a browser has held the microphone for three seconds, a small panel floats at the top right of the screen, saying which app is in a call, with Start recording and a way to dismiss it. A dismissed call is not asked about again until the app lets the microphone go, and neither is one that was recorded. The Detect meetings setting turns this off.
+When another app starts a call, the app offers to record it: once Zoom, Teams, Slack, Discord, FaceTime, Webex, Skype, WhatsApp, Telegram, or a browser has held the microphone for three seconds, the pill comes out where dictations show it, saying which app is in a call, with Start recording and a way to dismiss it. It stays until one of them is clicked. A dismissed call is not asked about again until the app lets the microphone go, and neither is one that was recorded. The Detect meetings setting turns this off.
 
-While a meeting records, the same panel shows the meeting: how long it has run, the last of what was said, with what is being heard dimmed, a button that opens the meeting's page, and Stop. The panel takes clicks but never the focus, and can be dragged. If the Mac's sound could not be tapped, the panel says that only the microphone is recorded. If the microphone does not start, the meeting is not kept, and the panel says `No microphone found` for a moment. When the meeting starts, its page opens in the window.
+While a meeting records, the pill stays out and shows the meeting, in the style of the settings. Minimal, it shows a red dot, how long the meeting has run, a waveform of both channels, and Stop, and a click on it opens the meeting's page. Detailed, it also shows the last of what was said, with what is being heard dimmed, and a button that opens the page. A dictation shows over the meeting, and the meeting comes back when the dictation ends. The pill takes clicks while it shows a meeting, but never the focus. If the Mac's sound could not be tapped, it says that only the microphone is recorded. If the microphone does not start, the meeting is not kept, and the pill says `No microphone found` for a moment. A meeting started from the menu opens its page in the window.
 
 The recording never waits for the server. If the connection drops, the app keeps recording, opens another connection after a wait that grows with each failure, and sends again what the server had not confirmed: the transcript catches up, and nothing is shown. The same goes for the server's own sessions with OpenAI, which it replaces by itself. Stopping waits up to 20 s for the last segments.
 
@@ -168,7 +168,7 @@ Only that app can be paused. Another one keeps playing: a music player, say, whi
 
 ## The pill
 
-The pill shows at the center of the screen the pointer is on, at the bottom or at the top, as the settings say. It is one surface that changes shape. It grows out of the edge of the screen it is at when a dictation starts, and reshapes itself between the two styles and for a message, while the content dissolves from one to the other.
+The pill shows at the center of the screen the pointer is on, at the bottom or at the top, as the settings say. It is one surface that changes shape. It grows out of the edge of the screen it is at when a dictation starts, when a call is detected, or when a meeting starts, and reshapes itself between the two styles and between a dictation, a meeting, and a message, while the content dissolves from one to the other.
 
 At the top of a screen with a notch, the pill is part of the notch: black like it, it grows out of the notch when a dictation starts and goes back into it at the end. The minimal style spreads to either side of the notch and a little below it, with the microphone on the left and the waveform on the right. The detailed style and the messages drop down below it. The content comes and goes with it, in step. Its shape follows how far out of the notch it is: next to the notch it has the notch's corners, and away from it the pill's, so it closes back into the notch exactly, and the notch hides it whole once closed.
 
@@ -176,12 +176,14 @@ In the detailed style the pill shows the last three lines of the text as it is r
 
 The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the microphone starts and while the text is being refined, the bars ripple, dimmed. The ripple comes and goes the way the voice does, in at the center and out through the edges, so one turns into the other without a jump. With Reduce Motion on, the bars only show the level, a few times a second, and dim instead of rippling.
 
-| State     | Shown                                                                                                                                     |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Starting  | A rippling waveform, while the microphone starts and delivers no sound yet. What is said then is not heard                                |
-| Listening | The waveform follows the microphone                                                                                                       |
-| Finishing | A rippling waveform. Recording ended, the text is being refined                                                                           |
-| Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
+| State     | Shown                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Starting  | A rippling waveform, while the microphone starts and delivers no sound yet. What is said then is not heard                                 |
+| Listening | The waveform follows the microphone                                                                                                        |
+| Finishing | A rippling waveform. Recording ended, the text is being refined                                                                            |
+| Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed`  |
+| Offer     | `Meeting detected`, which app is in a call, Start recording, and Dismiss. It stays until one is clicked                                    |
+| Meeting   | A red dot, how long the meeting has run, a waveform of both channels, and Stop. The detailed style adds the last of what was said and Open |
 
 ## Logs
 
@@ -225,7 +227,6 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/MeetingStore.swift`                                  | The files that keep the meetings and their recordings             |
 | `Sources/Voice/SystemAudioCapture.swift`                            | Records what the Mac plays, through a Core Audio tap              |
 | `Sources/Voice/MicrophoneMonitor.swift`                             | Asks Core Audio which apps hold the microphone                    |
-| `Sources/Voice/MeetingPanel.swift`                                  | The floating panel of the meeting being recorded                  |
 | `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                  |
 | `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                              |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                  |

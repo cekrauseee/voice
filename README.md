@@ -40,7 +40,7 @@ Then dictate:
 | Toggle recording: press to start, press again to stop | ⌥ Space          |
 | Cancel                                                | esc              |
 
-When an app starts a call, a small panel offers to record the meeting; Start Meeting, in the menu bar menu, does too. A meeting is your microphone and what the meeting app plays, transcribed live as `Me` and `Others` and revised as it goes, on the meeting's page and in the panel. Stop it from either.
+When an app starts a call, the pill offers to record the meeting; Start Meeting, in the menu bar menu, does too. A meeting is your microphone and what the meeting app plays, transcribed live as `Me` and `Others` and revised as it goes, on the meeting's page and in the panel. Stop it from either.
 
 The menu bar menu opens the app's window, with the past transcriptions, the meetings, the statistics of what was dictated and what it cost, and the settings.
 
