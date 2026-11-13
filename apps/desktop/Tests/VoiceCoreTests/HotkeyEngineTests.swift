@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import VoiceCore
@@ -25,6 +26,18 @@ private func release(_ key: ModifierKey, leaving modifiers: Modifiers = []) -> K
   .modifierChanged(key: key, isDown: false, modifiers: modifiers)
 }
 
+/// A moment into a push at which a key makes a combination with its key.
+private let soon: TimeInterval = 0.2
+/// A moment into a push at which it has become a dictation.
+private let later: TimeInterval = 2
+
+extension HotkeyEngine {
+  /// Handles an event at the start of time: what the time is does not matter to the test.
+  fileprivate mutating func handle(_ event: KeyEvent) -> Result {
+    handle(event, at: 0)
+  }
+}
+
 @Suite struct HotkeyEngineTests {
   @Test func holdingTheModifierPushesToTalk() {
     var engine = defaults()
@@ -45,17 +58,54 @@ private func release(_ key: ModifierKey, leaving modifiers: Modifiers = []) -> K
     #expect(engine.handle(release(.rightOption, leaving: .shift)).actions.isEmpty)
   }
 
-  @Test func typingWithTheModifierCancelsPushToTalk() {
+  @Test func typingWithTheModifierAtOnceCancelsPushToTalk() {
     var engine = defaults()
     _ = engine.handle(press(.rightOption))
-    #expect(engine.handle(down(letterA, .option)) == .init(actions: [.pushCancel]))
-    #expect(engine.handle(release(.rightOption)).actions.isEmpty)
+    #expect(engine.handle(down(letterA, .option), at: soon) == .init(actions: [.pushCancel]))
+    #expect(engine.handle(.keyUp(keyCode: letterA), at: soon) == .init())
+    #expect(engine.handle(release(.rightOption), at: later).actions.isEmpty)
   }
 
-  @Test func anotherModifierCancelsPushToTalk() {
+  @Test func anotherModifierAtOnceCancelsPushToTalk() {
     var engine = defaults()
     _ = engine.handle(press(.rightOption))
-    #expect(engine.handle(press(.leftShift, with: .option)).actions == [.pushCancel])
+    #expect(engine.handle(press(.leftShift, with: .option), at: soon).actions == [.pushCancel])
+  }
+
+  @Test func aKeyDuringTheDictationIsSwallowed() {
+    var engine = defaults()
+    _ = engine.handle(press(.rightOption))
+    #expect(engine.handle(down(letterA, .option), at: later) == .init(consume: true))
+    #expect(
+      engine.handle(down(letterA, .option, isRepeat: true), at: later) == .init(consume: true))
+    #expect(engine.handle(.keyUp(keyCode: letterA), at: later) == .init(consume: true))
+    #expect(engine.handle(release(.rightOption), at: later) == .init(actions: [.pushEnd]))
+  }
+
+  @Test func theToggleShortcutDuringTheDictationIsSwallowed() {
+    var engine = defaults()
+    _ = engine.handle(press(.rightOption))
+    #expect(engine.handle(down(space, .option), at: later) == .init(consume: true))
+    #expect(engine.handle(release(.rightOption), at: later) == .init(actions: [.pushEnd]))
+  }
+
+  @Test func anotherModifierDuringTheDictationIsIgnored() {
+    var engine = defaults()
+    _ = engine.handle(press(.rightOption))
+    #expect(engine.handle(press(.leftShift, with: .option), at: later).actions.isEmpty)
+    #expect(engine.handle(down(letterA, [.option, .shift]), at: later) == .init(consume: true))
+    #expect(engine.handle(release(.rightOption, leaving: .shift), at: later).actions == [.pushEnd])
+  }
+
+  @Test func escapeDuringTheDictationCancelsIt() {
+    var engine = defaults()
+    _ = engine.handle(press(.rightOption))
+    let escape = down(KeyCode.escape, .option)
+    #expect(engine.handle(escape, at: later) == .init(actions: [.pushCancel], consume: true))
+    #expect(engine.handle(.keyUp(keyCode: KeyCode.escape), at: later) == .init(consume: true))
+    // The key is an ordinary modifier again until it is released.
+    #expect(engine.handle(down(letterA, .option), at: later) == .init())
+    #expect(engine.handle(release(.rightOption), at: later).actions.isEmpty)
   }
 
   @Test func theToggleShortcutIsConsumedAndFiresOnce() {
@@ -73,10 +123,10 @@ private func release(_ key: ModifierKey, leaving modifiers: Modifiers = []) -> K
     #expect(engine.handle(down(space, [.option, .shift])) == .init())
   }
 
-  @Test func toggleWithThePushToTalkModifierCancelsThePush() {
+  @Test func toggleWithThePushToTalkModifierAtOnceCancelsThePush() {
     var engine = defaults()
     _ = engine.handle(press(.rightOption))
-    let result = engine.handle(down(space, .option))
+    let result = engine.handle(down(space, .option), at: soon)
     #expect(result == .init(actions: [.pushCancel, .toggle], consume: true))
   }
 

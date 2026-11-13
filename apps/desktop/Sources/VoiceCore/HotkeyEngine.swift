@@ -1,13 +1,18 @@
+import Foundation
+
 /// Turns keyboard events into dictation actions.
 ///
 /// A shortcut made of a key with modifiers is consumed, so it never reaches the focused app.
-/// A shortcut made of one modifier key acts only while that key is used alone: pressing
-/// another key with it turns it back into an ordinary modifier.
+/// A shortcut made of one modifier key still works as a modifier: a key pressed with it right
+/// away makes a key combination, which cancels the push and reaches the focused app as usual.
+/// Once the push has lasted longer than that, it is a dictation, and the keyboard belongs to
+/// it: a key pressed by accident types nothing and ends nothing, and Escape cancels the push.
 public struct HotkeyEngine: Sendable {
   public enum Action: Equatable, Sendable {
     case pushStart
     case pushEnd
-    /// The push-to-talk key turned out to be part of another key combination.
+    /// The push is dropped: its key turned out to be part of a key combination, or Escape
+    /// was pressed during it.
     case pushCancel
     case toggle
     case cancel
@@ -19,12 +24,17 @@ public struct HotkeyEngine: Sendable {
     public var consume = false
   }
 
+  /// How long after a modifier key goes down another key still makes a combination with
+  /// it, in seconds. A key pressed later lands in a dictation.
+  public static let combination: TimeInterval = 0.5
+
   public var pushToTalk: Shortcut
   public var toggle: Shortcut
   /// While set, Escape is consumed and cancels.
   public var capturesEscape = false
 
   private var pushHeld = false
+  private var pushedAt: TimeInterval = 0
   private var toggleArmed = false
   private var consumedKeys: Set<UInt16> = []
 
@@ -33,26 +43,43 @@ public struct HotkeyEngine: Sendable {
     self.toggle = toggle
   }
 
-  public mutating func handle(_ event: KeyEvent) -> Result {
+  /// Handles an event that happened at `time`, in seconds on any steady clock: it only
+  /// measures how long a push has lasted.
+  public mutating func handle(_ event: KeyEvent, at time: TimeInterval) -> Result {
     switch event {
     case .keyDown(let keyCode, let modifiers, let isRepeat):
-      keyDown(keyCode, modifiers, isRepeat)
+      keyDown(keyCode, modifiers, isRepeat, time)
     case .keyUp(let keyCode):
       keyUp(keyCode)
     case .modifierChanged(let key, let isDown, let modifiers):
-      modifierChanged(key, isDown, modifiers)
+      modifierChanged(key, isDown, modifiers, time)
     }
   }
 
-  private mutating func keyDown(_ keyCode: UInt16, _ modifiers: Modifiers, _ isRepeat: Bool)
-    -> Result
-  {
+  /// Whether a key pressed at `time` makes a combination with the held push-to-talk key.
+  private func isCombination(at time: TimeInterval) -> Bool {
+    time - pushedAt < Self.combination
+  }
+
+  private mutating func keyDown(
+    _ keyCode: UInt16, _ modifiers: Modifiers, _ isRepeat: Bool, _ time: TimeInterval
+  ) -> Result {
     var result = Result()
-    if pushHeld && pushToTalk.modifierKey != nil {
-      pushHeld = false
-      result.actions.append(.pushCancel)
-    }
     toggleArmed = false
+    if pushHeld && pushToTalk.modifierKey != nil {
+      if isCombination(at: time) {
+        pushHeld = false
+        result.actions.append(.pushCancel)
+      } else {
+        if keyCode == KeyCode.escape && !isRepeat {
+          pushHeld = false
+          result.actions.append(.pushCancel)
+        }
+        consumedKeys.insert(keyCode)
+        result.consume = true
+        return result
+      }
+    }
 
     let pressed = Shortcut(keyCode: keyCode, modifiers: modifiers)
     if capturesEscape && pressed == Shortcut(keyCode: KeyCode.escape) {
@@ -62,6 +89,7 @@ public struct HotkeyEngine: Sendable {
     } else if pressed == pushToTalk {
       if !isRepeat && !pushHeld {
         pushHeld = true
+        pushedAt = time
         result.actions.append(.pushStart)
       }
     } else {
@@ -82,15 +110,16 @@ public struct HotkeyEngine: Sendable {
     return result
   }
 
-  private mutating func modifierChanged(_ key: ModifierKey, _ isDown: Bool, _ modifiers: Modifiers)
-    -> Result
-  {
+  private mutating func modifierChanged(
+    _ key: ModifierKey, _ isDown: Bool, _ modifiers: Modifiers, _ time: TimeInterval
+  ) -> Result {
     var result = Result()
     let alone = modifiers == key.modifier
 
     if key == pushToTalk.modifierKey {
       if isDown && alone && !pushHeld {
         pushHeld = true
+        pushedAt = time
         result.actions.append(.pushStart)
       } else if !isDown && pushHeld {
         pushHeld = false
@@ -98,7 +127,7 @@ public struct HotkeyEngine: Sendable {
       }
     } else if pushHeld {
       if pushToTalk.modifierKey != nil {
-        if isDown {
+        if isDown && isCombination(at: time) {
           pushHeld = false
           result.actions.append(.pushCancel)
         }
