@@ -69,7 +69,7 @@ The behavior of the pipeline is set by constants in the source:
 | What                                                 | Where                                                      |
 | ---------------------------------------------------- | ---------------------------------------------------------- |
 | What the refiner is told to do                       | `INSTRUCTIONS` in [`refiner.ts`](src/refiner.ts)           |
-| How long the model may go silent during a refinement | `STALL_MS` in [`refiner.ts`](src/refiner.ts)               |
+| How long the model may go silent during a refinement | `STALL_MS` in [`responses.ts`](src/responses.ts)           |
 | Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts) |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
@@ -106,7 +106,8 @@ The tests run the real server, session, transcriber, and refiner. The OpenAI API
 | `src/server.ts`      | HTTP and WebSocket endpoints. One connection is one session                          |
 | `src/session.ts`     | One dictation: drives the transcriber and the refiner, and falls back when one fails |
 | `src/transcriber.ts` | The OpenAI realtime transcription session                                            |
-| `src/refiner.ts`     | The refinement prompt, and its request over the Responses WebSocket                  |
+| `src/responses.ts`   | A request to the Responses API over a WebSocket                                      |
+| `src/refiner.ts`     | The refinement prompt                                                                |
 | `src/protocol.ts`    | The messages exchanged with the app                                                  |
 | `scripts/dictate.ts` | Replays a recording against a running server                                         |
 | `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                       |

@@ -4,6 +4,8 @@ export const DICTATION_PATH = "/v1/dictation";
 
 /** Audio the client streams as binary frames: 16-bit little-endian mono PCM. */
 export const SAMPLE_RATE = 24_000;
+/** The audio is 16-bit mono at 24 kHz. */
+export const BYTES_PER_SECOND = SAMPLE_RATE * 2;
 
 export type ErrorCode = "bad_request" | "transcription_failed" | "timeout";
 
@@ -55,6 +57,17 @@ export type ServerMessage =
 export type ClientMessage = { type: "start"; instructions: string } | { type: "stop" };
 
 export function parseClientMessage(raw: string): ClientMessage | undefined {
+  const value = parseJson(raw);
+  if (value === undefined) return undefined;
+  if (value.type === "stop") return { type: "stop" };
+  if (value.type === "start") {
+    const instructions = value.instructions ?? "";
+    if (typeof instructions === "string") return { type: "start", instructions };
+  }
+  return undefined;
+}
+
+function parseJson(raw: string): Record<string, unknown> | undefined {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -62,10 +75,5 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
     return undefined;
   }
   if (typeof value !== "object" || value === null || !("type" in value)) return undefined;
-  if (value.type === "stop") return { type: "stop" };
-  if (value.type === "start") {
-    const instructions = "instructions" in value ? value.instructions : "";
-    if (typeof instructions === "string") return { type: "start", instructions };
-  }
-  return undefined;
+  return value as Record<string, unknown>;
 }
