@@ -39,6 +39,7 @@ struct MenuBarPanel: View {
     }
     .padding(6)
     .frame(width: 340)
+    // Up into the popover's arrow, which takes the same ground.
     .background(Design.ground)
   }
 

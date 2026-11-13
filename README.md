@@ -42,7 +42,7 @@ Then dictate:
 
 While holding push to talk, press Space to keep recording after you release the shortcut. Use Toggle recording to stop, or esc to cancel.
 
-The menu bar menu opens the app's window, with the past transcriptions, the statistics of what was dictated and what it cost, and the settings.
+Clicking Voice in the menu bar shows today's words and the last transcriptions, and opens the app's window: the past transcriptions, which can be searched, the statistics of what was dictated and what it cost, and the settings.
 
 ## Using it every day
 

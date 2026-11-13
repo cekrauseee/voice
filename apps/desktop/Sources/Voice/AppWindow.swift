@@ -9,7 +9,8 @@ import SwiftUI
 @MainActor
 final class AppWindow: NSObject, NSWindowDelegate {
   enum Style {
-    /// A small window of a fixed size, as large as its content.
+    /// A small window of a fixed size, as large as its content, which reaches up under the
+    /// title bar. Its only button closes it.
     case panel
     /// A window of one size whose content reaches under the title bar and draws the header
     /// there, beside the button that closes it. It has no other button: it cannot be
@@ -28,7 +29,13 @@ final class AppWindow: NSObject, NSWindowDelegate {
     switch style {
     case .panel:
       window = NSWindow(contentViewController: NSHostingController(rootView: content))
-      window.styleMask = [.titled, .closable]
+      // The content's ground runs up under the title bar, which only holds the button that
+      // closes the window.
+      window.styleMask = [.titled, .closable, .fullSizeContentView]
+      window.titlebarAppearsTransparent = true
+      window.titleVisibility = .hidden
+      window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+      window.standardWindowButton(.zoomButton)?.isHidden = true
     case .main(let size):
       window = NSWindow(
         contentRect: NSRect(origin: .zero, size: size),

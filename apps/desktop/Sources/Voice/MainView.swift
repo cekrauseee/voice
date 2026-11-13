@@ -118,6 +118,11 @@ struct MainView: View {
       .ignoresSafeArea(edges: .top)
     }
     .background(Design.ground)
+    // A transcription deleted while its page is open, as when it gets too old to keep,
+    // takes the window back to the list.
+    .onChange(of: history.history.transcriptions.map(\.id)) { _, ids in
+      if case .transcription(let id) = navigation.top, !ids.contains(id) { navigation.back() }
+    }
   }
 
   @ViewBuilder private func page(_ page: Page) -> some View {

@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let popover = NSPopover()
     popover.behavior = .transient
     popover.animates = true
+    popover.hasFullSizeContent = true
     let content = NSHostingController(
       rootView: MenuBarPanel(
         controller: controller, settings: settings, permissions: permissions,
