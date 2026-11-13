@@ -1,6 +1,6 @@
 # Architecture
 
-Voice turns speech into typed text: the words appear as they are heard, and the text is typed once, cleaned up, when the speaker stops. This page explains how.
+Voice turns speech into typed text: the words appear as they are heard, and the text is typed once, cleaned up, when the speaker stops. It also transcribes meetings, as they happen, with both sides told apart. This page explains how.
 
 ```
  desktop app                         server                            OpenAI
@@ -61,9 +61,42 @@ The app adds up what each dictation used, day by day, and shows it on its Statis
 - A dictation that fails is kept in the app's history with its recording. The app can send that recording again, as a new dictation, at once instead of at the pace it was spoken.
 - The app shows a failure in the pill for three seconds: no microphone access, no microphone, server unreachable, or transcription failed.
 
+## A meeting
+
+A meeting is another operation, with its own connection: it lasts hours, carries two channels of audio, and its transcript is read as it is written rather than typed. Nothing of the dictation changes for it.
+
+```
+ desktop app                             server                           OpenAI
+┌────────────────────┐  [0] PCM     ┌─────────────────────────┐  turns  ┌──────────────────────┐
+│ microphone  (me)   │ ───────────▶ │ channel me              │ ──────▶ │ realtime             │
+│ system tap (others)│ ───────────▶ │ channel others          │ ──────▶ │ transcription        │
+│                    │  [1] PCM     │   segmenter: cuts turns │ ◀────── │ (gpt-live-transcribe)│
+│ pill, page         │ ◀─────────── │   transcriber that      │  text   └──────────────────────┘
+│ meetings/*.json    │  draft       │   outlives its sessions │ window  ┌──────────────────────┐
+│ meetings/*.wav     │  segment     │ meeting session         │ ──────▶ │ language model       │
+│                    │  revised     │   windows, reviser      │ ◀────── │ (Responses API)      │
+└────────────────────┘              └─────────────────────────┘ pieces  └──────────────────────┘
+```
+
+**Two channels.** On a Mac the two sides of a call are already apart: the speaker is the microphone, and everyone else is what the meeting app plays. The app records both, the second through a Core Audio tap on the sound of every other process, and sends them as two channels. The server transcribes each on its own, so who said what is known without any model guessing it: segments are `me` or `others`.
+
+**Turns.** `gpt-live-transcribe` has no turn detection of its own and no speaker labels, so the server cuts each channel into turns itself: a [segmenter](../apps/server/src/segmenter.ts) opens a turn when the level rises above the room's noise floor and commits it at a pause, or at a length limit when nobody pauses. The text heard while a turn runs is sent as a draft; the complete transcript of a committed turn is a **segment**, with the channel and its start and end in the meeting's clock. Silence between turns is not sent to OpenAI, and not paid for. A turn cut in the middle of a sentence costs nothing here: nothing is typed, and the text can be revised later with the turns around it.
+
+**Sessions that come and go.** A realtime session can fail, and does not last for hours. A [transcriber that outlives its sessions](../apps/server/src/resilient.ts) keeps the audio of every turn until the turn is final; when the session fails, or has lived long enough to be ended by the provider, it opens another and sends those turns again. The [channel](../apps/server/src/channel.ts) above it sees one transcriber, numbers its turns in the order they were cut, and passes the segments on in that order, standing the text heard in for a transcript that does not come in time.
+
+**Revision in windows.** The live text is a draft of a kind: a realtime model does not punctuate well, and the turns are cut at pauses, not at sentences. So the server revises the transcript as the meeting goes, in [windows](../apps/server/src/windows.ts) of a few minutes that close at a pause, once they hold enough: a language model sees the window as a dialog, with the window before it as context, and gives back its pieces, fixed, with fillers removed and the stretches joined or split where the pauses cut them wrong, each anchored to the stretch it begins in. The revised segments replace the ones they came from, in the app as on the page. Windows are revised one at a time, in order, and transcription never waits for them. This is the per-piece refinement that dictation gave up, in the place it fits: nothing is typed, so a revision can replace what was shown, and a window is long enough to read as one text.
+
+**The app keeps the meeting.** A meeting outlives any one connection. The app writes every segment to disk as it arrives, with the recording of each channel, so what was transcribed survives the app and the server. When the socket drops, the app keeps recording, waits a little longer each time, and opens another connection: it tells the server where each channel's segments end, and sends again the audio after that point, which it keeps for the purpose. The server holds nothing between connections. None of this reaches the user: the panel keeps counting, and the text catches up.
+
+**Detection.** Core Audio says which processes record from an input device, which is what the orange dot in the menu bar knows. The app looks every two seconds; when a meeting app or a browser has held the microphone for three seconds and no meeting is being recorded, it offers to record, once per call. The logic is a small state machine in `VoiceCore`, [`MeetingDetection`](../apps/desktop/Sources/VoiceCore/MeetingDetection.swift), which the app feeds.
+
+**Cost.** A meeting is charged for the speech transcribed on both channels, by the minute of audio. The server reports it after each segment, so a connection that is lost loses nothing counted, and the app adds the connections up.
+
 ## Why these choices
 
 - **Native Swift app.** The product depends on a system-wide shortcut on a single modifier key, a window that floats over every app without taking focus, and typing into other apps. These are native macOS APIs.
 - **A separate server.** The OpenAI key and the pipeline stay out of the app, so the pipeline can change without shipping the app, and the same server can run on another machine. On one Mac, the production app carries the server and runs it while it runs, with the key from the server's own `.env`.
 - **The server owns the text.** The app shows what the server sends and types what `done` carries. It does not assemble or correct text itself.
 - **One refinement at the end.** Refining pieces while the speaker talks types text sooner, but each piece is written without knowing what follows, and the pieces do not read as one text. One request over the whole transcript trades that speed for a coherent result.
+- **Meetings apart from dictation.** A meeting shares the transcription model and the server, and nothing else: another connection, another session, another controller in the app. Folding it into the dictation would have made both harder to reason about.
+- **Sides by channel, not by model.** Telling the speaker from the others by where the audio comes from is exact and costs nothing. Telling the others from each other needs a diarization model, which OpenAI only offers on a deprecated file model, and is left for later.

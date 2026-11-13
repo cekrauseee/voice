@@ -11,6 +11,7 @@ import OpenAI from "openai";
 import { type WebSocket, WebSocketServer } from "ws";
 import { audio, until } from "./fixtures.ts";
 import { createOpenAIRefiner } from "./refiner.ts";
+import { createOpenAIReviser } from "./reviser.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
 
 /** The SDK only opens realtime sockets over TLS, so the stand-in needs a certificate to trust. */
@@ -136,8 +137,8 @@ test("the transcriber passes on the text heard, the transcript, and failures", a
   const events: unknown[] = [];
   const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })({
     ready() {},
-    delta: (text) => events.push(["delta", text]),
-    final: (text) => events.push(["final", text]),
+    delta: (turn, text) => events.push(["delta", turn, text]),
+    final: (turn, text) => events.push(["final", turn, text]),
     error: (error) => events.push(["error", error.message]),
   });
   await until(() => realtime.socket !== undefined);
@@ -149,9 +150,9 @@ test("the transcriber passes on the text heard, the transcript, and failures", a
   await until(() => events.length === 4);
 
   assert.deepEqual(events, [
-    ["delta", " one"],
-    ["delta", " two"],
-    ["final", "One, two."],
+    ["delta", 0, " one"],
+    ["delta", 0, " two"],
+    ["final", 0, "One, two."],
     ["error", "bad audio"],
   ]);
 
@@ -166,7 +167,7 @@ test("the transcriber completes a recording too short to commit by itself", asyn
   const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })({
     ready() {},
     delta() {},
-    final: (text) => finals.push(text),
+    final: (_turn, text) => finals.push(text),
     error() {},
   });
   t.after(() => transcriber.close());
@@ -308,4 +309,44 @@ test("closing the refiner ends the request in progress", async (t) => {
   refiner.close();
   await assert.rejects(refined, /closed/);
   await until(() => responses.socket?.readyState === 3);
+});
+
+test("the reviser asks for the window in the shape it wants, and reads the answer", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const reviser = createOpenAIReviser(client, { model: "gpt-6-luna" })();
+  t.after(() => reviser.close());
+
+  const revised = reviser.revise(
+    {
+      context: "me: Earlier.",
+      segments: [{ id: 3, channel: "me", start: 0, end: 2, text: "so the plan is simple" }],
+      instructions: "",
+    },
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  const [request] = responses.received;
+  assert.equal(
+    request?.input,
+    "<context>\nme: Earlier.\n</context>\n\n<stretches>\n[3] me: so the plan is simple\n</stretches>",
+  );
+  assert.match(String(request?.instructions), /^You revise the transcript of a meeting\./);
+  const text = request?.text as { format: { type: string; name: string; strict: boolean } };
+  assert.equal(text.format.type, "json_schema");
+  assert.equal(text.format.name, "revision");
+  assert.equal(text.format.strict, true);
+
+  responses.emit({
+    type: "response.output_text.delta",
+    delta: '{"segments":[{"anchor":3,"channel":"me","text":"So the plan is simple."}]}',
+  });
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 300, output_tokens: 20, total_tokens: 320 } },
+  });
+  assert.deepEqual(await revised, {
+    pieces: [{ anchor: 3, channel: "me", text: "So the plan is simple." }],
+    inputTokens: 300,
+    outputTokens: 20,
+  });
 });

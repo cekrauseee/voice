@@ -37,6 +37,11 @@ final class Settings {
     didSet { defaults.set(retention.rawValue, forKey: "retention") }
   }
 
+  /// Whether the app offers to record when another app starts a call.
+  var detectsMeetings: Bool {
+    didSet { defaults.set(detectsMeetings, forKey: "detectsMeetings") }
+  }
+
   /// Whether the window's sidebar only shows icons.
   var isSidebarCollapsed: Bool {
     didSet { defaults.set(isSidebarCollapsed, forKey: "isSidebarCollapsed") }
@@ -75,6 +80,7 @@ final class Settings {
       try? JSONDecoder().decode(Microphone.self, from: $0)
     }
     retention = defaults.string(forKey: "retention").flatMap(Retention.init) ?? .never
+    detectsMeetings = defaults.object(forKey: "detectsMeetings") as? Bool ?? true
     isSidebarCollapsed = defaults.bool(forKey: "isSidebarCollapsed")
     hasOnboarded = defaults.bool(forKey: "hasOnboarded")
     let otherServer = defaults.string(forKey: "serverURL").flatMap(URL.init)

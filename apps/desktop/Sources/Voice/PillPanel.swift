@@ -2,18 +2,24 @@ import AppKit
 import SwiftUI
 import VoiceCore
 
-/// The floating window that holds the pill. It never takes focus or mouse events.
+/// The floating window that holds the pill. It never takes the focus, and takes clicks
+/// only while the pill has buttons, for a meeting.
 @MainActor
 final class PillPanel {
   private let controller: DictationController
+  private let meeting: MeetingController
   private let settings: Settings
   private let panel: NSPanel
   private let placement = PillPlacement()
   /// Takes the window down once the pill has animated out.
   private var putAway: Task<Void, Never>?
 
-  init(controller: DictationController, settings: Settings) {
+  init(
+    controller: DictationController, meeting: MeetingController, settings: Settings,
+    open: @escaping () -> Void
+  ) {
     self.controller = controller
+    self.meeting = meeting
     self.settings = settings
     panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 440, height: 240),
@@ -29,20 +35,23 @@ final class PillPanel {
     panel.ignoresMouseEvents = true
     panel.hidesOnDeactivate = false
     panel.contentView = NSHostingView(
-      rootView: PillContainer(controller: controller, settings: settings, placement: placement))
+      rootView: PillContainer(
+        controller: controller, meeting: meeting, settings: settings, placement: placement,
+        open: open))
   }
 
   func start() {
-    track { [controller] in
-      controller.pill
-    } onChange: { [weak self] state in
-      self?.update(state)
+    track { [controller, meeting] in
+      PillContent(dictation: controller.pill, meeting: meeting.status)
+    } onChange: { [weak self] content in
+      self?.update(content)
     }
   }
 
-  private func update(_ state: PillState) {
-    let wasHidden = placement.state == .hidden
-    if state != .hidden, wasHidden {
+  private func update(_ content: PillContent) {
+    let wasHidden = placement.content == .hidden
+    panel.ignoresMouseEvents = !content.takesClicks
+    if content != .hidden, wasHidden {
       putAway?.cancel()
       // At the center of the screen the pointer is on, at the bottom or at the top.
       let pointer = NSEvent.mouseLocation
@@ -53,8 +62,8 @@ final class PillPanel {
     }
     // The pill shows the state once the window is where it shows it, on the screen it
     // shows it on, so it grows out of the right place.
-    placement.state = state
-    if state == .hidden, !wasHidden {
+    placement.content = content
+    if content == .hidden, !wasHidden {
       putAway = Task {
         // Leave the window up until the pill has animated out.
         try? await Task.sleep(for: .milliseconds(500))
@@ -91,7 +100,7 @@ final class PillPanel {
 /// What the pill shows, and where.
 @MainActor @Observable
 private final class PillPlacement {
-  var state: PillState = .hidden
+  var content: PillContent = .hidden
   /// The notch the pill opens out of, while the window is up at the top of a screen that
   /// has one.
   var notch: Notch?
@@ -108,14 +117,16 @@ extension NSScreen {
 
 private struct PillContainer: View {
   let controller: DictationController
+  let meeting: MeetingController
   let settings: Settings
   let placement: PillPlacement
+  let open: () -> Void
 
   var body: some View {
     PillView(
-      state: placement.state, style: settings.pillStyle, feed: controller.levels,
+      content: placement.content, style: settings.pillStyle, feed: controller.levels,
       transcript: controller.transcript, mode: controller.mode, toggle: settings.toggle,
-      edge: edge, notch: placement.notch
+      meeting: meeting, open: open, edge: edge, notch: placement.notch
     )
     .padding(edge == .bottom ? .bottom : .top, padding)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .bottom ? .bottom : .top)

@@ -1,6 +1,6 @@
 # Voice
 
-Real-time voice dictation for macOS. Hold a key, speak, and when you let go the text is typed into the field you are in, cleaned up the way you want it written.
+Real-time voice dictation for macOS. Hold a key, speak, and when you let go the text is typed into the field you are in, cleaned up the way you want it written. It also transcribes your meetings as they happen, your side and the other side apart.
 
 - `apps/desktop`: the macOS menu bar app. It records, shows the pill, and types the text.
 - `apps/server`: the service that transcribes and refines the speech with OpenAI.
@@ -8,7 +8,7 @@ Real-time voice dictation for macOS. Hold a key, speak, and when you let go the 
 
 ## Requirements
 
-- A Mac with Xcode 26 or later. The app targets macOS 14 and later
+- A Mac with Xcode 26 or later. The app targets macOS 14.2 and later
 - Node.js 26 and pnpm 11
 - An [OpenAI API key](https://platform.openai.com/api-keys)
 
@@ -40,7 +40,9 @@ Then dictate:
 | Toggle recording: press to start, press again to stop | ⌥ Space          |
 | Cancel                                                | esc              |
 
-The menu bar menu opens the app's window, with the past transcriptions, the statistics of what was dictated and what it cost, and the settings.
+When an app starts a call, the pill offers to record the meeting; Start Meeting, in the menu bar menu, does too. A meeting is your microphone and what the meeting app plays, transcribed live as `Me` and `Others` and revised as it goes, on the meeting's page and in the panel. Stop it from either.
+
+The menu bar menu opens the app's window, with the past transcriptions, the meetings, the statistics of what was dictated and what it cost, and the settings.
 
 ## Using it every day
 

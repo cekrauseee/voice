@@ -1,5 +1,11 @@
 import type { Logger } from "@voice/log";
-import { type ErrorCode, type Prices, type ServerMessage, usage } from "./protocol.ts";
+import {
+  BYTES_PER_SECOND,
+  type ErrorCode,
+  type Prices,
+  type ServerMessage,
+  usage,
+} from "./protocol.ts";
 import type { CreateRefiner, Refinement, Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 
@@ -9,8 +15,6 @@ const READY_TIMEOUT_MS = 10_000;
 const TRANSCRIPT_TIMEOUT_MS = 5_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
-/** The audio is 16-bit mono at 24 kHz. */
-const BYTES_PER_SECOND = 48_000;
 
 export interface SessionDeps {
   createTranscriber: CreateTranscriber;
@@ -69,8 +73,8 @@ export class DictationSession {
     this.started = {
       transcriber: this.deps.createTranscriber({
         ready: () => this.onReady(),
-        delta: (text) => this.onDelta(text),
-        final: (text) => this.onFinal(text),
+        delta: (_turn, text) => this.onDelta(text),
+        final: (_turn, text) => this.onFinal(text),
         error: (error) => this.onError(error),
       }),
       refiner: this.deps.createRefiner(),
