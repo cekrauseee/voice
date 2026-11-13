@@ -85,11 +85,11 @@ The build signs with the first Apple Development identity in the keychain, which
 
 ## Using it
 
-| Action           | Default | Behavior                                                                                                                            |
-| ---------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Push to talk     | Right ⌥ | Records while held. A modifier key used as a shortcut still works as a modifier: pressing another key with it cancels the recording |
-| Toggle recording | ⌥ Space | Starts recording, and stops it when pressed again                                                                                   |
-| Cancel           | esc     | Drops the recording. Nothing is typed                                                                                               |
+| Action           | Default | Behavior                                                                                                                                                                                                                             |
+| ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Push to talk     | Right ⌥ | Records while held. A modifier key used as a shortcut still works as a modifier: a key pressed with it at once makes a combination, and cancels the recording. A key pressed later in the recording does nothing, and esc cancels it |
+| Toggle recording | ⌥ Space | Starts recording, and stops it when pressed again                                                                                                                                                                                    |
+| Cancel           | esc     | Drops the recording. Nothing is typed                                                                                                                                                                                                |
 
 Recording starts the moment the shortcut is pressed. It does not wait for the server: audio recorded before the connection is up is sent once it is, also when the recording has already ended by then.
 
