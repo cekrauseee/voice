@@ -40,6 +40,8 @@ Then dictate:
 | Toggle recording: press to start, press again to stop | ⌥ Space          |
 | Cancel                                                | esc              |
 
+While holding push to talk, press Space to keep recording after you release the shortcut. Use Toggle recording to stop, or esc to cancel.
+
 The menu bar menu opens the app's window, with the past transcriptions, the statistics of what was dictated and what it cost, and the settings.
 
 ## Using it every day

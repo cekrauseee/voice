@@ -53,6 +53,12 @@ final class DictationController {
       start(.push)
     case .pushEnd:
       if isRecording && mode == .push { stop() }
+    case .pushLock:
+      if isRecording && mode == .push {
+        mode = .toggle
+      } else {
+        handle(.toggle)
+      }
     case .pushCancel:
       if isRecording && mode == .push { cancel() }
     case .toggle:
