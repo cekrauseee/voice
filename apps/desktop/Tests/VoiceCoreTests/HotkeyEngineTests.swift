@@ -82,11 +82,16 @@ extension HotkeyEngine {
     #expect(engine.handle(release(.rightOption), at: later) == .init(actions: [.pushEnd]))
   }
 
-  @Test func theToggleShortcutDuringTheDictationIsSwallowed() {
+  @Test(arguments: [soon, later]) func spaceLocksThePushWithoutRestartingIt(time: TimeInterval) {
     var engine = defaults()
     _ = engine.handle(press(.rightOption))
-    #expect(engine.handle(down(space, .option), at: later) == .init(consume: true))
-    #expect(engine.handle(release(.rightOption), at: later) == .init(actions: [.pushEnd]))
+    #expect(
+      engine.handle(down(space, .option), at: time) == .init(actions: [.pushLock], consume: true))
+    #expect(engine.handle(down(space, .option, isRepeat: true), at: later) == .init(consume: true))
+    #expect(engine.handle(release(.rightOption), at: later) == .init())
+    #expect(engine.handle(.keyUp(keyCode: space), at: later) == .init(consume: true))
+    #expect(
+      engine.handle(down(space, .option), at: later) == .init(actions: [.toggle], consume: true))
   }
 
   @Test func anotherModifierDuringTheDictationIsIgnored() {
@@ -123,11 +128,21 @@ extension HotkeyEngine {
     #expect(engine.handle(down(space, [.option, .shift])) == .init())
   }
 
-  @Test func toggleWithThePushToTalkModifierAtOnceCancelsThePush() {
-    var engine = defaults()
-    _ = engine.handle(press(.rightOption))
-    let result = engine.handle(down(space, .option), at: soon)
-    #expect(result == .init(actions: [.pushCancel, .toggle], consume: true))
+  @Test func spaceLocksACustomPushShortcut() {
+    var engine = HotkeyEngine(
+      pushToTalk: Shortcut(keyCode: letterA, modifiers: [.control, .option]),
+      toggle: Shortcut(keyCode: 1, modifiers: .command))
+    _ = engine.handle(down(letterA, [.control, .option]))
+    #expect(
+      engine.handle(down(space, [.control, .option]), at: soon)
+        == .init(actions: [.pushLock], consume: true))
+    #expect(engine.handle(release(.leftControl, leaving: .option)).actions.isEmpty)
+    #expect(engine.handle(.keyUp(keyCode: letterA)) == .init(consume: true))
+    #expect(engine.handle(down(space, isRepeat: true)) == .init(consume: true))
+    #expect(engine.handle(.keyUp(keyCode: space)) == .init(consume: true))
+    engine.capturesEscape = true
+    #expect(engine.handle(down(KeyCode.escape)) == .init(actions: [.cancel], consume: true))
+    #expect(engine.handle(down(letterA, [.control, .option])).actions == [.pushStart])
   }
 
   @Test func aKeyShortcutPushesWhileHeld() {

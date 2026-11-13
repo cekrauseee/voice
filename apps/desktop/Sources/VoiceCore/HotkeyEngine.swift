@@ -7,10 +7,13 @@ import Foundation
 /// away makes a key combination, which cancels the push and reaches the focused app as usual.
 /// Once the push has lasted longer than that, it is a dictation, and the keyboard belongs to
 /// it: a key pressed by accident types nothing and ends nothing, and Escape cancels the push.
+/// Space keeps the same dictation running after the push shortcut is released.
 public struct HotkeyEngine: Sendable {
   public enum Action: Equatable, Sendable {
     case pushStart
     case pushEnd
+    /// Keeps the current recording running after the push shortcut is released.
+    case pushLock
     /// The push is dropped: its key turned out to be part of a key combination, or Escape
     /// was pressed during it.
     case pushCancel
@@ -66,6 +69,18 @@ public struct HotkeyEngine: Sendable {
   ) -> Result {
     var result = Result()
     toggleArmed = false
+    if isRepeat && consumedKeys.contains(keyCode) {
+      return Result(consume: true)
+    }
+    if pushHeld && keyCode == KeyCode.space {
+      if !isRepeat {
+        pushHeld = false
+        result.actions.append(.pushLock)
+      }
+      consumedKeys.insert(keyCode)
+      result.consume = true
+      return result
+    }
     if pushHeld && pushToTalk.modifierKey != nil {
       if isCombination(at: time) {
         pushHeld = false
