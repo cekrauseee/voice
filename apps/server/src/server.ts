@@ -1,6 +1,6 @@
 import { createServer as createHttpServer, type Server } from "node:http";
 import type { Logger } from "@voice/log";
-import { type RawData, WebSocketServer } from "ws";
+import { type RawData, type WebSocket, WebSocketServer } from "ws";
 import { DICTATION_PATH, type Prices, parseClientMessage, type ServerMessage } from "./protocol.ts";
 import type { CreateRefiner } from "./refiner.ts";
 import { DictationSession } from "./session.ts";
@@ -33,25 +33,7 @@ export function createServer(deps: ServerDeps): Server {
     }
     sockets.handleUpgrade(request, socket, head, (ws) => {
       dictations += 1;
-      const session = new DictationSession({
-        ...deps,
-        log: deps.log.child({ scope: "dictation", fields: { dictation: dictations } }),
-        send: (message: ServerMessage) => ws.send(JSON.stringify(message)),
-        end: () => ws.close(1000),
-      });
-
-      ws.on("message", (data, isBinary) => {
-        if (isBinary) {
-          session.audio(toBuffer(data));
-          return;
-        }
-        const message = parseClientMessage(toBuffer(data).toString("utf8"));
-        if (message?.type === "start") session.start(message.instructions);
-        else if (message?.type === "stop") session.stop();
-        else session.reject();
-      });
-      ws.on("close", () => session.close());
-      ws.on("error", () => session.close());
+      dictation(ws, deps, dictations);
     });
   });
 
@@ -60,6 +42,28 @@ export function createServer(deps: ServerDeps): Server {
   });
 
   return server;
+}
+
+function dictation(ws: WebSocket, deps: ServerDeps, number: number): void {
+  const session = new DictationSession({
+    ...deps,
+    log: deps.log.child({ scope: "dictation", fields: { dictation: number } }),
+    send: (message: ServerMessage) => ws.send(JSON.stringify(message)),
+    end: () => ws.close(1000),
+  });
+
+  ws.on("message", (data, isBinary) => {
+    if (isBinary) {
+      session.audio(toBuffer(data));
+      return;
+    }
+    const message = parseClientMessage(toBuffer(data).toString("utf8"));
+    if (message?.type === "start") session.start(message.instructions);
+    else if (message?.type === "stop") session.stop();
+    else session.reject();
+  });
+  ws.on("close", () => session.close());
+  ws.on("error", () => session.close());
 }
 
 function toBuffer(data: RawData): Buffer {

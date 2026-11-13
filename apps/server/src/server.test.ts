@@ -59,10 +59,10 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   ws.send(audio(500));
   await until(() => transcriber.bytes === audio(500).length);
   transcriber.events.ready();
-  transcriber.events.delta("hi");
+  transcriber.events.delta(0, "hi");
   ws.send(JSON.stringify({ type: "stop" }));
   await until(() => transcriber.commits === 1);
-  transcriber.events.final("hi there");
+  transcriber.events.final(0, "hi there");
   await until(() => refiner.calls.length === 1);
   assert.deepEqual(refiner.calls[0]?.input, { text: "hi there", instructions: "Write formally." });
   refiner.calls[0]?.resolve("Hi there.");
@@ -87,7 +87,7 @@ test("start needs no instructions", async (t) => {
   ws.send(JSON.stringify({ type: "start" }));
   ws.send(JSON.stringify({ type: "stop" }));
   await until(() => transcriber.commits === 1);
-  transcriber.events.final("hi");
+  transcriber.events.final(0, "hi");
   await until(() => refiner.calls.length === 1);
   assert.equal(refiner.calls[0]?.input.instructions, "");
   ws.close();
