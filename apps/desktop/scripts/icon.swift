@@ -44,6 +44,17 @@ func draw(isDevelopment: Bool) {
     NSBezierPath(roundedRect: bar, xRadius: width / 2, yRadius: width / 2).fill()
   }
 
+  if !isDevelopment {
+    // The light of a dictation, in the signal color, at the corner of the waveform.
+    NSColor(red: 1, green: 0.357, blue: 0.216, alpha: 1).setFill()
+    let diameter: CGFloat = 68
+    NSBezierPath(
+      ovalIn: NSRect(
+        x: tile.maxX - 114 - diameter, y: tile.maxY - 114 - diameter, width: diameter,
+        height: diameter)
+    ).fill()
+  }
+
   if isDevelopment {
     let label = NSAttributedString(
       string: "DEV",

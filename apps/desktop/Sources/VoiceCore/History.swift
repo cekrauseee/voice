@@ -130,6 +130,20 @@ public struct History: Codable, Equatable, Sendable {
     return old
   }
 
+  /// The transcriptions whose text holds every word of a query, whatever their case and
+  /// accents: `animacao` finds `animação`. A query without words finds all of them.
+  public func matching(_ query: String) -> History {
+    let words = query.split(whereSeparator: \.isWhitespace)
+    guard !words.isEmpty else { return self }
+    return History(
+      transcriptions.filter { transcription in
+        words.allSatisfy {
+          transcription.text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive])
+            != nil
+        }
+      })
+  }
+
   /// The transcriptions day by day, newest first.
   public func days(in calendar: Calendar) -> [Day] {
     var days: [(date: Date, transcriptions: [Transcription])] = []

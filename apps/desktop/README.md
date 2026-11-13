@@ -12,7 +12,7 @@ There are two builds of the app. macOS tells them apart, so each has its own per
 | App             | `build/Voice (Development).app`   | `build/Voice.dmg`                |
 | Name            | Voice (Development)               | Voice                            |
 | Identifier      | `eu.cekrause.voice.dev`           | `eu.cekrause.voice`              |
-| Icon            | The waveform in amber, marked DEV | The waveform                     |
+| Icon            | The waveform in amber, marked DEV | The waveform, with its light     |
 | Compiled        | For debugging                     | Optimized                        |
 | In the menu bar | The waveform with a `DEV` mark    | The waveform                     |
 | Server          | The one `pnpm dev` runs, at 8787  | Its own, at 8788                 |
@@ -68,7 +68,7 @@ Under the steps is Open at login, off by default. It is not a step: the setup is
 
 The app follows the permissions as they change: a step is checked off the moment its permission is granted, and the window comes back in front of System Settings. While the window is open the app has a Dock icon, so the window is easy to find again. Done closes the setup, and is available once both permissions are granted.
 
-The setup comes back on launch until it is completed, and whenever a permission is missing. While it is incomplete, the menu bar menu has a Finish Setup item.
+The setup comes back on launch until it is completed, and whenever a permission is missing. While it is incomplete, the menu bar panel has a Finish Setup item.
 
 ### When a permission does not take effect
 
@@ -97,19 +97,35 @@ Recording starts the moment the shortcut is pressed. It does not wait for the se
 
 The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards by default. Turn on Keep on clipboard to leave the transcription there instead. A newer copy made while pasting is left alone.
 
+## The menu bar
+
+Clicking Voice in the menu bar shows a panel: whether it is listening, today's words with the words of each day of the week beside them, the last three transcriptions with a button that copies each, and the ways into the window: Open Voice, Settings, and Quit. Clicking the words opens the statistics, and clicking a transcription opens its page.
+
+While a dictation records, a light in the signal color shows at the corner of Voice in the menu bar, as in the pill.
+
 ## The window
 
-The app lives in the menu bar. Its menu opens the app's window on one of its three sections:
+The window has one column: the transcriptions, newest first, day by day, under today's figures. Those are the words dictated today, how long they took to say, how fast, and an estimate of what they cost, with the words of each day of the week beside them. A sidebar would only hold three places, so there is none: the window opens on the transcriptions, and everything else is a page opened over them.
 
-- **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
-- **Statistics**: how much was dictated today, in the last 7 days, in the last 30 days, or in all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day: of each hour for today, and of each month once there are more than 90 days. Pointing at a bar shows when it is and its words.
-- **Settings**: the settings below.
+As the list scrolls, today's words and the week dock into the title bar, smaller: the words on the left, the week on the right. They follow the scroll exactly, and the rest of the figures scrolls away with the list. A scroll that ends with them halfway settles them at the nearer end.
 
-The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. Beside that button is a header with the name of the section. The sections are in a sidebar under it, on the left. The button in the header, or ⌃⌘S, folds the sidebar to the icons alone and brings it back. The app remembers which.
+Each transcription shows when it was dictated, the start of its text, its voiceprint, which is how loud its recording is along its length, and how long it was. Hovering shows buttons that copy it and play it, and the context menu deletes it. A dictation that failed has Try Again in its place. Deleting a transcription shows Undo for five seconds. After that the transcription and its recording are gone.
 
-The pointer shows what it is over: a hand over what can be clicked, the text cursor over text that can be selected or edited.
+The search, at the end of the title bar or ⌘F, finds the transcriptions that hold every word typed, whatever their case and accents: `animacao` finds `animação`. Escape clears it.
 
-Almost nothing in the window moves: what is under the pointer, what is selected, and what a click shows change at once. Two things move, quickly, to say where something went: the page of a transcription comes in from the right, and the list comes back from the left, and the mark of a choice slides to the option chosen.
+The pages over the list:
+
+- **A transcription**, opened by clicking it: all of its text, to read and select, and its recording, to play and scrub along its voiceprint. Its header has buttons to copy and delete it.
+- **Statistics**, opened by clicking the week: how much was dictated today, in the last 7 days, in the last 30 days, or in all time: the words, the words per minute, the time speaking, the dictations, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day: of each hour for today, and of each month once there are more than 90 days. Pointing at a bar shows when it is and its words.
+- **Settings**, opened by the button beside the search or ⌘,: the shortcuts, the style and position of the pill, how to write what is said, and the rest of the settings below.
+
+Each page has the way back, at the start of its header, which Escape also takes.
+
+What the list and a page both show travels between them: the time, the text, the voiceprint, and the length of a transcription go from its row to its page and back, and today's words and the week's bars go into the statistics. The rest of a page fades in after them and leaves at once. With Reduce Motion on, pages only fade.
+
+The look follows one rule for color: everything is ink on the ground, and the signal color, an orange red, only marks the live moment: the pill while it listens, today in a chart, where a recording is playing. Numbers, times, and keys are set in the monospaced face.
+
+The window has one size and one button, which closes it: it cannot be minimized, zoomed, or made full screen. The pointer shows what it is over: a hand over what can be clicked, the text cursor over text that can be selected or edited.
 
 While the window is open, the app is also in the Dock and the app switcher, and it leaves them when the window closes. Opening the app again while it runs, from Finder or Spotlight, shows the window.
 
@@ -117,7 +133,7 @@ The past transcriptions are kept in `history.json`, and the recording of each on
 
 A dictation that fails is kept too, marked as failed, with whatever words came back. Its page has Try Again, which sends the recording to the server once more, so a failure does not lose what was said. The new text is not typed anywhere: it is in the history, to copy.
 
-Recordings take about 3 MB a minute. The History setting deletes transcriptions and their recordings by themselves after 1 day, 7 days, or 30 days, or never, which is the default. The app does that itself, when it starts, when the setting changes, and every hour while it runs.
+Recordings take about 3 MB a minute. The Delete after setting deletes transcriptions and their recordings by themselves after 1 day, 7 days, or 30 days, or never, which is the default. The app does that itself, when it starts, when the setting changes, and every hour while it runs.
 
 The statistics are kept in `statistics.json`, beside the history. They are figures by day, and by hour for the last day dictated on, never what was said. Each dictation that ends with its text is counted when it does, and so is a failed one that is tried again, so deleting a transcription, by hand or by the History setting, does not change them. The words per minute are the words typed over the time recorded. The tokens and the cost come from the server with each text. The cost is the server's estimate, from the prices in [its configuration](../server/README.md#configuration). A dictation that fails is not counted, though OpenAI may have charged for its audio.
 
@@ -129,18 +145,18 @@ pnpm seed
 
 Some samples have a recording, spoken by a system voice, and one of them failed, to try playing and trying again. It keeps what the history holds, and running it again renews the samples. The statistics get sample figures for the days of the last 30 that have none, today's spread over its hours: a day with figures is left as it is, so the samples stand beside what was really dictated. Deleting `statistics.json` removes them all. The app reads both files when it starts, so a running app is quit and opened again.
 
-Settings:
+The settings page groups them: the shortcuts first, then the pill, your style, the general settings, and what happens to transcriptions.
 
 - **Open at login**: macOS opens the app, in the menu bar, when you log in. Off by default. macOS keeps this, not the app: it is also in System Settings, under Login Items, and the two builds are separate items. If the app was turned off there, turning it on here opens that page.
 - **Microphone**: the microphone to dictate with, chosen from a menu of the ones connected. System default, the default, follows the input chosen in macOS. A chosen microphone that is disconnected stays chosen: until it is connected again, the system default records.
 - **Theme**: Auto, Light, or Dark.
-- **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
+- **Pill**: Minimal shows the light and a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Pill position**: Bottom, the default, shows the pill at the bottom of the screen, above the Dock. Top shows it just under the menu bar, or, on a screen with a notch, out of the notch. Both styles go in either place.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Keep on clipboard**: leaves the pasted transcription on the clipboard, replacing its previous contents. Off by default.
 - **Press Enter**: Never, the default; With Shift, when Shift is held as you stop recording; or Always. Enter follows the paste. The choice is remembered for that dictation, so Shift can be released while the text is being refined. A failed or empty dictation never presses Enter. These preferences apply to new dictations.
-- **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
-- **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
+- **Your style**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
+- **Delete after**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
 
 ## Microphone and media
 
@@ -194,42 +210,43 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, when media is paused and resumed, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history and its search, the voiceprint of a recording, how today's figures dock, the statistics, when media is paused and resumed, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
-| Path                                                                | Responsibility                                                   |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `Sources/VoiceCore`                                                 | Logic without system dependencies                                |
-| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                      |
-| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open      |
-| `Sources/Voice/MainView.swift`                                      | The app's window: the sections and the selected one              |
-| `Sources/Voice/Design.swift`                                        | The measures, colors, and shared pieces the window is drawn with |
-| `Sources/Voice/TranscriptionsView.swift`, `TranscriptionView.swift` | The list of past transcriptions, and the page of one             |
-| `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
-| `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
-| `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
-| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
-| `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                             |
-| `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
-| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |
-| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                     |
-| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                      |
-| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                             |
-| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it            |
-| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                |
-| `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                           |
-| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                         |
-| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                      |
-| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                     |
-| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                                 |
-| `Support/Info.plist`                                                | The app bundle's metadata                                        |
-| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them      |
-| `scripts/variants.ts`                                               | The names and identifiers of the two builds                      |
-| `scripts/bundle.ts`                                                 | Builds and signs the app                                         |
-| `scripts/dmg.ts`                                                    | Builds the production app and its disk image                     |
-| `scripts/install.ts`                                                | Installs the production app in Applications, or updates it       |
-| `scripts/quit.ts`                                                   | Quits an app and waits until it is gone                          |
-| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                 |
-| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                       |
-| `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples  |
+| Path                                                                | Responsibility                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `Sources/VoiceCore`                                                 | Logic without system dependencies                                  |
+| `Sources/Voice/AppDelegate.swift`                                   | Startup, the menu bar item, and the windows                        |
+| `Sources/Voice/MenuBarPanel.swift`                                  | The panel Voice shows in the menu bar                              |
+| `Sources/Voice/AppWindow.swift`                                     | A window, and the app being a regular app while one is open        |
+| `Sources/Voice/MainView.swift`                                      | The app's window: the pages, and the way between them              |
+| `Sources/Voice/Design.swift`, `KeyCap.swift`                        | The colors, type, motion, and shared pieces of the windows         |
+| `Sources/Voice/TranscriptionsPage.swift`, `TranscriptionPage.swift` | The past transcriptions, with today's figures, and the page of one |
+| `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings   |
+| `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording     |
+| `Sources/Voice/StatisticsPage.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                  |
+| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                   |
+| `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                               |
+| `Sources/Voice/OnboardingView.swift`                                | The setup window                                                   |
+| `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                   |
+| `Sources/Voice/DictationController.swift`                           | Runs a dictation from shortcut to typed text                       |
+| `Sources/Voice/DictationSession.swift`                              | The WebSocket to the server                                        |
+| `Sources/Voice/AudioCapture.swift`                                  | Records the microphone as 24 kHz PCM                               |
+| `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it              |
+| `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                  |
+| `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                             |
+| `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                           |
+| `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                        |
+| `Sources/Voice/Settings*.swift`, `ShortcutField.swift`              | The settings                                                       |
+| `Sources/Voice/Log.swift`, `AppInfo.swift`                          | Logging, and which build this is                                   |
+| `Support/Info.plist`                                                | The app bundle's metadata                                          |
+| `Support/AppIcon*.icns`, `scripts/icon.swift`                       | The icons of the two builds, and the script that draws them        |
+| `scripts/variants.ts`                                               | The names and identifiers of the two builds                        |
+| `scripts/bundle.ts`                                                 | Builds and signs the app                                           |
+| `scripts/dmg.ts`                                                    | Builds the production app and its disk image                       |
+| `scripts/install.ts`                                                | Installs the production app in Applications, or updates it         |
+| `scripts/quit.ts`                                                   | Quits an app and waits until it is gone                            |
+| `scripts/dev.ts`                                                    | Builds, runs, and prints the log                                   |
+| `scripts/reset.ts`                                                  | Forgets the app's permissions and settings                         |
+| `scripts/seed.ts`                                                   | Fills the development app's history and statistics with samples    |

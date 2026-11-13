@@ -10,7 +10,16 @@ import VoiceCore
 @MainActor @Observable
 final class HistoryStore {
   private(set) var history = History()
+  /// The transcription deleted last, while it can still be brought back. Its recording is
+  /// kept until then.
+  private(set) var deleted: Transcription?
 
+  /// How long a deleted transcription can be brought back.
+  static let undoTime = Duration.seconds(5)
+
+  @ObservationIgnored private var forgetting: Task<Void, Never>?
+  /// The voiceprints read from the recordings, by transcription and length.
+  @ObservationIgnored private var voiceprints: [String: [Double]] = [:]
   @ObservationIgnored private let file: URL
   @ObservationIgnored private let recordings: URL
   @ObservationIgnored private let log = Log("history")
@@ -70,10 +79,51 @@ final class HistoryStore {
     save()
   }
 
+  /// Deletes a transcription. It can be brought back for a moment, with `restore`, and its
+  /// recording is deleted after that.
   func remove(_ id: Transcription.ID) {
+    guard let transcription = history.transcriptions.first(where: { $0.id == id }) else { return }
+    forget()
     history.remove(id)
-    delete([id])
+    deleted = transcription
+    forgetting = Task { [weak self] in
+      try? await Task.sleep(for: Self.undoTime)
+      guard !Task.isCancelled else { return }
+      self?.forget()
+    }
     save()
+  }
+
+  /// Brings back the transcription deleted last, while it can be.
+  func restore() {
+    guard let transcription = deleted else { return }
+    forgetting?.cancel()
+    deleted = nil
+    history.add(transcription)
+    save()
+    log.info("restored")
+  }
+
+  /// The voiceprint of a transcription's recording, `count` levels long, or nil when its
+  /// recording was not kept. It is read once, away from the main thread.
+  func voiceprint(of id: Transcription.ID, count: Int) async -> [Double]? {
+    let key = "\(id.uuidString)-\(count)"
+    if let levels = voiceprints[key] { return levels }
+    guard let url = recording(of: id) else { return nil }
+    let levels = await Task.detached(priority: .utility) {
+      (try? Data(contentsOf: url)).flatMap(WAV.pcm).map { Voiceprint.levels(pcm: $0, count: count) }
+    }.value
+    voiceprints[key] = levels
+    return levels
+  }
+
+  /// Deletes for good the transcription deleted last, which can no longer be brought back.
+  private func forget() {
+    forgetting?.cancel()
+    forgetting = nil
+    guard let transcription = deleted else { return }
+    deleted = nil
+    delete([transcription.id])
   }
 
   /// Deletes the transcriptions that are older than they are kept for, and their recordings.
@@ -90,8 +140,10 @@ final class HistoryStore {
     recordings.appending(path: "\(id.uuidString).wav")
   }
 
-  /// Waits for the files still being written.
+  /// Deletes what can no longer be brought back once the app quits, and waits for the files
+  /// still being written.
   func flush() {
+    forget()
     disk.sync {}
   }
 

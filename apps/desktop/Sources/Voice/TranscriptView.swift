@@ -21,9 +21,10 @@ struct TranscriptView: View {
         text.fixedSize(horizontal: false, vertical: true)
       }
       .modifier(Viewport(isAnimated: isAnimated))
-      .font(.system(size: 13))
+      .font(.system(size: 13.5))
+      .lineSpacing(2)
       // The text is a draft until it is refined, so it is shown dimmed.
-      .opacity(transcript.isRefined ? 1 : 0.4)
+      .opacity(transcript.isRefined ? 1 : 0.6)
       .contentTransition(.identity)
       .transaction { transaction in
         if reduceMotion { transaction.animation = nil }

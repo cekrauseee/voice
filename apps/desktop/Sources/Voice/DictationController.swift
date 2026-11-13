@@ -8,6 +8,9 @@ final class DictationController {
   private(set) var pill: PillState = .hidden
   private(set) var transcript = Transcript()
   private(set) var mode: RecordingMode = .toggle
+  /// When the dictation the pill shows started recording, and when it stopped, if it has.
+  private(set) var recordingStarted: Date?
+  private(set) var recordingStopped: Date?
 
   /// The microphone levels, for the waveform.
   @ObservationIgnored let levels = LevelFeed()
@@ -96,6 +99,8 @@ final class DictationController {
     dismissal?.cancel()
     pill = .listening
     startedAt = .now
+    recordingStarted = .now
+    recordingStopped = nil
     let chunks = capture.start(with: settings.microphone)
 
     let session = DictationSession(
@@ -205,6 +210,7 @@ final class DictationController {
     warming?.cancel()
     capture.stop()
     media.resume()
+    recordingStopped = .now
   }
 
   /// Milliseconds since the dictation started.
