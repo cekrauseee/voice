@@ -21,7 +21,7 @@ final class LevelFeed {
   }
 }
 
-/// Bars that move with the voice, and ripple while loading.
+/// Bars that move with the voice, and ripple dimmed while loading.
 struct Waveform: View {
   let feed: LevelFeed
   let barCount: Int
@@ -34,21 +34,21 @@ struct Waveform: View {
     // With reduced motion the bars still show the level, a few times a second.
     TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : nil)) { timeline in
       Canvas { context, size in
-        let heights = animator.heights(
-          at: timeline.date, feed: feed, barCount: barCount, isLoading: isLoading && !reduceMotion)
+        let bars = animator.bars(
+          at: timeline.date, feed: feed, barCount: barCount, isLoading: isLoading,
+          ripples: !reduceMotion)
         let step = size.width / Double(barCount)
         let width = min(step * 0.55, 3)
-        for (index, height) in heights.enumerated() {
-          let height = max(width, height * size.height)
-          let bar = CGRect(
+        for (index, bar) in bars.enumerated() {
+          let height = max(width, bar.height * size.height)
+          let rect = CGRect(
             x: (Double(index) + 0.5) * step - width / 2, y: (size.height - height) / 2,
             width: width, height: height)
-          context.fill(Path(roundedRect: bar, cornerRadius: width / 2), with: .foreground)
+          context.opacity = 1 - 0.45 * bar.loading
+          context.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .foreground)
         }
       }
     }
-    .opacity(isLoading ? 0.55 : 1)
-    .animation(.smooth(duration: 0.3), value: isLoading)
   }
 }
 
@@ -60,7 +60,9 @@ private final class WaveformAnimator {
   private var seen = 0
   private var lastFrame: Date?
 
-  func heights(at date: Date, feed: LevelFeed, barCount: Int, isLoading: Bool) -> [Double] {
+  func bars(
+    at date: Date, feed: LevelFeed, barCount: Int, isLoading: Bool, ripples: Bool
+  ) -> [WaveformMotion.Bar] {
     if barCount != self.barCount {
       self.barCount = barCount
       motion = WaveformMotion(barCount: barCount)
@@ -69,6 +71,6 @@ private final class WaveformAnimator {
     seen = feed.count
     let elapsed = lastFrame.map { date.timeIntervalSince($0) } ?? 0
     lastFrame = date
-    return motion.advance(by: elapsed, isLoading: isLoading)
+    return motion.advance(by: elapsed, isLoading: isLoading, ripples: ripples)
   }
 }

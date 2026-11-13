@@ -158,7 +158,7 @@ At the top of a screen with a notch, the pill is part of the notch: black like i
 
 In the detailed style the pill shows the last three lines of the text as it is recognized. Each new word comes into focus where it lands. When the text outgrows three lines, all of it moves up a line: the oldest line goes out of focus through the top while the new one comes in at the bottom. With Reduce Motion on, or on macOS 14, the words just appear.
 
-The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the text is being refined, a ripple runs through the bars. With Reduce Motion on, the bars only show the level, a few times a second.
+The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the microphone starts and while the text is being refined, the bars ripple, dimmed. The ripple comes and goes the way the voice does, in at the center and out through the edges, so one turns into the other without a jump. With Reduce Motion on, the bars only show the level, a few times a second, and dim instead of rippling.
 
 | State     | Shown                                                                                                                                     |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
