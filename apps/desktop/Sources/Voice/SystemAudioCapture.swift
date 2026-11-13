@@ -5,8 +5,10 @@ import VoiceCore
 /// Records what the Mac plays, but for the app's own sound, as a stream of PCM chunks.
 ///
 /// Core Audio taps the output of every other process, mixed down to one channel, and an
-/// aggregate device of the system's output and that tap delivers it. The first tap asks the
-/// user for System Audio Recording, once. A tap the user did not allow hears silence.
+/// aggregate device made of that tap alone delivers it. The output device itself stays out
+/// of the device: with a headset, its microphone would come first in what the device
+/// delivers, and its sound would switch to call quality. The first tap asks the user for
+/// System Audio Recording, once. A tap the user did not allow hears silence.
 @MainActor
 final class SystemAudioCapture {
   private var recording: TapRecording?
@@ -47,9 +49,17 @@ struct TapError: Error, CustomStringConvertible {
 private final class TapRecording: @unchecked Sendable {
   /// The audio arrives here, in order. The converter and the chunker are only touched here.
   private let queue = DispatchQueue(label: "eu.cekrause.voice.tap")
+  private let log = Log("meeting")
   private let continuation: AsyncStream<AudioChunk>.Continuation
   private var converter: AVAudioConverter?
   private var chunker = PCMChunker()
+  private let startedAt = ContinuousClock.now
+  /// Whether the tap delivered anything but silence yet. Silence that goes on is a tap the
+  /// user did not allow, or a quiet Mac.
+  private var hasDelivered = false
+  private var hasHeard = false
+  private var hasWarned = false
+  private var silentBytes = 0
   private var tap = AudioObjectID(kAudioObjectUnknown)
   private var aggregate = AudioObjectID(kAudioObjectUnknown)
   private var procID: AudioDeviceIOProcID?
@@ -59,7 +69,6 @@ private final class TapRecording: @unchecked Sendable {
   }
 
   func start() throws {
-    let system = AudioObjectID(kAudioObjectSystemObject)
     let description = CATapDescription(monoGlobalTapButExcludeProcesses: [try ownProcess()])
     description.name = "Voice"
     description.isPrivate = true
@@ -67,26 +76,23 @@ private final class TapRecording: @unchecked Sendable {
     try check(AudioHardwareCreateProcessTap(description, &tap), "creating the tap")
 
     var format: AudioStreamBasicDescription = try read(tap, kAudioTapPropertyFormat)
-    let output: AudioObjectID = try read(system, kAudioHardwarePropertyDefaultSystemOutputDevice)
-    let outputUID: CFString = try read(output, kAudioDevicePropertyDeviceUID)
+    // The tap is the device's only part: what it delivers is the tap's sound and nothing else.
     let aggregateDescription: [String: Any] = [
       kAudioAggregateDeviceNameKey: "Voice",
       kAudioAggregateDeviceUIDKey: UUID().uuidString,
-      kAudioAggregateDeviceMainSubDeviceKey: outputUID,
       kAudioAggregateDeviceIsPrivateKey: true,
-      kAudioAggregateDeviceIsStackedKey: false,
       kAudioAggregateDeviceTapAutoStartKey: true,
-      kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
-      kAudioAggregateDeviceTapListKey: [
-        [
-          kAudioSubTapDriftCompensationKey: true,
-          kAudioSubTapUIDKey: description.uuid.uuidString,
-        ]
-      ],
+      kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: description.uuid.uuidString]],
     ]
     try check(
       AudioHardwareCreateAggregateDevice(aggregateDescription as CFDictionary, &aggregate),
       "creating the aggregate device")
+    log.info(
+      "tapped",
+      [
+        "sample_rate": Int(format.mSampleRate), "channels": format.mChannelsPerFrame,
+        "format_id": format.mFormatID, "flags": format.mFormatFlags,
+      ])
 
     guard let input = AVAudioFormat(streamDescription: &format),
       let target = AVAudioFormat(
@@ -126,9 +132,14 @@ private final class TapRecording: @unchecked Sendable {
 
   /// Converts what the tap delivers to the format the server expects, and cuts it in chunks.
   private func deliver(_ list: UnsafePointer<AudioBufferList>) {
-    guard let converter,
-      let buffer = AVAudioPCMBuffer(
-        pcmFormat: converter.inputFormat, bufferListNoCopy: list, deallocator: nil),
+    if !hasDelivered {
+      hasDelivered = true
+      let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: list))
+      log.debug(
+        "delivering",
+        ["buffers": buffers.count, "bytes": buffers.map { Int($0.mDataByteSize) }])
+    }
+    guard let converter, let buffer = tapped(list, as: converter.inputFormat),
       buffer.frameLength > 0
     else { return }
     let ratio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
@@ -151,8 +162,46 @@ private final class TapRecording: @unchecked Sendable {
     else { return }
     let pcm = Data(
       bytes: samples[0], count: Int(converted.frameLength) * MemoryLayout<Int16>.size)
+    listen(pcm)
     for chunk in chunker.append(pcm) { yield(chunk) }
   }
+
+  /// The tap's sound, out of what the device delivers. The tap's buffers come last, after
+  /// those of any other part of the device.
+  private func tapped(
+    _ list: UnsafePointer<AudioBufferList>, as format: AVAudioFormat
+  ) -> AVAudioPCMBuffer? {
+    let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: list))
+    let needed = format.isInterleaved ? 1 : Int(format.channelCount)
+    guard buffers.count >= needed else { return nil }
+    if buffers.count == needed {
+      return AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: list, deallocator: nil)
+    }
+    let own = AudioBufferList.allocate(maximumBuffers: needed)
+    for (index, buffer) in buffers.suffix(needed).enumerated() { own[index] = buffer }
+    return AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: own.unsafePointer) { _ in
+      free(own.unsafeMutablePointer)
+    }
+  }
+
+  /// Says once when the sound comes, and once when it has not come for a while.
+  private func listen(_ pcm: Data) {
+    guard !hasHeard else { return }
+    let elapsed = Int((ContinuousClock.now - startedAt) / .milliseconds(1))
+    if Level.isZero(pcm) {
+      silentBytes += pcm.count
+      if silentBytes >= Self.silenceWorthNoting, !hasWarned {
+        hasWarned = true
+        log.warn("silent", ["after_ms": elapsed, "hint": "System Audio Recording not allowed?"])
+      }
+      return
+    }
+    hasHeard = true
+    log.debug("heard", ["after_ms": elapsed])
+  }
+
+  /// Ten seconds of nothing but silence, in bytes.
+  private static let silenceWorthNoting = Int(AudioFormat.sampleRate) * 2 * 10
 
   private func yield(_ pcm: Data) {
     continuation.yield(AudioChunk(pcm: pcm, level: Level.normalized(pcm)))
