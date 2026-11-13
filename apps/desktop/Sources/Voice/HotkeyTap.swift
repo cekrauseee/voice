@@ -52,9 +52,12 @@ final class HotkeyTap {
       let tap = Unmanaged<HotkeyTap>.fromOpaque(userInfo!).takeUnretainedValue()
       let isOwn = event.getIntegerValueField(.eventSourceUserData) == TextInserter.eventMarker
       let keyEvent = isOwn ? nil : KeyEvent(event)
+      let shiftHeld = event.flags.contains(.maskShift)
       let time = TimeInterval(event.timestamp) / 1_000_000_000
       // The tap is on the main run loop, so the callback runs on the main thread.
-      let consume = MainActor.assumeIsolated { tap.handle(type, keyEvent, at: time) }
+      let consume = MainActor.assumeIsolated {
+        tap.handle(type, keyEvent, at: time, shiftHeld: shiftHeld)
+      }
       return consume ? nil : Unmanaged.passUnretained(event)
     }
     guard
@@ -70,7 +73,9 @@ final class HotkeyTap {
   }
 
   /// Returns whether to keep the event from the focused app.
-  private func handle(_ type: CGEventType, _ event: KeyEvent?, at time: TimeInterval) -> Bool {
+  private func handle(
+    _ type: CGEventType, _ event: KeyEvent?, at time: TimeInterval, shiftHeld: Bool
+  ) -> Bool {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
       if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
       return false
@@ -80,10 +85,13 @@ final class HotkeyTap {
     engine.pushToTalk = settings.pushToTalk
     engine.toggle = settings.toggle
     engine.capturesEscape = controller.isActive
+    engine.allowsShiftToStop = controller.allowsShiftToStop
     let result = engine.handle(event, at: time)
     if !result.actions.isEmpty {
       // Leave the callback first: the system disables a tap that is slow to return.
-      Task { result.actions.forEach(controller.handle) }
+      Task {
+        for action in result.actions { controller.handle(action, shiftHeld: shiftHeld) }
+      }
     }
     return result.consume
   }

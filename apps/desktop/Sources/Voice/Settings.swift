@@ -25,6 +25,14 @@ final class Settings {
     didSet { defaults.set(instructions, forKey: "instructions") }
   }
 
+  var enterBehavior: EnterBehavior {
+    didSet { defaults.set(enterBehavior.rawValue, forKey: "enterBehavior") }
+  }
+
+  var keepOnClipboard: Bool {
+    didSet { defaults.set(keepOnClipboard, forKey: "keepOnClipboard") }
+  }
+
   /// The microphone to dictate with. Without one, the system's records.
   var microphone: Microphone? {
     didSet {
@@ -71,6 +79,8 @@ final class Settings {
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
+    keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
+    enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     microphone = defaults.data(forKey: "microphone").flatMap {
       try? JSONDecoder().decode(Microphone.self, from: $0)
     }

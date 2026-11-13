@@ -35,6 +35,8 @@ public struct HotkeyEngine: Sendable {
   public var toggle: Shortcut
   /// While set, Escape is consumed and cancels.
   public var capturesEscape = false
+  /// Accepts Shift with a stop shortcut when it requests Enter after pasting.
+  public var allowsShiftToStop = false
 
   private var pushHeld = false
   private var pushedAt: TimeInterval = 0
@@ -99,7 +101,10 @@ public struct HotkeyEngine: Sendable {
     let pressed = Shortcut(keyCode: keyCode, modifiers: modifiers)
     if capturesEscape && pressed == Shortcut(keyCode: KeyCode.escape) {
       if !isRepeat { result.actions.append(.cancel) }
-    } else if pressed == toggle {
+    } else if pressed == toggle
+      || (allowsShiftToStop
+        && Shortcut(keyCode: keyCode, modifiers: modifiers.subtracting(.shift)) == toggle)
+    {
       if !isRepeat { result.actions.append(.toggle) }
     } else if pressed == pushToTalk {
       if !isRepeat && !pushHeld {
@@ -142,7 +147,9 @@ public struct HotkeyEngine: Sendable {
       }
     } else if pushHeld {
       if pushToTalk.modifierKey != nil {
-        if isDown && isCombination(at: time) {
+        if isDown && isCombination(at: time)
+          && !(allowsShiftToStop && key.modifier == .shift)
+        {
           pushHeld = false
           result.actions.append(.pushCancel)
         }
@@ -154,12 +161,14 @@ public struct HotkeyEngine: Sendable {
 
     if key == toggle.modifierKey {
       if isDown {
-        toggleArmed = alone
+        toggleArmed =
+          alone
+          || (allowsShiftToStop && modifiers == key.modifier.union(.shift))
       } else if toggleArmed {
         toggleArmed = false
         result.actions.append(.toggle)
       }
-    } else if isDown {
+    } else if isDown && !(allowsShiftToStop && key.modifier == .shift) {
       toggleArmed = false
     }
     return result
