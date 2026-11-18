@@ -57,6 +57,12 @@ public struct OutputHold: Equatable, Sendable {
     }
   }
 
+  /// A volume write can take a moment to show up on the output.
+  private enum VolumeWrite: Equatable, Sendable {
+    case waiting(at: Float, for: Float)
+    case read
+  }
+
   /// How much of the volume is left while recording, unless a recording says.
   public static let share: Float = 0.3
   /// How long a mode is watched after it is made quiet. A headset that arrives in call
@@ -76,6 +82,8 @@ public struct OutputHold: Equatable, Sendable {
   private var share = OutputHold.share
   /// Until when each mode is watched.
   private var watched: [Mode: Duration] = [:]
+  /// Which of our volume writes have been read back.
+  private var volumeWrites: [Mode: VolumeWrite] = [:]
   /// The modes whose own volume came back once. A second time it is left alone, so a
   /// volume is never turned down again and again.
   private var cameBack: Set<Mode> = []
@@ -124,10 +132,30 @@ public struct OutputHold: Equatable, Sendable {
     guard let change = changes[mode] else { return quiet(kind, mode, level, now) }
     // Quiet of the other kind is left from an earlier recording.
     guard change.kind == kind else { return putBack(mode, level) }
-    // So is quiet that this recording did not make: it is checked like its own.
+    let firstLook = watched[mode] == nil
     let until = watched[mode] ?? now + Self.settling
+    guard now < until else {
+      if case .waiting = volumeWrites[mode] { volumeWrites[mode] = nil }
+      return nil
+    }
+    if change.kind == .lower, level.volume == nil { return nil }
     watched[mode] = until
-    return now < until ? keep(change, mode, level) : nil
+    return keep(mode, level, firstLook: firstLook)
+  }
+
+  /// Remembers where our write left the volume. The old level may still be there for a
+  /// moment, so it is checked again later.
+  public mutating func didSetVolume(_ volume: Float, in mode: Mode) {
+    guard case .waiting(let before, _) = volumeWrites[mode], volume != before,
+      case .lowered(let from, _) = changes[mode]
+    else { return }
+    changes[mode] = .lowered(from: from, to: volume)
+    volumeWrites[mode] = .read
+  }
+
+  /// A write the output refused has no new volume to look for.
+  public mutating func volumeWriteFailed(in mode: Mode) {
+    volumeWrites[mode] = nil
   }
 
   /// The output is about to leave a mode, before the recording is over for the others: a
@@ -140,6 +168,7 @@ public struct OutputHold: Equatable, Sendable {
   /// Puts a mode back the way it was. A mode that cannot say what it is at stays to put
   /// back.
   public mutating func putBack(_ mode: Mode, _ level: Level) -> Write? {
+    if let volume = level.volume { readRoundedVolume(volume, in: mode) }
     switch changes[mode] {
     case nil:
       return nil
@@ -149,10 +178,12 @@ public struct OutputHold: Equatable, Sendable {
       return isMuted ? .mute(false) : nil
     case .lowered(let from, let to):
       guard let volume = level.volume else { return nil }
+      let restore = matches(volume, to, in: mode)
       changes[mode] = nil
+      volumeWrites[mode] = nil
       // A volume that is not the one it was left at was changed meanwhile: it is where
       // it is wanted.
-      return abs(volume - to) < Self.same ? .volume(from) : nil
+      return restore ? .volume(from) : nil
     }
   }
 
@@ -168,29 +199,54 @@ public struct OutputHold: Equatable, Sendable {
       return .mute(true)
     case .lower:
       guard let volume = level.volume, volume > 0, level.isMuted != true else { return nil }
-      changes[mode] = .lowered(from: volume, to: volume * share)
       watched[mode] = now + Self.settling
-      return .volume(volume * share)
+      return lower(mode, from: volume, at: volume)
     }
   }
 
+  private mutating func lower(_ mode: Mode, from: Float, at volume: Float, keeping to: Float? = nil)
+    -> Write
+  {
+    let target = from * share
+    // If a mode was quiet already, keep that level until the new write shows up.
+    changes[mode] = .lowered(from: from, to: to ?? target)
+    volumeWrites[mode] = .waiting(at: volume, for: target)
+    return .volume(target)
+  }
+
+  private func matches(_ volume: Float, _ to: Float, in mode: Mode) -> Bool {
+    if volumeWrites[mode] == .read { return volume == to }
+    return abs(volume - to) < Self.same
+  }
+
+  /// A write can show up later, rounded to a level the device can play.
+  private mutating func readRoundedVolume(_ volume: Float, in mode: Mode) {
+    guard case .waiting(_, let target) = volumeWrites[mode],
+      volume == 0 || abs(volume - target) <= Self.rounding || cameBack.contains(mode)
+    else { return }
+    didSetVolume(volume, in: mode)
+  }
+
   /// Makes a mode quiet again when it is not anymore, a moment after it was made so.
-  private mutating func keep(_ change: Change, _ mode: Mode, _ level: Level) -> Write? {
-    switch change {
+  private mutating func keep(_ mode: Mode, _ level: Level, firstLook: Bool) -> Write? {
+    if let volume = level.volume { readRoundedVolume(volume, in: mode) }
+    switch changes[mode] {
+    case nil:
+      return nil
     case .muted:
       return level.isMuted == false ? .mute(true) : nil
     case .lowered(let from, let to):
-      guard let volume = level.volume, abs(volume - to) >= Self.same else { return nil }
-      if abs(volume - from * share) <= Self.rounding || cameBack.contains(mode) {
-        // The output rounded the volume it was given: that is the one to find after.
-        changes[mode] = .lowered(from: from, to: volume)
-        return nil
+      guard let volume = level.volume else { return nil }
+      // Quiet left from an earlier recording is still based on its original volume.
+      if firstLook, volume == to, from * share != to {
+        return lower(mode, from: from, at: volume, keeping: to)
       }
+      guard !cameBack.contains(mode), volume > 0, level.isMuted != true,
+        abs(volume - to) > Self.rounding
+      else { return nil }
       // The volume the mode had came back: it is turned down from there.
-      guard volume > 0 else { return nil }
       cameBack.insert(mode)
-      changes[mode] = .lowered(from: volume, to: volume * share)
-      return .volume(volume * share)
+      return lower(mode, from: volume, at: volume)
     }
   }
 }

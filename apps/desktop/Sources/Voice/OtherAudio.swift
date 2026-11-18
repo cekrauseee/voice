@@ -144,7 +144,7 @@ final class OtherAudio: @unchecked Sendable {
     if let output, let mode = Self.mode(of: output) {
       let write = hold.look(
         at: mode, Self.level(of: output), now: ContinuousClock.now - startedAt)
-      if let write { make(write, on: output) }
+      if let write { make(write, on: output, in: mode) }
     }
     if hold.changes != before { save() }
   }
@@ -175,13 +175,22 @@ final class OtherAudio: @unchecked Sendable {
     return watch
   }
 
-  private func make(_ write: OutputHold.Write, on output: AudioObjectID) {
+  private func make(
+    _ write: OutputHold.Write, on output: AudioObjectID, in mode: OutputHold.Mode? = nil
+  ) {
     switch write {
     case .mute(let isMuted):
       AudioDevice.setMuted(isMuted, output)
       log.debug(isMuted ? "output muted" : "output unmuted")
     case .volume(let volume):
-      AudioDevice.setVolume(volume, of: output)
+      let written = AudioDevice.setVolume(volume, of: output)
+      if let mode {
+        if !written {
+          hold.volumeWriteFailed(in: mode)
+        } else if Self.mode(of: output) == mode, let actual = AudioDevice.volume(of: output) {
+          hold.didSetVolume(actual, in: mode)
+        }
+      }
       log.debug("output volume set", ["volume": String(format: "%.2f", volume)])
     }
   }
