@@ -42,7 +42,7 @@ struct PillView: View {
           .background(colorScheme == .dark ? Color(white: 0.12) : .white)
           .clipShape(shape)
           .overlay(shape.strokeBorder(.primary.opacity(0.12)))
-          .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+          .pillShadow(depth: 0.6)
           .transition(.pill(from: edge))
       }
     }
@@ -204,7 +204,8 @@ private struct NotchSurface<Content: View>: View {
     .padding(.horizontal, NotchShape.flare)
     .background(.black)
     .clipShape(NotchShape(notch: notch))
-    .shadow(color: .black.opacity(isOpen && hasAppeared ? 0.3 : 0), radius: 14, y: 6)
+    // Black on a dark screen needs more of it to stand out.
+    .pillShadow(depth: isOpen && hasAppeared ? 1 : 0)
     .environment(\.colorScheme, .dark)
     .onAppear {
       withAnimation(PillView.morph) { hasAppeared = true }
@@ -260,6 +261,17 @@ private struct NotchShape: Shape {
   /// How much of its full shape it has, this far out of the notch.
   private func shaped(_ distance: Double) -> Double {
     min(max(distance / Self.shaping, 0), 1)
+  }
+}
+
+extension View {
+  /// The shadow under the pill, in three layers, as light casts it: a tight one that softens
+  /// the edge, one that sets the pill on the screen, and a wide, faint one that lifts it off.
+  /// One blurred shadow alone leaves the edge hard. `PillPanel.shadowRoom` leaves room for it.
+  fileprivate func pillShadow(depth: Double) -> some View {
+    shadow(color: .black.opacity(0.28 * depth), radius: 1.5, y: 0.5)
+      .shadow(color: .black.opacity(0.22 * depth), radius: 8, y: 3)
+      .shadow(color: .black.opacity(0.26 * depth), radius: 22, y: 12)
   }
 }
 
