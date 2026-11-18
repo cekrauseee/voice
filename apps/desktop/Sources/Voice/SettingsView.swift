@@ -144,21 +144,11 @@ struct SettingsView: View {
 }
 
 /// Translation, on or off. Turning it on brings in the field for the language, ready to type in.
-/// The field is as wide as the language in it, as a `Select` is as wide as its choice.
+/// The field has one width: a language too long for it ends in an ellipsis.
 private struct TranslationControl: View {
   @Binding var isOn: Bool
   @Binding var language: String
   @FocusState private var isFocused: Bool
-
-  /// Wide enough for the language typed, or for the placeholder. A language too long for
-  /// the row is cut short with an ellipsis.
-  private var fieldWidth: Double {
-    let text = language.isEmpty ? "Language" : language
-    let font = NSFont.systemFont(ofSize: 12, weight: .medium)
-    let width = (text as NSString).size(withAttributes: [.font: font]).width
-    // The padding on either side, and the room the field keeps around its text.
-    return min(max(width.rounded(.up) + 26, 96), 240)
-  }
 
   var body: some View {
     HStack(spacing: Design.small) {
@@ -172,7 +162,7 @@ private struct TranslationControl: View {
           .onSubmit { isFocused = false }
           .onExitCommand { isFocused = false }
           .padding(.horizontal, 10)
-          .frame(width: fieldWidth, height: 26)
+          .frame(width: 160, height: 26)
           .background(
             Design.surface,
             in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
