@@ -71,6 +71,31 @@ private func settle() async {
     #expect(media.commands == [.pause, .play])
   }
 
+  @Test func mutingMutesEveryAppAndPausesNone() async {
+    let media = FakeMedia(isPlaying: true)
+    let pause = media.makePause()
+    pause.pause(.mute)
+    await settle()
+    #expect(media.othersMuted)
+    pause.resume()
+    await settle()
+    #expect(!media.othersMuted)
+    #expect(media.commands == [])
+    #expect(media.soundReturns == 1)
+  }
+
+  @Test func keepingLeavesTheMediaAsItIs() async {
+    let media = FakeMedia(isPlaying: true)
+    let pause = media.makePause()
+    pause.pause(.keep)
+    await settle()
+    pause.resume()
+    await settle()
+    #expect(media.commands == [])
+    #expect(media.muteChanges == 0)
+    #expect(media.soundReturns == 1)
+  }
+
   @Test func leavesAloneWhatWasNotPlaying() async {
     let media = FakeMedia(isPlaying: false)
     let pause = media.makePause()

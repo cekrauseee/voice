@@ -48,6 +48,11 @@ final class Settings {
     didSet { defaults.set(keepOnClipboard, forKey: "keepOnClipboard") }
   }
 
+  /// What happens to the media playing on the Mac while a dictation records.
+  var mediaBehavior: MediaBehavior {
+    didSet { defaults.set(mediaBehavior.rawValue, forKey: "mediaBehavior") }
+  }
+
   /// The microphone to dictate with. Without one, the system's records.
   var microphone: Microphone? {
     didSet {
@@ -98,6 +103,7 @@ final class Settings {
     translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
+    mediaBehavior = defaults.string(forKey: "mediaBehavior").flatMap(MediaBehavior.init) ?? .pause
     microphone = defaults.data(forKey: "microphone").flatMap {
       try? JSONDecoder().decode(Microphone.self, from: $0)
     }

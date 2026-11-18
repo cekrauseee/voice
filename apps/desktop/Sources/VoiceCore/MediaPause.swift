@@ -1,9 +1,28 @@
-/// Pauses the media playing on the Mac while a dictation records. After the recording it
-/// gets sound back to normal, and resumes the media.
+/// What happens to the media playing on the Mac while a dictation records.
+public enum MediaBehavior: String, CaseIterable, Sendable {
+  /// It is paused, and resumes after.
+  case pause
+  /// It plays on, unheard.
+  case mute
+  /// It plays on.
+  case keep
+
+  public var title: String {
+    switch self {
+    case .pause: "Pause"
+    case .mute: "Mute"
+    case .keep: "Keep playing"
+    }
+  }
+}
+
+/// Pauses or mutes the media playing on the Mac while a dictation records. After the
+/// recording it gets sound back to normal, and resumes the media.
 ///
 /// It resumes only what it paused: media that was not playing when the recording started
 /// is left alone. Only the app macOS shows as playing can be paused, so the other apps are
-/// muted meanwhile, and heard again with the media.
+/// muted meanwhile, and heard again with the media. Muting alone mutes every app, and
+/// pauses none.
 @MainActor
 public final class MediaPause {
   public enum Command: Equatable, Sendable {
@@ -27,8 +46,8 @@ public final class MediaPause {
   ///   - send: Sends a command to the app playing media.
   ///   - soundIsBack: Gets sound back to normal after a recording, and returns once it
   ///     is. A Bluetooth headset has to leave call quality.
-  ///   - muteOthers: Mutes, or unmutes, what the apps other than the one playing media
-  ///     play.
+  ///   - muteOthers: Mutes, or unmutes, what the other apps play. The app that was paused
+  ///     is among them, with nothing to hear.
   public init(
     isPlaying: @escaping @Sendable () async -> Bool,
     send: @escaping (Command) -> Void,
@@ -41,16 +60,17 @@ public final class MediaPause {
     self.muteOthers = muteOthers
   }
 
-  /// A dictation starts: pause the media, if any is playing.
-  public func pause() {
-    // Media about to resume from the last dictation stays paused for this one.
+  /// A dictation starts: pause the media, if any is playing, or mute it, or leave it.
+  public func pause(_ behavior: MediaBehavior = .pause) {
+    // Media about to resume from the last dictation stays as it is for this one.
     resuming?.cancel()
     resuming = nil
+    guard behavior != .keep else { return }
     if !isMuted {
       isMuted = true
       muteOthers(true)
     }
-    guard check == nil, !didPause else { return }
+    guard behavior == .pause, check == nil, !didPause else { return }
     check = Task { [isPlaying] in
       let playing = await isPlaying()
       guard !Task.isCancelled else { return }
@@ -73,8 +93,10 @@ public final class MediaPause {
       await soundIsBack()
       guard !Task.isCancelled else { return }
       resuming = nil
-      isMuted = false
-      muteOthers(false)
+      if isMuted {
+        isMuted = false
+        muteOthers(false)
+      }
       guard didPause else { return }
       didPause = false
       send(.play)
