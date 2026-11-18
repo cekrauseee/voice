@@ -57,7 +57,7 @@ public struct OutputHold: Equatable, Sendable {
     }
   }
 
-  /// How much of the volume is left while recording.
+  /// How much of the volume is left while recording, unless a recording says.
   public static let share: Float = 0.3
   /// How long a mode is watched after it is made quiet. A headset that arrives in call
   /// quality says so before it brings back the mute it had there.
@@ -72,6 +72,8 @@ public struct OutputHold: Equatable, Sendable {
   public private(set) var changes: [Mode: Change]
   /// How the recording that lasts keeps the output quiet.
   private var kind: Kind?
+  /// How much of the volume the recording that lasts leaves, when it turns it down.
+  private var share = OutputHold.share
   /// Until when each mode is watched.
   private var watched: [Mode: Duration] = [:]
   /// The modes whose own volume came back once. A second time it is left alone, so a
@@ -95,9 +97,11 @@ public struct OutputHold: Equatable, Sendable {
     kind != nil || !changes.isEmpty
   }
 
-  /// A recording starts, or another one does before the last was over.
-  public mutating func begin(_ kind: Kind) {
+  /// A recording starts, or another one does before the last was over. `share` is how
+  /// much of the volume it leaves, when it turns it down.
+  public mutating func begin(_ kind: Kind, share: Float = OutputHold.share) {
     self.kind = kind
+    self.share = share
     watched = [:]
     cameBack = []
     given = []
@@ -164,9 +168,9 @@ public struct OutputHold: Equatable, Sendable {
       return .mute(true)
     case .lower:
       guard let volume = level.volume, volume > 0, level.isMuted != true else { return nil }
-      changes[mode] = .lowered(from: volume, to: volume * Self.share)
+      changes[mode] = .lowered(from: volume, to: volume * share)
       watched[mode] = now + Self.settling
-      return .volume(volume * Self.share)
+      return .volume(volume * share)
     }
   }
 
@@ -177,7 +181,7 @@ public struct OutputHold: Equatable, Sendable {
       return level.isMuted == false ? .mute(true) : nil
     case .lowered(let from, let to):
       guard let volume = level.volume, abs(volume - to) >= Self.same else { return nil }
-      if abs(volume - from * Self.share) <= Self.rounding || cameBack.contains(mode) {
+      if abs(volume - from * share) <= Self.rounding || cameBack.contains(mode) {
         // The output rounded the volume it was given: that is the one to find after.
         changes[mode] = .lowered(from: from, to: volume)
         return nil
@@ -185,8 +189,8 @@ public struct OutputHold: Equatable, Sendable {
       // The volume the mode had came back: it is turned down from there.
       guard volume > 0 else { return nil }
       cameBack.insert(mode)
-      changes[mode] = .lowered(from: volume, to: volume * Self.share)
-      return .volume(volume * Self.share)
+      changes[mode] = .lowered(from: volume, to: volume * share)
+      return .volume(volume * share)
     }
   }
 }

@@ -19,14 +19,33 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
   }
 }
 
+/// How much of its volume the media keeps while a dictation records, when it is lowered.
+public enum LoweredVolume: Int, CaseIterable, Sendable {
+  case ten = 10
+  case twenty = 20
+  case thirty = 30
+  case forty = 40
+  case fifty = 50
+
+  public var title: String {
+    "\(rawValue)%"
+  }
+
+  /// The part of the volume that is left, from 0 to 1.
+  public var share: Float {
+    Float(rawValue) / 100
+  }
+}
+
 /// How the sound of the other apps is turned off, or down, while a dictation records.
 public enum MediaMuting: Equatable, Sendable {
   /// The other apps alone, which macOS allows with the System Audio Recording permission.
   case apps
   /// Everything the Mac plays, by muting its output. It needs no permission.
   case output
-  /// Everything the Mac plays, quieter, by turning its output down. It needs no permission.
-  case lowerOutput
+  /// Everything the Mac plays, quieter, by turning its output down to a share of its
+  /// volume. It needs no permission.
+  case lowerOutput(share: Float)
 
   /// How the output is kept quiet, when it is the output that is.
   public var hold: OutputHold.Kind? {
@@ -40,16 +59,16 @@ public enum MediaMuting: Equatable, Sendable {
 
 extension MediaBehavior {
   /// How to mute while recording, if at all. `appsAllowed` is whether macOS lets this app
-  /// mute the other apps.
+  /// mute the other apps, and `lowered` the volume that lowering leaves.
   ///
   /// Muting always mutes: without the permission, it mutes the output. Pausing mutes what
   /// it cannot pause only with the permission, and never asks for it: the media that
   /// matters is paused either way.
-  public func muting(appsAllowed: Bool) -> MediaMuting? {
+  public func muting(appsAllowed: Bool, lowered: LoweredVolume = .thirty) -> MediaMuting? {
     switch self {
     case .pause: appsAllowed ? .apps : nil
     case .mute: appsAllowed ? .apps : .output
-    case .lower: .lowerOutput
+    case .lower: .lowerOutput(share: lowered.share)
     case .keep: nil
     }
   }

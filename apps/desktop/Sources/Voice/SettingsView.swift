@@ -42,11 +42,19 @@ struct SettingsView: View {
                   .pointer()
                   .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
               }
+              if settings.mediaBehavior == .lower {
+                Select(
+                  options: LoweredVolume.allCases.map { ($0, $0.title) },
+                  selection: $settings.loweredVolume
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+              }
               Select(
                 options: MediaBehavior.allCases.map { ($0, $0.title) },
                 selection: $settings.mediaBehavior)
             }
             .animation(Design.move, value: needsSystemAudio)
+            .animation(Design.move, value: settings.mediaBehavior)
           }
         }
 

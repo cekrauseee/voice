@@ -67,7 +67,11 @@ final class OtherAudio: @unchecked Sendable {
     queue.async { [self] in
       canMuteApps = appsAllowed
       if let kind = muting.hold {
-        hold.begin(kind)
+        if case .lowerOutput(let share) = muting {
+          hold.begin(kind, share: share)
+        } else {
+          hold.begin(kind)
+        }
         look()
         watchOutput()
         return

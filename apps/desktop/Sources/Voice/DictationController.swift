@@ -47,7 +47,8 @@ final class DictationController {
       muteOthers: { [others, settings, permissions] muted in
         guard muted else { return others.unmute() }
         let appsAllowed = permissions.systemAudio == .allowed
-        let muting = settings.mediaBehavior.muting(appsAllowed: appsAllowed)
+        let muting = settings.mediaBehavior.muting(
+          appsAllowed: appsAllowed, lowered: settings.loweredVolume)
         if let muting { others.mute(muting, appsAllowed: appsAllowed) }
       })
   }

@@ -70,8 +70,9 @@ private func settle() async {
   }
 
   @Test func loweringTurnsTheOutputDownWithOrWithoutThePermission() {
-    #expect(MediaBehavior.lower.muting(appsAllowed: true) == .lowerOutput)
-    #expect(MediaBehavior.lower.muting(appsAllowed: false) == .lowerOutput)
+    #expect(MediaBehavior.lower.muting(appsAllowed: true) == .lowerOutput(share: 0.3))
+    #expect(
+      MediaBehavior.lower.muting(appsAllowed: false, lowered: .ten) == .lowerOutput(share: 0.1))
   }
 
   @Test func keepingMutesNothing() {

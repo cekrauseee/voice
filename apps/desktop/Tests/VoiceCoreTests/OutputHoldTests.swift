@@ -95,6 +95,16 @@ private func lowered(_ volume: Float) -> OutputHold.Write {
     #expect(hold.look(at: call, level(0.6, muted: false), now: .seconds(3)) == nil)
   }
 
+  @Test func turnsTheVolumeDownToTheShareTheRecordingAsksFor() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.1)
+    #expect(hold.look(at: media, level(0.5), now: .zero) == .volume(0.5 * 0.1))
+    // The headset arrives in call quality, and is turned down to the same share.
+    #expect(hold.look(at: call, level(0.8), now: .milliseconds(350)) == .volume(0.8 * 0.1))
+    hold.end()
+    #expect(hold.look(at: media, level(0.05), now: .seconds(5)) == .volume(0.5))
+  }
+
   @Test func theVolumeAHeadsetBringsBackIsTurnedDownOnce() {
     var hold = OutputHold()
     hold.begin(.lower)
