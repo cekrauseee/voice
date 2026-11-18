@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     style: .main(size: NSSize(width: 680, height: 460)),
     content: MainView(
       navigation: navigation, history: history, statistics: statistics, retry: retry,
-      loginItem: loginItem, settings: settings))
+      loginItem: loginItem, permissions: permissions, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(

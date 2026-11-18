@@ -1,14 +1,22 @@
 import CoreAudio
 import Foundation
+import VoiceCore
 
 /// Mutes what the other apps play, while a dictation records. Only the app macOS shows as
 /// playing can be paused: another one, such as a music player while a browser holds that
 /// place, keeps playing, unheard.
 ///
+/// There are two ways. With the System Audio Recording permission it mutes the other apps
+/// alone. Without it, it mutes the Mac's output, which needs no permission: see
+/// `MediaMuting`. It never asks for the permission by itself.
+///
 /// It taps the other apps' sound with Core Audio, muted, and reads nothing from the tap.
 /// macOS allows that with the System Audio Recording permission, which it asks for the
 /// first time, and shows as recording meanwhile. So it does that only while another app
 /// plays sound. When the app quits, the tap goes, and the sound comes back by itself.
+///
+/// A muted output stays muted when the app quits, so the app keeps note of the output it
+/// muted, and unmutes it the next time it opens.
 final class OtherAudio: @unchecked Sendable {
   private let log = Log("media")
   /// Creating and removing the tap wait for Core Audio, so they run here. What follows is
@@ -17,17 +25,57 @@ final class OtherAudio: @unchecked Sendable {
   private var tap = AudioObjectID(kAudioObjectUnknown)
   private var device = AudioObjectID(kAudioObjectUnknown)
   private var reading: AudioDeviceIOProcID?
+  /// The output this muted, until it unmutes it.
+  private var mutedOutput: AudioObjectID?
 
-  func mute() {
-    guard #available(macOS 14.2, *) else { return }
+  /// The output muted by a dictation that the app did not live to unmute.
+  private static let leftMuted = "mutedOutput"
+
+  init() {
+    queue.async {
+      guard let uid = UserDefaults.standard.string(forKey: Self.leftMuted) else { return }
+      UserDefaults.standard.removeObject(forKey: Self.leftMuted)
+      if let device = AudioDevice.withID(uid) { Self.setMuted(device, false) }
+    }
+  }
+
+  /// Whether the output the Mac plays through can be muted. Some cannot, such as most
+  /// displays: their sound can only be taken away app by app.
+  static var canMuteOutput: Bool {
+    guard let device = output() else { return false }
+    var address = muteAddress
+    var isSettable: DarwinBoolean = false
+    return AudioObjectHasProperty(device, &address)
+      && AudioObjectIsPropertySettable(device, &address, &isSettable) == noErr
+      && isSettable.boolValue
+  }
+
+  func mute(_ muting: MediaMuting) {
     queue.async { [self] in
-      guard tap == kAudioObjectUnknown, Self.othersPlay() else { return }
-      if open() {
-        log.debug("others muted")
-      } else {
-        close()
+      guard tap == kAudioObjectUnknown, mutedOutput == nil else { return }
+      switch muting {
+      case .apps:
+        guard #available(macOS 14.2, *), Self.othersPlay() else { return }
+        if open() {
+          log.debug("others muted")
+        } else {
+          close()
+        }
+      case .output:
+        muteOutput()
       }
     }
+  }
+
+  /// Mutes the output, unless it is muted already: then it is not this app's to unmute.
+  private func muteOutput() {
+    guard let device = Self.output(), Self.canMuteOutput, Self.isMuted(device) == false,
+      Self.setMuted(device, true)
+    else { return }
+    mutedOutput = device
+    let uid: CFString? = AudioDevice.read(device, kAudioDevicePropertyDeviceUID)
+    UserDefaults.standard.set(uid as String?, forKey: Self.leftMuted)
+    log.debug("output muted")
   }
 
   func unmute() {
@@ -73,6 +121,12 @@ final class OtherAudio: @unchecked Sendable {
   }
 
   private func close() {
+    if let mutedOutput {
+      Self.setMuted(mutedOutput, false)
+      self.mutedOutput = nil
+      UserDefaults.standard.removeObject(forKey: Self.leftMuted)
+      log.debug("output heard")
+    }
     if let reading {
       AudioDeviceStop(device, reading)
       AudioDeviceDestroyIOProcID(device, reading)
@@ -87,6 +141,34 @@ final class OtherAudio: @unchecked Sendable {
       tap = AudioObjectID(kAudioObjectUnknown)
       log.debug("others heard")
     }
+  }
+
+  private static let muteAddress = AudioObjectPropertyAddress(
+    mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeOutput,
+    mElement: kAudioObjectPropertyElementMain)
+
+  /// The device the Mac plays sound through.
+  private static func output() -> AudioObjectID? {
+    AudioDevice.read(
+      AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)
+  }
+
+  private static func isMuted(_ device: AudioObjectID) -> Bool? {
+    var address = muteAddress
+    var muted: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted) == noErr else {
+      return nil
+    }
+    return muted != 0
+  }
+
+  @discardableResult
+  private static func setMuted(_ device: AudioObjectID, _ muted: Bool) -> Bool {
+    var address = muteAddress
+    var value: UInt32 = muted ? 1 : 0
+    let size = UInt32(MemoryLayout<UInt32>.size)
+    return AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr
   }
 
   /// Whether an app other than this one plays sound now.

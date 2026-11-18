@@ -56,7 +56,7 @@ The app needs two permissions:
 | Accessibility | To see the shortcuts in any app and to type the text |
 | Microphone    | To record                                            |
 
-A third one, System Audio Recording, mutes the other apps while a dictation records. macOS asks for it the first time another app plays sound during a dictation. Without it, they keep playing.
+A third one, System Audio Recording, is optional, and the app never asks for it by itself. With it, the app mutes the other apps alone while a dictation records. Without it, the Mute setting mutes the Mac's output instead, and the Pause setting pauses the media and leaves the other apps playing. The settings ask for it only when Mute is chosen and the output cannot be muted, as with most displays: the Media row then shows Allow.
 
 On first launch a setup window takes the user through three steps, one at a time:
 
@@ -152,11 +152,11 @@ The Mac's own microphone delivers sound about a tenth of a second after it opens
 
 This matters with a Bluetooth headset used as the microphone, whether it is the one chosen or the system's. While its microphone is open, macOS switches the headset to call quality, which makes everything it plays sound flat. macOS leaves it there for two seconds after the microphone closes, so when a recording ends the app asks the headset for its best quality at once. It leaves call quality about a quarter of a second later, and plays again about a second after that, once its link is back: 1.2 seconds after the recording ends, instead of 3. While another app records, the headset is left alone.
 
-What follows is the Pause setting, the default. With Mute, nothing is paused: every app is muted the way the other apps are below, and heard again when the recording ends. With Keep playing, the media is left alone.
+What follows is the Pause setting, the default. With Mute, nothing is paused: every app is muted, and heard again when the recording ends. With the System Audio Recording permission they are muted the way the other apps are below. Without it, the Mac's output is muted, unless it was muted already. Should the app quit during a dictation, it unmutes that output the next time it opens. With Keep playing, the media is left alone.
 
 While a dictation records, the media playing on the Mac is paused, and it resumes when the recording ends, without waiting for the text. With a Bluetooth headset it resumes once the headset plays again, so it comes back in full quality, about 1.2 seconds after the recording ends. The app knows by playing a moment of silence through the headset: starting it waits until the headset plays. Media that was not playing is left alone. This works with the app that macOS shows in Now Playing, such as a music player or a browser. macOS has no public interface for another app's playback, so the app uses the system's private media remote: if a future macOS takes it away, media just keeps playing.
 
-Only that app can be paused. Another one keeps playing: a music player, say, while a browser holds Now Playing because it was played last. So while a dictation records, the other apps are muted, and they are heard again with the media, once the headset plays in full quality. What they play goes on meanwhile, unheard. The app mutes them with a Core Audio tap on their sound, from which it reads nothing, on macOS 14.2 or later. macOS takes that for recording: it asks for the System Audio Recording permission, and shows the app in the menu bar while the tap lasts. So it taps only while another app plays sound. If the app quits during a dictation, the tap goes, and the sound comes back by itself.
+Only that app can be paused. Another one keeps playing: a music player, say, while a browser holds Now Playing because it was played last. So while a dictation records, and when the app has the System Audio Recording permission, the other apps are muted, and they are heard again with the media, once the headset plays in full quality. What they play goes on meanwhile, unheard. The app mutes them with a Core Audio tap on their sound, from which it reads nothing, on macOS 14.2 or later. macOS takes that for recording: it asks for the System Audio Recording permission, and shows the app in the menu bar while the tap lasts. So it taps only while another app plays sound. If the app quits during a dictation, the tap goes, and the sound comes back by itself.
 
 ## The pill
 
@@ -213,7 +213,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
 | `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
 | `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
-| `Sources/Voice/Permissions.swift`                                   | The state of the two permissions                                 |
+| `Sources/Voice/Permissions.swift`                                   | The state of the permissions                                     |
 | `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                             |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |
 | `Sources/Voice/HotkeyTap.swift`                                     | Watches the keyboard system-wide                                 |

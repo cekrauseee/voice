@@ -5,6 +5,7 @@ import VoiceCore
 struct SettingsView: View {
   @Bindable var settings: Settings
   let loginItem: LoginItem
+  let permissions: Permissions
   @State private var microphones = AudioCapture.microphones
 
   var body: some View {
@@ -26,9 +27,26 @@ struct SettingsView: View {
               selection: $settings.microphone)
           }
           SettingRow(title: "Media", detail: mediaDetail) {
-            Select(
-              options: MediaBehavior.allCases.map { ($0, $0.title) },
-              selection: $settings.mediaBehavior)
+            HStack(spacing: Design.small) {
+              if needsSystemAudio {
+                Button("Allow", action: permissions.requestSystemAudio)
+                  .buttonStyle(.plain)
+                  .font(.voiceLabel)
+                  .padding(.horizontal, 10)
+                  .frame(height: 26)
+                  .background(
+                    Design.surface,
+                    in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
+                  )
+                  .contentShape(Rectangle())
+                  .pointer()
+                  .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+              }
+              Select(
+                options: MediaBehavior.allCases.map { ($0, $0.title) },
+                selection: $settings.mediaBehavior)
+            }
+            .animation(Design.move, value: needsSystemAudio)
           }
         }
 
@@ -139,8 +157,16 @@ struct SettingsView: View {
     ) { _ in microphones = AudioCapture.microphones }
   }
 
+  /// Muting works without a permission on an output that can be muted. On one that cannot,
+  /// it takes the permission to mute the other apps, so the row asks for it, and only then.
+  private var needsSystemAudio: Bool {
+    settings.mediaBehavior == .mute && permissions.systemAudio != .allowed
+      && !OtherAudio.canMuteOutput
+  }
+
   private var mediaDetail: String {
-    switch settings.mediaBehavior {
+    if needsSystemAudio { return "Allow System Audio Recording to mute this output" }
+    return switch settings.mediaBehavior {
     case .pause: "Pauses while you record, and resumes after"
     case .mute: "Plays on while you record, muted"
     case .keep: "Plays on while you record"

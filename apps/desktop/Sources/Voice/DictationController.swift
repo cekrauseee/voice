@@ -36,7 +36,11 @@ final class DictationController {
     media = MediaPause(
       isPlaying: MediaControl.isPlaying, send: MediaControl.send,
       soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) },
-      muteOthers: { [others] in $0 ? others.mute() : others.unmute() })
+      muteOthers: { [others, settings] muted in
+        guard muted else { return others.unmute() }
+        let muting = settings.mediaBehavior.muting(appsAllowed: SystemAudio.state == .allowed)
+        if let muting { others.mute(muting) }
+      })
   }
 
   var isRecording: Bool {

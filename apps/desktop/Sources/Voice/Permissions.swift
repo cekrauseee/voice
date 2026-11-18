@@ -3,13 +3,15 @@ import AppKit
 import ApplicationServices
 import Observation
 
-/// The two permissions the app needs. They are granted in System Settings, outside the
-/// app, so their state is read again every second.
+/// The two permissions the app needs, and the one it can do without. They are granted in
+/// System Settings, outside the app, so their state is read again every second.
 @MainActor @Observable
 final class Permissions {
   /// Lets the app see the shortcuts and type the dictated text.
   private(set) var accessibility = AXIsProcessTrusted()
   private(set) var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+  /// Lets the app mute the other apps alone. Without it, muting mutes the Mac's output.
+  private(set) var systemAudio = SystemAudio.state
 
   @ObservationIgnored private let log = Log("permissions")
 
@@ -47,7 +49,23 @@ final class Permissions {
     }
   }
 
+  /// Asks for System Audio Recording. macOS asks only once: after that, the way is System
+  /// Settings.
+  func requestSystemAudio() {
+    log.info("requested", ["permission": "system_audio"])
+    if systemAudio == .undetermined {
+      SystemAudio.request()
+    } else {
+      openSettings("Privacy_AudioCapture")
+    }
+  }
+
   private func refresh() {
+    let systemAudio = SystemAudio.state
+    if systemAudio != self.systemAudio {
+      self.systemAudio = systemAudio
+      log.info("changed", ["permission": "system_audio", "state": systemAudio.rawValue])
+    }
     let accessibility = AXIsProcessTrusted()
     if accessibility != self.accessibility {
       self.accessibility = accessibility

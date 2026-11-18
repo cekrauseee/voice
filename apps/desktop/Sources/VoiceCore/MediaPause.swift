@@ -16,6 +16,30 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
   }
 }
 
+/// How the sound of the other apps is taken away while a dictation records.
+public enum MediaMuting: Equatable, Sendable {
+  /// The other apps alone, which macOS allows with the System Audio Recording permission.
+  case apps
+  /// Everything the Mac plays, by muting its output. It needs no permission.
+  case output
+}
+
+extension MediaBehavior {
+  /// How to mute while recording, if at all. `appsAllowed` is whether macOS lets this app
+  /// mute the other apps.
+  ///
+  /// Muting always mutes: without the permission, it mutes the output. Pausing mutes what
+  /// it cannot pause only with the permission, and never asks for it: the media that
+  /// matters is paused either way.
+  public func muting(appsAllowed: Bool) -> MediaMuting? {
+    switch self {
+    case .pause: appsAllowed ? .apps : nil
+    case .mute: appsAllowed ? .apps : .output
+    case .keep: nil
+    }
+  }
+}
+
 /// Pauses or mutes the media playing on the Mac while a dictation records. After the
 /// recording it gets sound back to normal, and resumes the media.
 ///

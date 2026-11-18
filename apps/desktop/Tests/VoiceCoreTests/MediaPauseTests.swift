@@ -55,6 +55,23 @@ private func settle() async {
   for _ in 0..<20 { await Task.yield() }
 }
 
+@Suite struct MediaBehaviorTests {
+  @Test func mutingMutesTheOutputWithoutThePermission() {
+    #expect(MediaBehavior.mute.muting(appsAllowed: true) == .apps)
+    #expect(MediaBehavior.mute.muting(appsAllowed: false) == .output)
+  }
+
+  @Test func pausingMutesTheOtherAppsOnlyWithThePermission() {
+    #expect(MediaBehavior.pause.muting(appsAllowed: true) == .apps)
+    #expect(MediaBehavior.pause.muting(appsAllowed: false) == nil)
+  }
+
+  @Test func keepingMutesNothing() {
+    #expect(MediaBehavior.keep.muting(appsAllowed: true) == nil)
+    #expect(MediaBehavior.keep.muting(appsAllowed: false) == nil)
+  }
+}
+
 @MainActor @Suite struct MediaPauseTests {
   @Test func pausesWhatIsPlayingAndResumesIt() async {
     let media = FakeMedia(isPlaying: true)
