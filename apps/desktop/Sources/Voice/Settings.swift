@@ -25,6 +25,21 @@ final class Settings {
     didSet { defaults.set(instructions, forKey: "instructions") }
   }
 
+  /// Whether what the user says is written in another language.
+  var translates: Bool {
+    didSet { defaults.set(translates, forKey: "translates") }
+  }
+
+  /// The language to translate to, as the user typed it. Kept while translation is off.
+  var translationLanguage: String {
+    didSet { defaults.set(translationLanguage, forKey: "translationLanguage") }
+  }
+
+  /// The language new dictations are written in. Empty for the one spoken.
+  var translateTo: String {
+    Translation.target(isOn: translates, language: translationLanguage)
+  }
+
   var enterBehavior: EnterBehavior {
     didSet { defaults.set(enterBehavior.rawValue, forKey: "enterBehavior") }
   }
@@ -79,6 +94,8 @@ final class Settings {
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
     instructions = defaults.string(forKey: "instructions") ?? ""
+    translates = defaults.bool(forKey: "translates")
+    translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     microphone = defaults.data(forKey: "microphone").flatMap {

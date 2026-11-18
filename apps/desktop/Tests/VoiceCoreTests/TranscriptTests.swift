@@ -34,10 +34,11 @@ import Testing
   @Test func encodesEveryMessage() {
     #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
     #expect(
-      ClientMessage.start(instructions: "").json == #"{"instructions":"","type":"start"}"#)
+      ClientMessage.start(instructions: "").json
+        == #"{"instructions":"","translate_to":"","type":"start"}"#)
     #expect(
-      ClientMessage.start(instructions: "Say \"hi\".\nUse a/b.").json
-        == #"{"instructions":"Say \"hi\".\nUse a/b.","type":"start"}"#)
+      ClientMessage.start(instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish").json
+        == #"{"instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start"}"#)
   }
 }
 

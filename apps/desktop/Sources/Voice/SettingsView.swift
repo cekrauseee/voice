@@ -57,6 +57,13 @@ struct SettingsView: View {
 
         group("Transcription") {
           SettingRow(
+            title: "Translate",
+            detail: settings.translates && settings.translateTo.isEmpty
+              ? "Type the language to write in" : "Writes what you say in another language"
+          ) {
+            TranslationControl(isOn: $settings.translates, language: $settings.translationLanguage)
+          }
+          SettingRow(
             title: "Keep on clipboard", detail: "Replaces the previous clipboard contents"
           ) {
             Switch(title: "Keep on clipboard", isOn: $settings.keepOnClipboard)
@@ -131,6 +138,38 @@ struct SettingsView: View {
       GroupTitle(title: title)
         .padding(.bottom, Design.tight)
       rows()
+    }
+  }
+}
+
+/// Translation, on or off. Turning it on brings in the field for the language, ready to type in.
+private struct TranslationControl: View {
+  @Binding var isOn: Bool
+  @Binding var language: String
+  @FocusState private var isFocused: Bool
+
+  var body: some View {
+    HStack(spacing: Design.small) {
+      if isOn {
+        TextField("Language", text: $language)
+          .textFieldStyle(.plain)
+          .font(.voiceLabel)
+          .focused($isFocused)
+          .onSubmit { isFocused = false }
+          .padding(.horizontal, 10)
+          .frame(width: 132, height: 26)
+          .background(
+            Design.surface,
+            in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
+          )
+          .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+      }
+      Switch(title: "Translate", isOn: $isOn)
+    }
+    .animation(Design.move, value: isOn)
+    .onChange(of: isOn) { _, isOn in
+      // Only an empty field asks to be typed in. A language set before stays as it is.
+      if isOn && language.isEmpty { isFocused = true }
     }
   }
 }

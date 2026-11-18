@@ -33,6 +33,8 @@ interface Started {
   refiner: Refiner;
   /** How the speaker wants the text written. */
   instructions: string;
+  /** The language to write the text in. Empty to keep the speaker's. */
+  translateTo: string;
 }
 
 /**
@@ -63,8 +65,8 @@ export class DictationSession {
     this.deps = deps;
   }
 
-  /** The client opens the dictation, with how the speaker wants the text written. */
-  start(instructions: string): void {
+  /** The client opens the dictation, with how and in what language the speaker wants the text. */
+  start(instructions: string, translateTo = ""): void {
     if (this.ended) return;
     if (this.started) {
       this.reject();
@@ -79,12 +81,16 @@ export class DictationSession {
       }),
       refiner: this.deps.createRefiner(),
       instructions,
+      translateTo,
     };
     this.readyTimer = setTimeout(() => {
       this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
       this.fail("timeout", "Transcription timed out");
     }, READY_TIMEOUT_MS);
-    this.deps.log.info("started", { instructions_chars: instructions.trim().length });
+    this.deps.log.info("started", {
+      instructions_chars: instructions.trim().length,
+      translates: translateTo.trim() !== "",
+    });
   }
 
   audio(pcm: Buffer): void {
@@ -194,13 +200,13 @@ export class DictationSession {
    */
   private async refine(
     transcript: string,
-    { refiner, instructions }: Started,
+    { refiner, instructions, translateTo }: Started,
   ): Promise<Refinement> {
     const log = this.deps.log;
     const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     try {
-      const refined = await refiner.refine({ text: transcript, instructions }, signal);
+      const refined = await refiner.refine({ text: transcript, instructions, translateTo }, signal);
       if (refined.text !== "") {
         log.info("refined", { refine_ms: Date.now() - startedAt, chars: refined.text.length });
         return refined;

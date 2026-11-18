@@ -99,7 +99,8 @@ final class DictationController {
     let chunks = capture.start(with: settings.microphone)
 
     let session = DictationSession(
-      server: settings.serverURL, instructions: settings.instructions)
+      server: settings.serverURL, instructions: settings.instructions,
+      translateTo: settings.translateTo)
     session.onReady = { [weak self, weak session] in
       guard let self, self.session === session else { return }
       log.debug("ready", ["connect_ms": elapsed])

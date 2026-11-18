@@ -31,7 +31,11 @@ test("a dictation passes on the text heard, then ends with the refined text", as
   transcriber.events.delta(0, " world");
   session.stop();
   transcriber.events.final(0, " hello world ");
-  assert.deepEqual(refiner.calls[0]?.input, { text: "hello world", instructions: "" });
+  assert.deepEqual(refiner.calls[0]?.input, {
+    text: "hello world",
+    instructions: "",
+    translateTo: "",
+  });
 
   refiner.calls[0]?.resolve("Hello, world.", [3, 2]);
   await settle();
@@ -67,14 +71,18 @@ test("the audio is one turn: it is committed once, when the speaker stops", () =
   assert.equal(transcriber.bytes, audio(4000).length);
 });
 
-test("the refiner is prepared when the dictation starts, and gets the speaker's instructions", () => {
+test("the refiner is prepared when the dictation starts, and gets what the speaker asked for", () => {
   const { session, transcriber, refiner } = setup();
-  session.start("Write formally.");
+  session.start("Write formally.", "Spanish");
   assert.equal(refiner.created, 1);
 
   session.stop();
   transcriber.events.final(0, "hey there");
-  assert.deepEqual(refiner.calls[0]?.input, { text: "hey there", instructions: "Write formally." });
+  assert.deepEqual(refiner.calls[0]?.input, {
+    text: "hey there",
+    instructions: "Write formally.",
+    translateTo: "Spanish",
+  });
 });
 
 test("a failed refinement falls back to the transcript", async () => {

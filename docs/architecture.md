@@ -44,8 +44,9 @@ The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a 
 
 - **One request.** The model sees the whole text, so the result reads as one piece. Nothing is refined in parts that must be joined afterwards.
 - **The speaker's instructions.** The app can send instructions with the dictation, such as a tone or a language. They are added after the server's own and take precedence over them.
+- **Translation.** The app can ask for the text in another language. The refiner then gets different instructions: write what the speaker meant the way a native writer would, with that language's own idioms and expressions, and not word for word. It is the same single request.
 - **Over a WebSocket.** The request goes through the Responses API on a WebSocket that the server opens when the dictation starts. When the speaker stops, the connection is already there, and the answer streams back on it.
-- **It cannot lose text.** If the model fails, stops answering for 5 s, takes more than a minute, or returns nothing, the transcript is typed as it was heard.
+- **It cannot lose text.** If the model fails, stops answering for 5 s, takes more than a minute, or returns nothing, the transcript is typed as it was heard, untranslated.
 
 ## Cost
 
