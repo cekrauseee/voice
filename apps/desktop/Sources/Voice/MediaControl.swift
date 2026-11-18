@@ -58,7 +58,7 @@ enum MediaControl {
   /// but plays nothing for about a second more, while its link comes back. Media resumed
   /// before then is cut or flat, so this returns once the headset plays again.
   static func soundIsBack(microphone: String?) async {
-    let input = microphone.flatMap(AudioDevice.withID) ?? defaultInput()
+    let input = microphone.flatMap(AudioDevice.withID) ?? AudioDevice.input
     let startedAt = ContinuousClock.now
     var exit = CallQualityExit()
     var asked = false
@@ -86,18 +86,35 @@ enum MediaControl {
     let isRunning: UInt32? = input.flatMap {
       AudioDevice.read($0, kAudioDevicePropertyDeviceIsRunningSomewhere)
     }
-    let rates = output().flatMap(rates)
+    let rates = headsetOutput().flatMap(AudioDevice.rates)
     return CallQualityExit.Headset(
       // Below its best sample rate, which is what a headset does while its microphone
       // is open.
       isInCallQuality: rates.map { $0.now < $0.best } ?? false,
-      isMicrophone: rates != nil && input.map(isBluetooth) == true,
-      microphoneIsOpen: isRunning.map { $0 != 0 } ?? false)
+      isMicrophone: rates != nil && input.map(AudioDevice.isBluetooth) == true,
+      microphoneIsOpen: isRunning.map { $0 != 0 } ?? false,
+      anotherAppRecords: input.flatMap(othersRecord))
+  }
+
+  /// Whether an app other than this one records with a device now. Nil before macOS 14.2,
+  /// which does not say who records.
+  private static func othersRecord(with input: AudioObjectID) -> Bool? {
+    guard #available(macOS 14.2, *) else { return nil }
+    return AudioDevice.otherProcesses.contains { process in
+      let isRecording: UInt32? = AudioDevice.read(process, kAudioProcessPropertyIsRunningInput)
+      guard isRecording == 1 else { return false }
+      let devices: [AudioObjectID] = AudioDevice.list(
+        process, kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeInput)
+      // An app that does not say which devices it records with may record with this one.
+      return devices.isEmpty || devices.contains(input)
+    }
   }
 
   /// Asks the headset for its best sample rate. Returns whether it took the request.
   private static func askForBestQuality() -> Bool {
-    guard let device = output(), var best = rates(device)?.best else { return false }
+    guard let device = headsetOutput(), var best = AudioDevice.rates(of: device)?.best else {
+      return false
+    }
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioDevicePropertyNominalSampleRate,
       mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -105,46 +122,9 @@ enum MediaControl {
     return AudioObjectSetPropertyData(device, &address, 0, nil, size, &best) == noErr
   }
 
-  private static func defaultInput() -> AudioObjectID? {
-    AudioDevice.read(
-      AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
-  }
-
   /// The device that plays sound, when it is a Bluetooth headset.
-  private static func output() -> AudioObjectID? {
-    let system = AudioObjectID(kAudioObjectSystemObject)
-    guard
-      let device: AudioObjectID = AudioDevice.read(
-        system, kAudioHardwarePropertyDefaultOutputDevice),
-      isBluetooth(device)
-    else { return nil }
-    return device
-  }
-
-  private static func isBluetooth(_ device: AudioObjectID) -> Bool {
-    let transport: UInt32? = AudioDevice.read(device, kAudioDevicePropertyTransportType)
-    return transport == kAudioDeviceTransportTypeBluetooth
-      || transport == kAudioDeviceTransportTypeBluetoothLE
-  }
-
-  /// The sample rate a device runs at, and the best one it has.
-  private static func rates(_ device: AudioObjectID) -> (now: Float64, best: Float64)? {
-    guard let now: Float64 = AudioDevice.read(device, kAudioDevicePropertyNominalSampleRate) else {
-      return nil
-    }
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyAvailableNominalSampleRates,
-      mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-    var size: UInt32 = 0
-    guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr else {
-      return nil
-    }
-    var ranges = [AudioValueRange](
-      repeating: AudioValueRange(), count: Int(size) / MemoryLayout<AudioValueRange>.size)
-    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &ranges) == noErr else {
-      return nil
-    }
-    return (now, ranges.map(\.mMaximum).max() ?? now)
+  private static func headsetOutput() -> AudioObjectID? {
+    AudioDevice.output.flatMap { AudioDevice.isBluetooth($0) ? $0 : nil }
   }
 
   private static let question = """

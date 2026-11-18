@@ -37,6 +37,24 @@ private let normal = Headset(isInCallQuality: false, isMicrophone: true, microph
     var exit = CallQualityExit()
     var recording = inCallQuality
     recording.microphoneIsOpen = true
+    recording.anotherAppRecords = true
+    #expect(exit.step(recording, after: .zero) == .done)
+  }
+
+  @Test func waitsForAMicrophoneThatIsSlowToClose() {
+    var exit = CallQualityExit()
+    var closing = inCallQuality
+    closing.microphoneIsOpen = true
+    closing.anotherAppRecords = false
+    #expect(exit.step(closing, after: .milliseconds(500)) == .wait)
+    #expect(exit.step(closing, after: .seconds(2)) == .wait)
+    #expect(exit.step(inCallQuality, after: .milliseconds(2200)) == .ask)
+  }
+
+  @Test func takesAMicrophoneStillOpenForAnotherAppsWhenMacOSDoesNotSayWhoRecords() {
+    var exit = CallQualityExit()
+    var recording = inCallQuality
+    recording.microphoneIsOpen = true
     #expect(exit.step(recording, after: .zero) == .wait)
     #expect(exit.step(recording, after: .milliseconds(500)) == .done)
   }
