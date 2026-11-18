@@ -10,13 +10,20 @@ public struct CallQualityExit {
     public var isInCallQuality: Bool
     /// Its microphone is the one that records, so a recording puts it in call quality.
     public var isMicrophone: Bool
-    /// A microphone is open, in this app or another.
+    /// Its microphone is open: the one of this recording, until it closes, or because
+    /// another app records.
     public var microphoneIsOpen: Bool
+    /// Another app records with the microphone. Nil when macOS does not say who records.
+    public var anotherAppRecords: Bool?
 
-    public init(isInCallQuality: Bool, isMicrophone: Bool, microphoneIsOpen: Bool) {
+    public init(
+      isInCallQuality: Bool, isMicrophone: Bool, microphoneIsOpen: Bool,
+      anotherAppRecords: Bool? = nil
+    ) {
       self.isInCallQuality = isInCallQuality
       self.isMicrophone = isMicrophone
       self.microphoneIsOpen = microphoneIsOpen
+      self.anotherAppRecords = anotherAppRecords
     }
   }
 
@@ -45,9 +52,14 @@ public struct CallQualityExit {
   public mutating func step(_ headset: Headset, after elapsed: Duration) -> Step {
     if headset.isInCallQuality {
       if headset.microphoneIsOpen {
-        // Past the settling time it is another app that records: the headset stays in
-        // call quality for as long as it does.
-        return elapsed < Self.settling ? .wait : .done
+        // While another app records, the headset stays in call quality. When macOS does
+        // not say who records, a microphone still open past the settling time is taken
+        // for another app's.
+        if headset.anotherAppRecords ?? (elapsed >= Self.settling) { return .done }
+        // The microphone of this recording is closing, however long it takes: asking
+        // before it has changes nothing, and media that resumed now would be heard in
+        // call quality.
+        return .wait
       }
       // Asking twice makes the headset start over.
       guard !hasAsked else { return .wait }

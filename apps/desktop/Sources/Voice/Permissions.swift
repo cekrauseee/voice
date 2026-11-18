@@ -11,16 +11,23 @@ final class Permissions {
   private(set) var accessibility = AXIsProcessTrusted()
   private(set) var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
   /// Lets the app mute the other apps alone. Without it, muting mutes the Mac's output.
+  /// Asking macOS about it takes a few milliseconds, so it is asked away from the main
+  /// thread, and what a dictation reads is the last answer.
   private(set) var systemAudio = SystemAudio.state
 
   @ObservationIgnored private let log = Log("permissions")
 
   init() {
-    log.info("state", ["accessibility": accessibility, "microphone": microphone.name])
+    log.info(
+      "state",
+      [
+        "accessibility": accessibility, "microphone": microphone.name,
+        "system_audio": systemAudio.rawValue,
+      ])
     Task {
       while true {
         try? await Task.sleep(for: .seconds(1))
-        refresh()
+        refresh(systemAudio: await Task.detached { SystemAudio.state }.value)
       }
     }
   }
@@ -60,9 +67,8 @@ final class Permissions {
     }
   }
 
-  private func refresh() {
-    let systemAudio = SystemAudio.state
-    if systemAudio != self.systemAudio {
+  private func refresh(systemAudio: SystemAudio.State? = nil) {
+    if let systemAudio, systemAudio != self.systemAudio {
       self.systemAudio = systemAudio
       log.info("changed", ["permission": "system_audio", "state": systemAudio.rawValue])
     }

@@ -164,13 +164,27 @@ struct SettingsView: View {
       && !OtherAudio.canMuteOutput
   }
 
+  /// Whether the microphone that records is the one of the Bluetooth headset that plays. It
+  /// plays in call quality while its microphone is open, so media that plays on is heard
+  /// that way.
+  private var recordsWithHeadset: Bool {
+    guard let output = AudioDevice.output, AudioDevice.isBluetooth(output) else { return false }
+    let microphone = settings.microphone.flatMap { AudioDevice.withID($0.id) } ?? AudioDevice.input
+    return microphone.map(AudioDevice.isBluetooth) ?? false
+  }
+
   private var mediaDetail: String {
     if needsSystemAudio { return "Allow System Audio Recording to mute this output" }
     return switch settings.mediaBehavior {
     case .pause: "Pauses while you record, and resumes after"
     case .mute: "Plays on while you record, muted"
-    case .lower: "Plays on while you record, quieter"
-    case .keep: "Plays on while you record"
+    case .lower:
+      recordsWithHeadset
+        ? "Quieter, and like a phone call with this microphone"
+        : "Plays on while you record, quieter"
+    case .keep:
+      recordsWithHeadset
+        ? "Like a phone call with this microphone" : "Plays on while you record"
     }
   }
 

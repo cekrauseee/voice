@@ -1,24 +1,24 @@
-import AudioToolbox
 import CoreAudio
 import Foundation
 import VoiceCore
 
-/// Mutes what the other apps play, while a dictation records. Only the app macOS shows as
-/// playing can be paused: another one, such as a music player while a browser holds that
-/// place, keeps playing, unheard.
+/// Keeps what the other apps play out of a dictation, while it records. Only the app macOS
+/// shows as playing can be paused: another one, such as a music player while a browser
+/// holds that place, keeps playing, unheard.
 ///
 /// There are two ways. With the System Audio Recording permission it mutes the other apps
-/// alone. Without it, it mutes the Mac's output, which needs no permission: see
-/// `MediaMuting`. It never asks for the permission by itself. It can also turn the output
-/// down instead of muting it.
+/// alone, with a tap. Without it, or to turn them down, it changes the Mac's output, which
+/// needs no permission: see `MediaMuting`. It never asks for the permission by itself.
 ///
-/// It taps the other apps' sound with Core Audio, muted, and reads nothing from the tap.
-/// macOS allows that with the System Audio Recording permission, which it asks for the
-/// first time, and shows as recording meanwhile. So it does that only while another app
-/// plays sound. When the app quits, the tap goes, and the sound comes back by itself.
+/// The tap is on the other apps' sound with Core Audio, muted, and nothing is read from
+/// it. macOS allows that with the permission, and shows the app as recording meanwhile. So
+/// it taps only while another app plays sound. When the app quits, the tap goes, and the
+/// sound comes back by itself.
 ///
-/// An output that was muted or turned down stays so when the app quits, so the app keeps
-/// note of it, and puts it back the next time it opens.
+/// An output that was muted or turned down stays so when the app quits, and a Bluetooth
+/// headset has to be made quiet again in call quality: see `OutputHold`, which says what to
+/// change as the output is looked at. What is left to put back is kept between two runs of
+/// the app.
 final class OtherAudio: @unchecked Sendable {
   private let log = Log("media")
   /// Creating and removing the tap wait for Core Audio, so they run here. What follows is
@@ -27,95 +27,187 @@ final class OtherAudio: @unchecked Sendable {
   private var tap = AudioObjectID(kAudioObjectUnknown)
   private var device = AudioObjectID(kAudioObjectUnknown)
   private var reading: AudioDeviceIOProcID?
-  /// The output this muted, until it unmutes it.
-  private var mutedOutput: AudioObjectID?
-  /// The output this turned down, and its volume, until it turns it back up.
-  private var lowered: (output: AudioObjectID, volume: LoweredVolume)?
+  /// What the output is kept at, and what is left to put back.
+  private var hold: OutputHold
+  /// Looks at the output while there is a reason to.
+  private var watch: DispatchSourceTimer?
+  /// Whether macOS lets this app mute the other apps, as of the last recording.
+  private var canMuteApps = false
+  private let startedAt = ContinuousClock.now
 
-  /// The output muted by a dictation that the app did not live to unmute.
-  private static let leftMuted = "mutedOutput"
-  /// The same for the output it turned down, and the volume it had.
-  private static let leftLowered = "loweredOutput"
-  private static let leftLoweredVolume = "loweredOutputVolume"
+  /// What an earlier run of the app changed and did not put back.
+  private static let saved = "outputChanges"
+  /// How often the output is looked at: often while a recording lasts, so a headset is
+  /// quiet again before it plays in call quality, and now and then while something is
+  /// only left to put back.
+  private static let often: DispatchTimeInterval = .milliseconds(50)
+  private static let nowAndThen: DispatchTimeInterval = .milliseconds(500)
 
   init() {
-    queue.async {
-      let defaults = UserDefaults.standard
-      if let uid = defaults.string(forKey: Self.leftMuted) {
-        defaults.removeObject(forKey: Self.leftMuted)
-        if let device = AudioDevice.withID(uid) { Self.setMuted(device, false) }
-      }
-      if let uid = defaults.string(forKey: Self.leftLowered) {
-        let volume = LoweredVolume(before: defaults.float(forKey: Self.leftLoweredVolume))
-        defaults.removeObject(forKey: Self.leftLowered)
-        defaults.removeObject(forKey: Self.leftLoweredVolume)
-        if let device = AudioDevice.withID(uid) { Self.turnBackUp(device, volume) }
-      }
+    let saved = UserDefaults.standard.data(forKey: Self.saved)
+    let changes = saved.flatMap {
+      try? JSONDecoder().decode([OutputHold.Mode: OutputHold.Change].self, from: $0)
+    }
+    hold = OutputHold(changes: changes ?? [:])
+    queue.async { [self] in
+      look()
+      watchOutput()
     }
   }
 
   /// Whether the output the Mac plays through can be muted. Some cannot, such as most
   /// displays: their sound can only be taken away app by app.
   static var canMuteOutput: Bool {
-    guard let device = output() else { return false }
-    var address = muteAddress
-    var isSettable: DarwinBoolean = false
-    return AudioObjectHasProperty(device, &address)
-      && AudioObjectIsPropertySettable(device, &address, &isSettable) == noErr
-      && isSettable.boolValue
+    AudioDevice.output.map(AudioDevice.canMute) ?? false
   }
 
-  func mute(_ muting: MediaMuting) {
+  /// Makes the other apps quiet. A dictation that starts before the last one was over asks
+  /// again. `appsAllowed` is whether macOS lets this app mute the other apps.
+  func mute(_ muting: MediaMuting, appsAllowed: Bool) {
     queue.async { [self] in
-      guard tap == kAudioObjectUnknown, mutedOutput == nil, lowered == nil else { return }
-      switch muting {
-      case .apps:
-        guard #available(macOS 14.2, *), Self.othersPlay() else { return }
-        if open() {
-          log.debug("others muted")
-        } else {
-          close()
-        }
-      case .output:
-        muteOutput()
-      case .lowerOutput:
-        lowerOutput()
+      canMuteApps = appsAllowed
+      if let kind = muting.hold {
+        hold.begin(kind)
+        look()
+        watchOutput()
+        return
+      }
+      guard tap == kAudioObjectUnknown, #available(macOS 14.2, *), Self.othersPlay() else {
+        return
+      }
+      if open() {
+        log.debug("others muted")
+      } else {
+        close()
       }
     }
   }
 
-  /// Mutes the output, unless it is muted already: then it is not this app's to unmute.
-  private func muteOutput() {
-    guard let device = Self.output(), Self.canMuteOutput, Self.isMuted(device) == false,
-      Self.setMuted(device, true)
-    else { return }
-    mutedOutput = device
-    let uid: CFString? = AudioDevice.read(device, kAudioDevicePropertyDeviceUID)
-    UserDefaults.standard.set(uid as String?, forKey: Self.leftMuted)
-    log.debug("output muted")
-  }
-
-  /// Turns the output down, unless it has no volume to turn, or is silent already.
-  private func lowerOutput() {
-    guard let device = Self.output(), let before = Self.volume(device), before > 0,
-      Self.isMuted(device) != true
-    else { return }
-    let volume = LoweredVolume(before: before)
-    guard Self.setVolume(device, volume.during) else { return }
-    lowered = (device, volume)
-    let uid: CFString? = AudioDevice.read(device, kAudioDevicePropertyDeviceUID)
-    UserDefaults.standard.set(uid as String?, forKey: Self.leftLowered)
-    UserDefaults.standard.set(before, forKey: Self.leftLoweredVolume)
-    log.debug("output lowered")
-  }
-
+  /// Sound is back to normal after the recording: the other apps are heard again.
   func unmute() {
-    queue.async { [self] in close() }
+    queue.async { [self] in
+      if hold.isHolding {
+        hold.end()
+        look()
+        watchOutput()
+      }
+      close()
+    }
+  }
+
+  /// The recording ended with a headset in call quality, where it was turned down. Putting
+  /// that back is heard for a moment, loud and in call quality, before the headset leaves
+  /// it. With the permission, the other apps are muted over that moment, until sound is
+  /// back.
+  func recordingEnded() {
+    queue.async { [self] in
+      guard hold.isHolding, canMuteApps, tap == kAudioObjectUnknown,
+        let output = AudioDevice.output, Self.mode(of: output)?.isCall == true,
+        #available(macOS 14.2, *), Self.othersPlay()
+      else { return }
+      if open() {
+        log.debug("others muted")
+      } else {
+        close()
+      }
+    }
+  }
+
+  /// The headset was asked to leave call quality, and is still in it: what was changed
+  /// there is put back now. Once the headset stops playing, a fifth of a second later, it
+  /// cannot be anymore.
+  func leavingCallQuality() {
+    queue.sync {
+      guard hold.isHolding, let output = AudioDevice.output, let mode = Self.mode(of: output),
+        mode.isCall
+      else { return }
+      if let write = hold.leave(mode, Self.level(of: output)) { make(write, on: output) }
+      save()
+    }
+  }
+
+  /// Looks at the output, and changes what the hold says to.
+  private func look() {
+    let before = hold.changes
+    let output = AudioDevice.output
+    // What is left on an output that is not played through anymore is put back there.
+    for mode in hold.changes.keys {
+      guard let other = AudioDevice.withID(mode.output), other != output,
+        Self.mode(of: other) == mode
+      else { continue }
+      if let write = hold.putBack(mode, Self.level(of: other)) { make(write, on: other) }
+    }
+    if let output, let mode = Self.mode(of: output) {
+      let write = hold.look(
+        at: mode, Self.level(of: output), now: ContinuousClock.now - startedAt)
+      if let write { make(write, on: output) }
+    }
+    if hold.changes != before { save() }
+  }
+
+  /// Keeps looking at the output for as long as there is a reason to.
+  private func watchOutput() {
+    guard hold.isWatching else {
+      watch?.cancel()
+      watch = nil
+      return
+    }
+    let watch = watch ?? makeWatch()
+    let interval = hold.isHolding ? Self.often : Self.nowAndThen
+    watch.schedule(deadline: .now() + interval, repeating: interval)
+    if self.watch == nil {
+      self.watch = watch
+      watch.resume()
+    }
+  }
+
+  private func makeWatch() -> DispatchSourceTimer {
+    let watch = DispatchSource.makeTimerSource(queue: queue)
+    watch.setEventHandler { [weak self] in
+      guard let self else { return }
+      look()
+      if !hold.isWatching { watchOutput() }
+    }
+    return watch
+  }
+
+  private func make(_ write: OutputHold.Write, on output: AudioObjectID) {
+    switch write {
+    case .mute(let isMuted):
+      AudioDevice.setMuted(isMuted, output)
+      log.debug(isMuted ? "output muted" : "output unmuted")
+    case .volume(let volume):
+      AudioDevice.setVolume(volume, of: output)
+      log.debug("output volume set", ["volume": String(format: "%.2f", volume)])
+    }
+  }
+
+  private func save() {
+    if hold.changes.isEmpty {
+      UserDefaults.standard.removeObject(forKey: Self.saved)
+    } else {
+      UserDefaults.standard.set(try? JSONEncoder().encode(hold.changes), forKey: Self.saved)
+    }
+  }
+
+  /// The mode an output is in. Nil while it cannot say: a headset between two of them.
+  private static func mode(of output: AudioObjectID) -> OutputHold.Mode? {
+    guard let id = AudioDevice.id(of: output) else { return nil }
+    guard AudioDevice.isBluetooth(output) else { return OutputHold.Mode(output: id) }
+    guard let rates = AudioDevice.rates(of: output) else { return nil }
+    // Below its best sample rate, which is what a headset does while its microphone is
+    // open.
+    return OutputHold.Mode(output: id, isCall: rates.now < rates.best)
+  }
+
+  private static func level(of output: AudioObjectID) -> OutputHold.Level {
+    OutputHold.Level(
+      volume: AudioDevice.volume(of: output), isMuted: AudioDevice.isMuted(output))
   }
 
   @available(macOS 14.2, *)
   private func open() -> Bool {
-    let own = Self.process(getpid()).map { [$0] } ?? []
+    let own = AudioDevice.process(getpid()).map { [$0] } ?? []
     let description = CATapDescription(stereoGlobalTapButExcludeProcesses: own)
     description.muteBehavior = .muted
     description.isPrivate = true
@@ -152,19 +244,6 @@ final class OtherAudio: @unchecked Sendable {
   }
 
   private func close() {
-    if let mutedOutput {
-      Self.setMuted(mutedOutput, false)
-      self.mutedOutput = nil
-      UserDefaults.standard.removeObject(forKey: Self.leftMuted)
-      log.debug("output heard")
-    }
-    if let lowered {
-      Self.turnBackUp(lowered.output, lowered.volume)
-      self.lowered = nil
-      UserDefaults.standard.removeObject(forKey: Self.leftLowered)
-      UserDefaults.standard.removeObject(forKey: Self.leftLoweredVolume)
-      log.debug("output back up")
-    }
     if let reading {
       AudioDeviceStop(device, reading)
       AudioDeviceDestroyIOProcID(device, reading)
@@ -181,96 +260,12 @@ final class OtherAudio: @unchecked Sendable {
     }
   }
 
-  private static let muteAddress = AudioObjectPropertyAddress(
-    mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeOutput,
-    mElement: kAudioObjectPropertyElementMain)
-
-  /// The volume of a device as the volume keys set it, whichever channels it has.
-  private static let volumeAddress = AudioObjectPropertyAddress(
-    mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-    mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
-
-  private static func volume(_ device: AudioObjectID) -> Float? {
-    var address = volumeAddress
-    var volume: Float32 = 0
-    var size = UInt32(MemoryLayout<Float32>.size)
-    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr else {
-      return nil
-    }
-    return volume
-  }
-
-  private static func setVolume(_ device: AudioObjectID, _ volume: Float) -> Bool {
-    var address = volumeAddress
-    var value: Float32 = volume
-    let size = UInt32(MemoryLayout<Float32>.size)
-    return AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr
-  }
-
-  /// Gives a device the volume it had, unless the volume was changed meanwhile.
-  private static func turnBackUp(_ device: AudioObjectID, _ lowered: LoweredVolume) {
-    guard let now = volume(device), let after = lowered.after(now) else { return }
-    _ = setVolume(device, after)
-  }
-
-  /// The device the Mac plays sound through.
-  private static func output() -> AudioObjectID? {
-    AudioDevice.read(
-      AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)
-  }
-
-  private static func isMuted(_ device: AudioObjectID) -> Bool? {
-    var address = muteAddress
-    var muted: UInt32 = 0
-    var size = UInt32(MemoryLayout<UInt32>.size)
-    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted) == noErr else {
-      return nil
-    }
-    return muted != 0
-  }
-
-  @discardableResult
-  private static func setMuted(_ device: AudioObjectID, _ muted: Bool) -> Bool {
-    var address = muteAddress
-    var value: UInt32 = muted ? 1 : 0
-    let size = UInt32(MemoryLayout<UInt32>.size)
-    return AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr
-  }
-
   /// Whether an app other than this one plays sound now.
   @available(macOS 14.2, *)
   private static func othersPlay() -> Bool {
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyProcessObjectList,
-      mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-    let system = AudioObjectID(kAudioObjectSystemObject)
-    var size: UInt32 = 0
-    guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else {
-      return false
-    }
-    var processes = [AudioObjectID](
-      repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-    guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr
-    else { return false }
-    let own = process(getpid())
-    return processes.contains { process in
+    AudioDevice.otherProcesses.contains { process in
       let isPlaying: UInt32? = AudioDevice.read(process, kAudioProcessPropertyIsRunningOutput)
-      return process != own && isPlaying == 1
+      return isPlaying == 1
     }
-  }
-
-  /// The audio object of a process, once it uses Core Audio.
-  @available(macOS 14.2, *)
-  private static func process(_ pid: pid_t) -> AudioObjectID? {
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
-      mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-    var pid = pid
-    var process = AudioObjectID(kAudioObjectUnknown)
-    var size = UInt32(MemoryLayout<AudioObjectID>.size)
-    let status = AudioObjectGetPropertyData(
-      AudioObjectID(kAudioObjectSystemObject), &address, UInt32(MemoryLayout<pid_t>.size),
-      &pid, &size, &process)
-    return status == noErr && process != kAudioObjectUnknown ? process : nil
   }
 }

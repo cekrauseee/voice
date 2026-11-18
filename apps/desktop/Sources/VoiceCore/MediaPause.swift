@@ -27,27 +27,14 @@ public enum MediaMuting: Equatable, Sendable {
   case output
   /// Everything the Mac plays, quieter, by turning its output down. It needs no permission.
   case lowerOutput
-}
 
-/// The volume of an output that was turned down for a recording, to turn back up after.
-public struct LoweredVolume: Equatable, Sendable {
-  /// How much of the volume is left while recording.
-  public static let share: Float = 0.3
-
-  public let before: Float
-
-  public init(before: Float) {
-    self.before = before
-  }
-
-  public var during: Float {
-    before * Self.share
-  }
-
-  /// The volume to go back to, with `now` the one the output has. None when it was changed
-  /// during the recording: then it is where the user wants it.
-  public func after(_ now: Float) -> Float? {
-    abs(now - during) < 0.02 ? before : nil
+  /// How the output is kept quiet, when it is the output that is.
+  public var hold: OutputHold.Kind? {
+    switch self {
+    case .apps: nil
+    case .output: .mute
+    case .lowerOutput: .lower
+    }
   }
 }
 
@@ -99,7 +86,8 @@ public final class MediaPause {
   ///   - soundIsBack: Gets sound back to normal after a recording, and returns once it
   ///     is. A Bluetooth headset has to leave call quality.
   ///   - muteOthers: Mutes, or unmutes, what the other apps play. The app that was paused
-  ///     is among them, with nothing to hear.
+  ///     is among them, with nothing to hear. It is asked to mute again by a dictation
+  ///     that starts before the last one unmuted.
   public init(
     isPlaying: @escaping @Sendable () async -> Bool,
     send: @escaping (Command) -> Void,
@@ -119,10 +107,8 @@ public final class MediaPause {
     resuming?.cancel()
     resuming = nil
     guard behavior != .keep else { return }
-    if !isMuted {
-      isMuted = true
-      muteOthers(true)
-    }
+    isMuted = true
+    muteOthers(true)
     guard behavior == .pause, check == nil, !didPause else { return }
     check = Task { [isPlaying] in
       let playing = await isPlaying()

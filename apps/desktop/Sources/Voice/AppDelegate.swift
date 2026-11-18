@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let loginItem = LoginItem()
   private lazy var server = ServerProcess()
   private lazy var controller = DictationController(
-    settings: settings, history: history, statistics: statistics)
+    settings: settings, permissions: permissions, history: history, statistics: statistics)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)

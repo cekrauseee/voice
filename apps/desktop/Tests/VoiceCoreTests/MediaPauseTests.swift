@@ -11,9 +11,11 @@ private final class FakeMedia {
   /// When set, sound is not back after a recording until `release`.
   var holdsSound = false
   private(set) var commands: [MediaPause.Command] = []
-  /// Whether the other apps are muted, and how many times that changed.
+  /// Whether the other apps are muted, how many times that changed, and how many times
+  /// they were asked to be.
   private(set) var othersMuted = false
   private(set) var muteChanges = 0
+  private(set) var muteRequests = 0
   /// How many times sound was asked to get back to normal.
   private(set) var soundReturns = 0
   private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -34,8 +36,9 @@ private final class FakeMedia {
         if self.holdsSound { await self.hold() }
       },
       muteOthers: {
+        if $0 { self.muteRequests += 1 }
+        if $0 != self.othersMuted { self.muteChanges += 1 }
         self.othersMuted = $0
-        self.muteChanges += 1
       })
   }
 
@@ -69,19 +72,6 @@ private func settle() async {
   @Test func loweringTurnsTheOutputDownWithOrWithoutThePermission() {
     #expect(MediaBehavior.lower.muting(appsAllowed: true) == .lowerOutput)
     #expect(MediaBehavior.lower.muting(appsAllowed: false) == .lowerOutput)
-  }
-
-  @Test func aLoweredVolumeGoesBackToWhatItWas() {
-    let volume = LoweredVolume(before: 0.75)
-    #expect(abs(volume.during - 0.225) < 0.001)
-    #expect(volume.after(0.225) == 0.75)
-    #expect(volume.after(0.23) == 0.75)
-  }
-
-  @Test func aVolumeChangedWhileRecordingIsLeftAlone() {
-    let volume = LoweredVolume(before: 0.75)
-    #expect(volume.after(0.5) == nil)
-    #expect(volume.after(0) == nil)
   }
 
   @Test func keepingMutesNothing() {
@@ -238,6 +228,8 @@ private func settle() async {
     await settle()
     #expect(media.othersMuted)
     #expect(media.muteChanges == 1)
+    // Asked again, so that what was given back for the last one is quiet for this one.
+    #expect(media.muteRequests == 2)
   }
 
   @Test func theNextDictationPausesAgain() async {
