@@ -133,7 +133,7 @@ final class DictationController {
     }
     session.start()
     self.session = session
-    media.pause()
+    media.pause(settings.mediaBehavior)
     log.info("started", ["mode": mode])
 
     // The Mac's own microphone delivers sound in about a tenth of a second, a Bluetooth

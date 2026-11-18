@@ -25,6 +25,11 @@ struct SettingsView: View {
               options: Microphone.options(chosen: settings.microphone, connected: microphones),
               selection: $settings.microphone)
           }
+          SettingRow(title: "Media", detail: mediaDetail) {
+            Select(
+              options: MediaBehavior.allCases.map { ($0, $0.title) },
+              selection: $settings.mediaBehavior)
+          }
         }
 
         group("Appearance") {
@@ -132,6 +137,14 @@ struct SettingsView: View {
         )
         .receive(on: RunLoop.main)
     ) { _ in microphones = AudioCapture.microphones }
+  }
+
+  private var mediaDetail: String {
+    switch settings.mediaBehavior {
+    case .pause: "Pauses while you record, and resumes after"
+    case .mute: "Plays on while you record, muted"
+    case .keep: "Plays on while you record"
+    }
   }
 
   private func group(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
