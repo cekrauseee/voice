@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreAudio
 import Foundation
 import VoiceCore
@@ -8,15 +9,16 @@ import VoiceCore
 ///
 /// There are two ways. With the System Audio Recording permission it mutes the other apps
 /// alone. Without it, it mutes the Mac's output, which needs no permission: see
-/// `MediaMuting`. It never asks for the permission by itself.
+/// `MediaMuting`. It never asks for the permission by itself. It can also turn the output
+/// down instead of muting it.
 ///
 /// It taps the other apps' sound with Core Audio, muted, and reads nothing from the tap.
 /// macOS allows that with the System Audio Recording permission, which it asks for the
 /// first time, and shows as recording meanwhile. So it does that only while another app
 /// plays sound. When the app quits, the tap goes, and the sound comes back by itself.
 ///
-/// A muted output stays muted when the app quits, so the app keeps note of the output it
-/// muted, and unmutes it the next time it opens.
+/// An output that was muted or turned down stays so when the app quits, so the app keeps
+/// note of it, and puts it back the next time it opens.
 final class OtherAudio: @unchecked Sendable {
   private let log = Log("media")
   /// Creating and removing the tap wait for Core Audio, so they run here. What follows is
@@ -27,15 +29,28 @@ final class OtherAudio: @unchecked Sendable {
   private var reading: AudioDeviceIOProcID?
   /// The output this muted, until it unmutes it.
   private var mutedOutput: AudioObjectID?
+  /// The output this turned down, and its volume, until it turns it back up.
+  private var lowered: (output: AudioObjectID, volume: LoweredVolume)?
 
   /// The output muted by a dictation that the app did not live to unmute.
   private static let leftMuted = "mutedOutput"
+  /// The same for the output it turned down, and the volume it had.
+  private static let leftLowered = "loweredOutput"
+  private static let leftLoweredVolume = "loweredOutputVolume"
 
   init() {
     queue.async {
-      guard let uid = UserDefaults.standard.string(forKey: Self.leftMuted) else { return }
-      UserDefaults.standard.removeObject(forKey: Self.leftMuted)
-      if let device = AudioDevice.withID(uid) { Self.setMuted(device, false) }
+      let defaults = UserDefaults.standard
+      if let uid = defaults.string(forKey: Self.leftMuted) {
+        defaults.removeObject(forKey: Self.leftMuted)
+        if let device = AudioDevice.withID(uid) { Self.setMuted(device, false) }
+      }
+      if let uid = defaults.string(forKey: Self.leftLowered) {
+        let volume = LoweredVolume(before: defaults.float(forKey: Self.leftLoweredVolume))
+        defaults.removeObject(forKey: Self.leftLowered)
+        defaults.removeObject(forKey: Self.leftLoweredVolume)
+        if let device = AudioDevice.withID(uid) { Self.turnBackUp(device, volume) }
+      }
     }
   }
 
@@ -52,7 +67,7 @@ final class OtherAudio: @unchecked Sendable {
 
   func mute(_ muting: MediaMuting) {
     queue.async { [self] in
-      guard tap == kAudioObjectUnknown, mutedOutput == nil else { return }
+      guard tap == kAudioObjectUnknown, mutedOutput == nil, lowered == nil else { return }
       switch muting {
       case .apps:
         guard #available(macOS 14.2, *), Self.othersPlay() else { return }
@@ -63,6 +78,8 @@ final class OtherAudio: @unchecked Sendable {
         }
       case .output:
         muteOutput()
+      case .lowerOutput:
+        lowerOutput()
       }
     }
   }
@@ -76,6 +93,20 @@ final class OtherAudio: @unchecked Sendable {
     let uid: CFString? = AudioDevice.read(device, kAudioDevicePropertyDeviceUID)
     UserDefaults.standard.set(uid as String?, forKey: Self.leftMuted)
     log.debug("output muted")
+  }
+
+  /// Turns the output down, unless it has no volume to turn, or is silent already.
+  private func lowerOutput() {
+    guard let device = Self.output(), let before = Self.volume(device), before > 0,
+      Self.isMuted(device) != true
+    else { return }
+    let volume = LoweredVolume(before: before)
+    guard Self.setVolume(device, volume.during) else { return }
+    lowered = (device, volume)
+    let uid: CFString? = AudioDevice.read(device, kAudioDevicePropertyDeviceUID)
+    UserDefaults.standard.set(uid as String?, forKey: Self.leftLowered)
+    UserDefaults.standard.set(before, forKey: Self.leftLoweredVolume)
+    log.debug("output lowered")
   }
 
   func unmute() {
@@ -127,6 +158,13 @@ final class OtherAudio: @unchecked Sendable {
       UserDefaults.standard.removeObject(forKey: Self.leftMuted)
       log.debug("output heard")
     }
+    if let lowered {
+      Self.turnBackUp(lowered.output, lowered.volume)
+      self.lowered = nil
+      UserDefaults.standard.removeObject(forKey: Self.leftLowered)
+      UserDefaults.standard.removeObject(forKey: Self.leftLoweredVolume)
+      log.debug("output back up")
+    }
     if let reading {
       AudioDeviceStop(device, reading)
       AudioDeviceDestroyIOProcID(device, reading)
@@ -146,6 +184,34 @@ final class OtherAudio: @unchecked Sendable {
   private static let muteAddress = AudioObjectPropertyAddress(
     mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeOutput,
     mElement: kAudioObjectPropertyElementMain)
+
+  /// The volume of a device as the volume keys set it, whichever channels it has.
+  private static let volumeAddress = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+    mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+
+  private static func volume(_ device: AudioObjectID) -> Float? {
+    var address = volumeAddress
+    var volume: Float32 = 0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr else {
+      return nil
+    }
+    return volume
+  }
+
+  private static func setVolume(_ device: AudioObjectID, _ volume: Float) -> Bool {
+    var address = volumeAddress
+    var value: Float32 = volume
+    let size = UInt32(MemoryLayout<Float32>.size)
+    return AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr
+  }
+
+  /// Gives a device the volume it had, unless the volume was changed meanwhile.
+  private static func turnBackUp(_ device: AudioObjectID, _ lowered: LoweredVolume) {
+    guard let now = volume(device), let after = lowered.after(now) else { return }
+    _ = setVolume(device, after)
+  }
 
   /// The device the Mac plays sound through.
   private static func output() -> AudioObjectID? {

@@ -66,6 +66,24 @@ private func settle() async {
     #expect(MediaBehavior.pause.muting(appsAllowed: false) == nil)
   }
 
+  @Test func loweringTurnsTheOutputDownWithOrWithoutThePermission() {
+    #expect(MediaBehavior.lower.muting(appsAllowed: true) == .lowerOutput)
+    #expect(MediaBehavior.lower.muting(appsAllowed: false) == .lowerOutput)
+  }
+
+  @Test func aLoweredVolumeGoesBackToWhatItWas() {
+    let volume = LoweredVolume(before: 0.75)
+    #expect(abs(volume.during - 0.225) < 0.001)
+    #expect(volume.after(0.225) == 0.75)
+    #expect(volume.after(0.23) == 0.75)
+  }
+
+  @Test func aVolumeChangedWhileRecordingIsLeftAlone() {
+    let volume = LoweredVolume(before: 0.75)
+    #expect(volume.after(0.5) == nil)
+    #expect(volume.after(0) == nil)
+  }
+
   @Test func keepingMutesNothing() {
     #expect(MediaBehavior.keep.muting(appsAllowed: true) == nil)
     #expect(MediaBehavior.keep.muting(appsAllowed: false) == nil)

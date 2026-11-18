@@ -4,6 +4,8 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
   case pause
   /// It plays on, unheard.
   case mute
+  /// It plays on, quieter.
+  case lower
   /// It plays on.
   case keep
 
@@ -11,17 +13,42 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
     switch self {
     case .pause: "Pause"
     case .mute: "Mute"
+    case .lower: "Lower"
     case .keep: "Keep playing"
     }
   }
 }
 
-/// How the sound of the other apps is taken away while a dictation records.
+/// How the sound of the other apps is turned off, or down, while a dictation records.
 public enum MediaMuting: Equatable, Sendable {
   /// The other apps alone, which macOS allows with the System Audio Recording permission.
   case apps
   /// Everything the Mac plays, by muting its output. It needs no permission.
   case output
+  /// Everything the Mac plays, quieter, by turning its output down. It needs no permission.
+  case lowerOutput
+}
+
+/// The volume of an output that was turned down for a recording, to turn back up after.
+public struct LoweredVolume: Equatable, Sendable {
+  /// How much of the volume is left while recording.
+  public static let share: Float = 0.3
+
+  public let before: Float
+
+  public init(before: Float) {
+    self.before = before
+  }
+
+  public var during: Float {
+    before * Self.share
+  }
+
+  /// The volume to go back to, with `now` the one the output has. None when it was changed
+  /// during the recording: then it is where the user wants it.
+  public func after(_ now: Float) -> Float? {
+    abs(now - during) < 0.02 ? before : nil
+  }
 }
 
 extension MediaBehavior {
@@ -35,6 +62,7 @@ extension MediaBehavior {
     switch self {
     case .pause: appsAllowed ? .apps : nil
     case .mute: appsAllowed ? .apps : .output
+    case .lower: .lowerOutput
     case .keep: nil
     }
   }
@@ -46,7 +74,7 @@ extension MediaBehavior {
 /// It resumes only what it paused: media that was not playing when the recording started
 /// is left alone. Only the app macOS shows as playing can be paused, so the other apps are
 /// muted meanwhile, and heard again with the media. Muting alone mutes every app, and
-/// pauses none.
+/// pauses none, and so does lowering, which turns them down.
 @MainActor
 public final class MediaPause {
   public enum Command: Equatable, Sendable {
@@ -84,7 +112,8 @@ public final class MediaPause {
     self.muteOthers = muteOthers
   }
 
-  /// A dictation starts: pause the media, if any is playing, or mute it, or leave it.
+  /// A dictation starts: pause the media, if any is playing, or mute it, lower it, or
+  /// leave it.
   public func pause(_ behavior: MediaBehavior = .pause) {
     // Media about to resume from the last dictation stays as it is for this one.
     resuming?.cancel()

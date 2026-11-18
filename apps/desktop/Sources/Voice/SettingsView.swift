@@ -169,6 +169,7 @@ struct SettingsView: View {
     return switch settings.mediaBehavior {
     case .pause: "Pauses while you record, and resumes after"
     case .mute: "Plays on while you record, muted"
+    case .lower: "Plays on while you record, quieter"
     case .keep: "Plays on while you record"
     }
   }
