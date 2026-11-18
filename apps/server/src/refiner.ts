@@ -21,6 +21,21 @@ export interface Refinement {
   outputTokens: number;
 }
 
+/** A refinement that failed after a request had already used tokens. */
+export class RefinementError extends Error {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+
+  constructor(
+    cause: unknown,
+    { inputTokens, outputTokens }: Pick<Refinement, "inputTokens" | "outputTokens">,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.inputTokens = inputTokens;
+    this.outputTokens = outputTokens;
+  }
+}
+
 /** Rewrites the transcript of one dictation. */
 export interface Refiner {
   /** Resolves with the rewritten text. Rejects when the model fails or stops answering. */
@@ -84,27 +99,37 @@ export function createRefiner(createResponses: CreateResponses): CreateRefiner {
     const responses = createResponses();
     return {
       async refine({ text, instructions, translateTo }, signal) {
+        const language = translateTo.trim().replace(/\s+/g, " ");
         const rewritten = await responses.request(
           {
-            instructions: withSpeakerInstructions(REWRITE_INSTRUCTIONS, instructions),
+            instructions:
+              language === ""
+                ? withSpeakerInstructions(REWRITE_INSTRUCTIONS, instructions)
+                : REWRITE_INSTRUCTIONS,
             input: `<transcript>\n${text}\n</transcript>`,
           },
           signal,
         );
-        const language = translateTo.trim().replace(/\s+/g, " ");
         if (language === "" || rewritten.text === "") return rewritten;
-        const translated = await responses.request(
-          {
-            instructions: withSpeakerInstructions(translationInstructions(language), instructions),
-            input: `<text>\n${rewritten.text}\n</text>`,
-          },
-          signal,
-        );
-        return {
-          text: translated.text,
-          inputTokens: rewritten.inputTokens + translated.inputTokens,
-          outputTokens: rewritten.outputTokens + translated.outputTokens,
-        };
+        try {
+          const translated = await responses.request(
+            {
+              instructions: withSpeakerInstructions(
+                translationInstructions(language),
+                instructions,
+              ),
+              input: `<text>\n${rewritten.text}\n</text>`,
+            },
+            signal,
+          );
+          return {
+            text: translated.text,
+            inputTokens: rewritten.inputTokens + translated.inputTokens,
+            outputTokens: rewritten.outputTokens + translated.outputTokens,
+          };
+        } catch (error) {
+          throw new RefinementError(error, rewritten);
+        }
       },
       close: () => responses.close(),
     };

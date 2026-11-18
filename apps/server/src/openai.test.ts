@@ -10,7 +10,7 @@ import tls from "node:tls";
 import OpenAI from "openai";
 import { type WebSocket, WebSocketServer } from "ws";
 import { audio, until } from "./fixtures.ts";
-import { createOpenAIRefiner } from "./refiner.ts";
+import { createOpenAIRefiner, RefinementError } from "./refiner.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
 
 /** The SDK only opens realtime sockets over TLS, so the stand-in needs a certificate to trust. */
@@ -255,7 +255,7 @@ test("the refiner rewrites the transcript, then translates what it wrote", async
   assert.match(rewrite, /^You turn dictated speech into written text\./);
   assert.match(rewrite, /Keep the speaker's own words, tone, and language/);
   assert.doesNotMatch(rewrite, /Brazilian Portuguese/);
-  assert.ok(rewrite.endsWith("<instructions>\nWrite formally.\n</instructions>"));
+  assert.doesNotMatch(rewrite, /<instructions>/);
   assert.equal(responses.received[0]?.input, "<transcript>\noi tudo bom\n</transcript>");
 
   responses.emit({ type: "response.output_text.delta", delta: "Oi, tudo bom?" });
@@ -295,7 +295,7 @@ test("the refiner does not translate a transcript it rewrote to nothing", async 
   assert.equal(responses.received.length, 1);
 });
 
-test("a translation that fails fails the refinement", async (t) => {
+test("a translation that fails rejects with the rewrite's token usage", async (t) => {
   const { responses, client } = await fakeOpenAI(t);
   const refiner = createOpenAIRefiner(client, { model: "m" })();
   t.after(() => refiner.close());
@@ -306,10 +306,19 @@ test("a translation that fails fails the refinement", async (t) => {
   );
   await until(() => responses.received.length === 1);
   responses.emit({ type: "response.output_text.delta", delta: "Hola." });
-  responses.emit({ type: "response.completed", response: {} });
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 200, output_tokens: 3, total_tokens: 203 } },
+  });
   await until(() => responses.received.length === 2);
   responses.emit({ type: "response.failed", response: { error: { message: "boom" } } });
-  await assert.rejects(refined, /boom/);
+  await assert.rejects(refined, (error: unknown) => {
+    assert.ok(error instanceof RefinementError);
+    assert.equal(error.message, "boom");
+    assert.equal(error.inputTokens, 200);
+    assert.equal(error.outputTokens, 3);
+    return true;
+  });
 });
 
 test("the refiner puts the speaker's instructions after its own", async (t) => {
