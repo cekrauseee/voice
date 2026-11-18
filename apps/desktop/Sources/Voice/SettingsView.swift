@@ -117,6 +117,7 @@ struct SettingsView: View {
       }
       .padding(Design.medium)
     }
+    .endsEditingOnClickOutside()
     // It can be changed in System Settings while the window is behind.
     .onAppear { loginItem.refresh() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
@@ -156,6 +157,7 @@ private struct TranslationControl: View {
           .font(.voiceLabel)
           .focused($isFocused)
           .onSubmit { isFocused = false }
+          .onExitCommand { isFocused = false }
           .padding(.horizontal, 10)
           .frame(width: 132, height: 26)
           .background(
@@ -196,5 +198,36 @@ private struct SettingRow<Control: View>: View {
     }
     .padding(.horizontal, Design.small)
     .frame(minHeight: detail == nil ? 34 : 44)
+  }
+}
+
+/// A click anywhere but in a text field ends the typing in one, as pressing Return does.
+/// By itself a field keeps the focus until the view goes away.
+private struct EndsEditingOnClickOutside: ViewModifier {
+  @State private var monitor: Any?
+
+  func body(content: Content) -> some View {
+    content
+      .onAppear {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+          if let window = event.window, window.firstResponder is NSText,
+            let hit = window.contentView?.hitTest(event.locationInWindow),
+            !(hit is NSText || hit is NSTextField)
+          {
+            window.makeFirstResponder(nil)
+          }
+          return event
+        }
+      }
+      .onDisappear {
+        monitor.map(NSEvent.removeMonitor)
+        monitor = nil
+      }
+  }
+}
+
+extension View {
+  fileprivate func endsEditingOnClickOutside() -> some View {
+    modifier(EndsEditingOnClickOutside())
   }
 }
