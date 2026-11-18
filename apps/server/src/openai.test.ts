@@ -237,25 +237,79 @@ test("the refiner connects ahead, then asks for the transcript to be rewritten",
   assert.equal(responses.connections, 1);
 });
 
-test("the refiner asks for a translation that is not literal when a language is set", async (t) => {
+test("the refiner rewrites the transcript, then translates what it wrote", async (t) => {
   const { responses, client } = await fakeOpenAI(t);
   const refiner = createOpenAIRefiner(client, { model: "m" })();
   t.after(() => refiner.close());
 
   const refined = refiner.refine(
-    { text: "oi", instructions: "Write formally.", translateTo: " Brazilian\nPortuguese " },
+    {
+      text: "oi tudo bom",
+      instructions: "Write formally.",
+      translateTo: " Brazilian\nPortuguese ",
+    },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
-  const instructions = String(responses.received[0]?.instructions);
-  assert.match(instructions, /^You turn dictated speech into written text\./);
-  assert.match(instructions, /Then write what is left in Brazilian Portuguese, /);
-  assert.match(instructions, /not word for word/);
-  assert.doesNotMatch(instructions, /do not rephrase/);
-  assert.ok(instructions.endsWith("<instructions>\nWrite formally.\n</instructions>"));
+  const rewrite = String(responses.received[0]?.instructions);
+  assert.match(rewrite, /^You turn dictated speech into written text\./);
+  assert.match(rewrite, /Keep the speaker's own words, tone, and language/);
+  assert.doesNotMatch(rewrite, /Brazilian Portuguese/);
+  assert.ok(rewrite.endsWith("<instructions>\nWrite formally.\n</instructions>"));
+  assert.equal(responses.received[0]?.input, "<transcript>\noi tudo bom\n</transcript>");
 
+  responses.emit({ type: "response.output_text.delta", delta: "Oi, tudo bom?" });
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 200, output_tokens: 5, total_tokens: 205 } },
+  });
+  await until(() => responses.received.length === 2);
+  const translate = String(responses.received[1]?.instructions);
+  assert.match(translate, /^You write a speaker's text in Brazilian Portuguese\./);
+  assert.match(translate, /what it means, not its words/);
+  assert.match(translate, /Never carry them over word for word/);
+  assert.ok(translate.endsWith("<instructions>\nWrite formally.\n</instructions>"));
+  assert.equal(responses.received[1]?.input, "<text>\nOi, tudo bom?\n</text>");
+
+  responses.emit({ type: "response.output_text.delta", delta: "Olá, tudo bem?" });
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 150, output_tokens: 6, total_tokens: 156 } },
+  });
+  assert.deepEqual(await refined, { text: "Olá, tudo bem?", inputTokens: 350, outputTokens: 11 });
+  assert.equal(responses.connections, 1);
+});
+
+test("the refiner does not translate a transcript it rewrote to nothing", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const refiner = createOpenAIRefiner(client, { model: "m" })();
+  t.after(() => refiner.close());
+
+  const refined = refiner.refine(
+    { text: "um", instructions: "", translateTo: "Spanish" },
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
   responses.emit({ type: "response.completed", response: {} });
-  await refined;
+  assert.deepEqual(await refined, { text: "", inputTokens: 0, outputTokens: 0 });
+  assert.equal(responses.received.length, 1);
+});
+
+test("a translation that fails fails the refinement", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const refiner = createOpenAIRefiner(client, { model: "m" })();
+  t.after(() => refiner.close());
+
+  const refined = refiner.refine(
+    { text: "hola", instructions: "", translateTo: "English" },
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  responses.emit({ type: "response.output_text.delta", delta: "Hola." });
+  responses.emit({ type: "response.completed", response: {} });
+  await until(() => responses.received.length === 2);
+  responses.emit({ type: "response.failed", response: { error: { message: "boom" } } });
+  await assert.rejects(refined, /boom/);
 });
 
 test("the refiner puts the speaker's instructions after its own", async (t) => {

@@ -40,13 +40,13 @@ Recording never waits for a connection. The app records from the moment the shor
 
 ## Refinement
 
-The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a language model in a single request, with the instructions to follow: remove fillers and false starts, apply the speaker's own corrections, fix misheard words and punctuation, and change nothing else.
+The [refiner](../apps/server/src/refiner.ts) sends the complete transcript to a language model in one request, with the instructions to follow: remove fillers and false starts, apply the speaker's own corrections, fix misheard words and punctuation, and change nothing else.
 
 - **One request.** The model sees the whole text, so the result reads as one piece. Nothing is refined in parts that must be joined afterwards.
 - **The speaker's instructions.** The app can send instructions with the dictation, such as a tone or a language. They are added after the server's own and take precedence over them.
-- **Translation.** The app can ask for the text in another language. The refiner then gets different instructions: write what the speaker meant the way a native writer would, with that language's own idioms and expressions, and not word for word. It is the same single request.
+- **Translation.** The app can ask for the text in another language. That takes a second request, after the first: the model is given the rewritten text, and told to write what the speaker meant the way a native writer would, with that language's own idioms and expressions, and not word for word. Asked to rewrite and translate at once, it follows the speaker's words too closely. The speaker waits for both requests, and both are counted in what the dictation cost.
 - **Over a WebSocket.** The request goes through the Responses API on a WebSocket that the server opens when the dictation starts. When the speaker stops, the connection is already there, and the answer streams back on it.
-- **It cannot lose text.** If the model fails, stops answering for 5 s, takes more than a minute, or returns nothing, the transcript is typed as it was heard, untranslated.
+- **It cannot lose text.** If the model fails, stops answering for 5 s, takes more than a minute, or returns nothing, in either request, the transcript is typed as it was heard, untranslated.
 
 ## Cost
 
