@@ -64,7 +64,7 @@ public struct OutputHold: Equatable, Sendable {
   static let settling: Duration = .milliseconds(1500)
   /// How close a volume has to be to the one that was set to be the same one.
   static let same: Float = 0.02
-  /// How far from the volume it was given an output can round it.
+  /// How far above the volume it was given an output can round it.
   static let rounding: Float = 0.08
 
   /// What was changed and is not put back yet. It is kept between two runs of the app, so
@@ -124,9 +124,19 @@ public struct OutputHold: Equatable, Sendable {
     guard let change = changes[mode] else { return quiet(kind, mode, level, now) }
     // Quiet of the other kind is left from an earlier recording.
     guard change.kind == kind else { return putBack(mode, level) }
-    // So is quiet that this recording did not make: it is checked like its own.
+    let firstLook = watched[mode] == nil
     let until = watched[mode] ?? now + Self.settling
     watched[mode] = until
+    // Use this recording's share if the volume is still where the last one left it.
+    if firstLook, case .lowered(let from, let to) = change,
+      let volume = level.volume, abs(volume - to) < Self.same
+    {
+      let target = from * share
+      if abs(target - to) > Self.same {
+        changes[mode] = .lowered(from: from, to: target)
+        return .volume(target)
+      }
+    }
     return now < until ? keep(change, mode, level) : nil
   }
 
@@ -181,7 +191,7 @@ public struct OutputHold: Equatable, Sendable {
       return level.isMuted == false ? .mute(true) : nil
     case .lowered(let from, let to):
       guard let volume = level.volume, abs(volume - to) >= Self.same else { return nil }
-      if abs(volume - from * share) <= Self.rounding || cameBack.contains(mode) {
+      if volume <= from * share + Self.rounding || cameBack.contains(mode) {
         // The output rounded the volume it was given: that is the one to find after.
         changes[mode] = .lowered(from: from, to: volume)
         return nil
