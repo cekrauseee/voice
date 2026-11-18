@@ -182,8 +182,9 @@ private final class Recording: @unchecked Sendable {
 
   /// The first stream a device records to.
   private static func stream(of device: AudioObjectID) -> AudioObjectID? {
-    AudioDevice.list(device, kAudioDevicePropertyStreams, scope: kAudioDevicePropertyScopeInput)
-      .first
+    let streams: [AudioObjectID] = AudioDevice.list(
+      device, kAudioDevicePropertyStreams, scope: kAudioDevicePropertyScopeInput)
+    return streams.first
   }
 
   /// The format a stream delivers its audio in.
@@ -232,22 +233,35 @@ private final class Converter {
           pcmFormat: source, bufferListNoCopy: list, deallocator: nil)
       else { return nil }
       recorded.frameLength = frames
-      // The moment is handed over once: after it, there is no more for now.
-      var isGiven = false
+      let moment = Moment(recorded)
       var error: NSError?
       let status = converter.convert(to: converted, error: &error) { _, status in
-        if isGiven {
-          status.pointee = .noDataNow
-          return nil
-        }
-        isGiven = true
-        status.pointee = .haveData
-        return recorded
+        let audio = moment.take()
+        status.pointee = audio == nil ? .noDataNow : .haveData
+        return audio
       }
       guard status != .error, converted.frameLength > 0, let samples = converted.int16ChannelData
       else { return nil }
       return Data(
         bytes: samples[0], count: Int(converted.frameLength) * MemoryLayout<Int16>.size)
     }
+  }
+}
+
+/// The moment of audio a conversion is given. The converter takes it once, and finds no
+/// more after it for now.
+///
+/// The converter asks for it while it converts, on the thread that asked it to, so nothing
+/// else touches it.
+private final class Moment: @unchecked Sendable {
+  private var audio: AVAudioPCMBuffer?
+
+  init(_ audio: AVAudioPCMBuffer) {
+    self.audio = audio
+  }
+
+  func take() -> AVAudioPCMBuffer? {
+    defer { audio = nil }
+    return audio
   }
 }
