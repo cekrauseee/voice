@@ -41,8 +41,8 @@ interface Started {
  * One dictation: audio in, one refined text out.
  *
  * The audio is transcribed as a single turn while the speaker talks, and the text heard is
- * passed on as it comes. When the speaker stops, the complete transcript is refined in one
- * request, and its result ends the dictation.
+ * passed on as it comes. When the speaker stops, the complete transcript is refined, and the
+ * result ends the dictation.
  */
 export class DictationSession {
   private readonly deps: SessionDeps;
