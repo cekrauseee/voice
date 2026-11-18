@@ -137,6 +137,7 @@ Settings:
 - **Pill**: Minimal shows a small waveform. Detailed also shows the text as it is recognized, dimmed because it is not refined yet, and the shortcuts. Both styles type the same text at the same moment.
 - **Pill position**: Bottom, the default, shows the pill at the bottom of the screen, above the Dock. Top shows it just under the menu bar, or, on a screen with a notch, out of the notch. Both styles go in either place.
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
+- **Translate**: writes what you say in another language. Turn it on and type the language, such as Spanish. The translation follows the meaning, not the words, so expressions come out the way that language says them. The language stays when you turn it off. Off by default.
 - **Keep on clipboard**: leaves the pasted transcription on the clipboard, replacing its previous contents. Off by default.
 - **Press Enter**: Never, the default; With Shift, when Shift is held as you stop recording; or Always. Enter follows the paste. The choice is remembered for that dictation, so Shift can be released while the text is being refined. A failed or empty dictation never presses Enter. These preferences apply to new dictations.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.

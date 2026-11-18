@@ -29,7 +29,8 @@ final class Retry {
     log.info("started", ["seconds": Int(Double(pcm.count) / 2 / AudioFormat.sampleRate)])
 
     let session = DictationSession(
-      server: settings.serverURL, instructions: settings.instructions)
+      server: settings.serverURL, instructions: settings.instructions,
+      translateTo: settings.translateTo)
     session.onText = { [weak session, history, statistics, log] text, error in
       if let session, let usage = session.usage {
         statistics.record(text: text, seconds: session.recorded, usage: usage)

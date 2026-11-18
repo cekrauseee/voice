@@ -58,7 +58,7 @@ function dictation(ws: WebSocket, deps: ServerDeps, number: number): void {
       return;
     }
     const message = parseClientMessage(toBuffer(data).toString("utf8"));
-    if (message?.type === "start") session.start(message.instructions);
+    if (message?.type === "start") session.start(message.instructions, message.translateTo);
     else if (message?.type === "stop") session.stop();
     else session.reject();
   });

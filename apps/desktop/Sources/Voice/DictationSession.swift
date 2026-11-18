@@ -6,6 +6,7 @@ import VoiceCore
 final class DictationSession {
   private let socket: URLSessionWebSocketTask
   private let instructions: String
+  private let translateTo: String
   private(set) var transcript = Transcript()
   /// The audio that was sent: 16-bit mono PCM at 24 kHz.
   private(set) var recording = Data()
@@ -28,14 +29,15 @@ final class DictationSession {
   /// The dictation is over, with the reason when it failed.
   var onEnd: (DictationError?) -> Void = { _ in }
 
-  init(server: URL, instructions: String) {
+  init(server: URL, instructions: String, translateTo: String) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
     self.instructions = instructions
+    self.translateTo = translateTo
   }
 
   func start() {
     socket.resume()
-    send(.start(instructions: instructions))
+    send(.start(instructions: instructions, translateTo: translateTo))
     Task { await receive() }
   }
 

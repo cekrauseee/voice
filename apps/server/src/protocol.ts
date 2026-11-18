@@ -54,7 +54,9 @@ export type ServerMessage =
   | { type: "done"; text: string; usage: Usage }
   | { type: "error"; code: ErrorCode; message: string };
 
-export type ClientMessage = { type: "start"; instructions: string } | { type: "stop" };
+export type ClientMessage =
+  | { type: "start"; instructions: string; translateTo: string }
+  | { type: "stop" };
 
 export function parseClientMessage(raw: string): ClientMessage | undefined {
   const value = parseJson(raw);
@@ -62,7 +64,10 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
   if (value.type === "stop") return { type: "stop" };
   if (value.type === "start") {
     const instructions = value.instructions ?? "";
-    if (typeof instructions === "string") return { type: "start", instructions };
+    const translateTo = value.translate_to ?? "";
+    if (typeof instructions === "string" && typeof translateTo === "string") {
+      return { type: "start", instructions, translateTo };
+    }
   }
   return undefined;
 }

@@ -55,7 +55,9 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   const { host, transcriber, refiner } = await start(t);
   const { ws, messages, closeCode } = await connect(host);
 
-  ws.send(JSON.stringify({ type: "start", instructions: "Write formally." }));
+  ws.send(
+    JSON.stringify({ type: "start", instructions: "Write formally.", translate_to: "Spanish" }),
+  );
   ws.send(audio(500));
   await until(() => transcriber.bytes === audio(500).length);
   transcriber.events.ready();
@@ -64,7 +66,11 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   await until(() => transcriber.commits === 1);
   transcriber.events.final(0, "hi there");
   await until(() => refiner.calls.length === 1);
-  assert.deepEqual(refiner.calls[0]?.input, { text: "hi there", instructions: "Write formally." });
+  assert.deepEqual(refiner.calls[0]?.input, {
+    text: "hi there",
+    instructions: "Write formally.",
+    translateTo: "Spanish",
+  });
   refiner.calls[0]?.resolve("Hi there.");
   await until(() => closeCode() !== undefined);
 
@@ -81,7 +87,7 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   assert.ok(transcriber.closed);
 });
 
-test("start needs no instructions", async (t) => {
+test("start needs no instructions or language", async (t) => {
   const { host, transcriber, refiner } = await start(t);
   const { ws } = await connect(host);
   ws.send(JSON.stringify({ type: "start" }));
@@ -90,13 +96,19 @@ test("start needs no instructions", async (t) => {
   transcriber.events.final(0, "hi");
   await until(() => refiner.calls.length === 1);
   assert.equal(refiner.calls[0]?.input.instructions, "");
+  assert.equal(refiner.calls[0]?.input.translateTo, "");
   ws.close();
   await until(() => transcriber.closed);
 });
 
 test("a message that is not part of the protocol ends the dictation with an error", async (t) => {
   const { host } = await start(t);
-  for (const message of ["hello", '{"type":"other"}', '{"type":"start","instructions":7}']) {
+  for (const message of [
+    "hello",
+    '{"type":"other"}',
+    '{"type":"start","instructions":7}',
+    '{"type":"start","translate_to":7}',
+  ]) {
     const { ws, messages, closeCode } = await connect(host);
     ws.send(message);
     await until(() => closeCode() !== undefined);
