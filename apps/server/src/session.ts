@@ -6,7 +6,7 @@ import {
   type ServerMessage,
   usage,
 } from "./protocol.ts";
-import type { CreateRefiner, Refinement, Refiner } from "./refiner.ts";
+import { type CreateRefiner, type Refinement, RefinementError, type Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
 
 /** How long transcription may take to be ready for audio. */
@@ -41,8 +41,8 @@ interface Started {
  * One dictation: audio in, one refined text out.
  *
  * The audio is transcribed as a single turn while the speaker talks, and the text heard is
- * passed on as it comes. When the speaker stops, the complete transcript is refined in one
- * request, and its result ends the dictation.
+ * passed on as it comes. When the speaker stops, the complete transcript is refined, and the
+ * result ends the dictation.
  */
 export class DictationSession {
   private readonly deps: SessionDeps;
@@ -195,8 +195,8 @@ export class DictationSession {
   }
 
   /**
-   * Returns the refined text, or the transcript when refining does not work out. The
-   * tokens of a refinement that returned nothing are still counted: they were paid for.
+   * Returns the refined text, or the transcript when refining does not work out.
+   * The tokens of completed requests are counted either way.
    */
   private async refine(
     transcript: string,
@@ -220,8 +220,15 @@ export class DictationSession {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      if (error instanceof RefinementError) {
+        return {
+          text: transcript,
+          inputTokens: error.inputTokens,
+          outputTokens: error.outputTokens,
+        };
+      }
+      return { text: transcript, inputTokens: 0, outputTokens: 0 };
     }
-    return { text: transcript, inputTokens: 0, outputTokens: 0 };
   }
 
   private fail(code: ErrorCode, message: string): void {

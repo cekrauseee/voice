@@ -66,11 +66,11 @@ Each dictation has a number, on every record about it. `transcript_ms` is the ti
 
 The behavior of the pipeline is set by constants in the source:
 
-| What                                                 | Where                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| What the refiner is told to do                       | `refinerInstructions` in [`refiner.ts`](src/refiner.ts)    |
-| How long the model may go silent during a refinement | `STALL_MS` in [`responses.ts`](src/responses.ts)           |
-| Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts) |
+| What                                                 | Where                                                                                  |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| What the refiner is told to do                       | `REWRITE_INSTRUCTIONS` and `translationInstructions` in [`refiner.ts`](src/refiner.ts) |
+| How long the model may go silent during a refinement | `STALL_MS` in [`responses.ts`](src/responses.ts)                                       |
+| Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts)                             |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 

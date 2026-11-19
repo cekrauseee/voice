@@ -24,7 +24,7 @@ A text message, and the first message of the dictation.
 { "type": "start", "instructions": "Write in a formal tone.", "translate_to": "Spanish" }
 ```
 
-`instructions` says how the speaker wants the text written. The server adds it to its own instructions for the refinement, and it takes precedence over them. It is optional: without it, or when it is empty, the server refines its default way.
+`instructions` says how the speaker wants the text written. The server adds it to its own instructions for the translation if one is requested, or for the rewrite otherwise. It takes precedence over the server's instructions. It is optional: without it, or when it is empty, the server refines its default way.
 
 `translate_to` is the language to write the text in, as the speaker typed it, such as `Spanish` or `Brazilian Portuguese`. The refinement then translates what was said, by meaning and not word for word. It is optional: without it, or when it is empty, the text stays in the language spoken.
 
@@ -72,14 +72,14 @@ All server messages are JSON text.
 { "audio_seconds": 12.4, "input_tokens": 262, "output_tokens": 41, "cost": 0.00356 }
 ```
 
-| Field           | Meaning                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `audio_seconds` | Seconds of audio that were transcribed                                                   |
-| `input_tokens`  | Tokens the refinement read: the server's instructions, the speaker's, and the transcript |
-| `output_tokens` | Tokens the refinement wrote                                                              |
-| `cost`          | The cost in US dollars                                                                   |
+| Field           | Meaning                                                                                |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `audio_seconds` | Seconds of audio that were transcribed                                                 |
+| `input_tokens`  | Tokens the refinement read, including instructions and text from both requests if used |
+| `output_tokens` | Tokens the refinement wrote                                                            |
+| `cost`          | The cost in US dollars                                                                 |
 
-The cost is an estimate. OpenAI reports the tokens but not the price, so the server works it out from the prices in its [configuration](../apps/server/README.md#configuration): the audio by the minute, the tokens by the million. When the refinement fails, its tokens are zero and the cost is that of the audio. A dictation that ends with an `error` reports no usage.
+The cost is an estimate. OpenAI reports the tokens but not the price, so the server works it out from the prices in its [configuration](../apps/server/README.md#configuration): the audio by the minute, the tokens by the million. When refinement fails, usage still includes the tokens reported by any completed request. If the rewrite fails, the cost is that of the audio alone. A dictation that ends with an `error` reports no usage.
 
 ### Errors
 

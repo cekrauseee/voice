@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { audio, FakeRefiner, FakeTranscriber, prices, settle, silent, unused } from "./fixtures.ts";
 import type { ServerMessage } from "./protocol.ts";
+import { RefinementError } from "./refiner.ts";
 import { DictationSession } from "./session.ts";
 
-function setup() {
+function setup(log = silent) {
   const transcriber = new FakeTranscriber();
   const refiner = new FakeRefiner();
   const messages: ServerMessage[] = [];
@@ -17,7 +18,7 @@ function setup() {
     end: () => {
       ended = true;
     },
-    log: silent,
+    log,
   });
   return { session, transcriber, refiner, messages, ended: () => ended };
 }
@@ -93,6 +94,28 @@ test("a failed refinement falls back to the transcript", async () => {
   refiner.calls[0]?.reject(new Error("boom"));
   await settle();
   assert.deepEqual(messages, [{ type: "done", text: "keep me", usage: unused }]);
+});
+
+test("a failed translation falls back to the transcript and counts the rewrite's tokens", async (t) => {
+  const warn = t.mock.fn(silent.warn);
+  const { session, transcriber, refiner, messages } = setup({ ...silent, warn });
+  session.start("", "Spanish");
+  session.stop();
+  transcriber.events.final(0, "um keep me");
+  refiner.calls[0]?.reject(
+    new RefinementError(new Error("boom"), { inputTokens: 4, outputTokens: 2 }),
+  );
+  await settle();
+
+  assert.deepEqual(messages, [
+    {
+      type: "done",
+      text: "um keep me",
+      usage: { audio_seconds: 0, input_tokens: 4, output_tokens: 2, cost: 0.008 },
+    },
+  ]);
+  assert.equal(warn.mock.calls.length, 1);
+  assert.equal(warn.mock.calls[0]?.arguments[0], "refinement failed");
 });
 
 test("an empty refinement falls back to the transcript", async () => {
