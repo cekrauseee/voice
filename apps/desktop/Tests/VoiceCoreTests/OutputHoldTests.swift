@@ -174,29 +174,6 @@ private func lowered(_ volume: Float) -> OutputHold.Write {
     #expect(hold.look(at: call, level(0.18), now: .seconds(5)) == .volume(0.6))
   }
 
-  @Test(arguments: [false, true]) func quietLeftFromBeforeUsesTheNewShare(saved: Bool) {
-    var hold = OutputHold()
-    hold.begin(.lower, share: 0.5)
-    #expect(hold.look(at: speakers, level(0.8), now: .zero) == .volume(0.4))
-    hold.end()
-    if saved { hold = OutputHold(changes: hold.changes) }
-
-    hold.begin(.lower, share: 0.1)
-    #expect(hold.look(at: speakers, level(0.4), now: .seconds(1)) == .volume(0.8 * 0.1))
-    #expect(hold.look(at: speakers, level(0.08), now: .milliseconds(1050)) == nil)
-    hold.end()
-    #expect(hold.look(at: speakers, level(0.08), now: .seconds(5)) == .volume(0.8))
-  }
-
-  @Test func aNewShareThatRoundsToTheSameVolumeStillRestoresTheOriginal() {
-    var hold = OutputHold(changes: [speakers: .lowered(from: 1, to: 0.25)])
-    hold.begin(.lower, share: 0.2)
-    #expect(hold.look(at: speakers, level(0.25), now: .zero) == .volume(0.2))
-    #expect(hold.look(at: speakers, level(0.25), now: .milliseconds(50)) == nil)
-    hold.end()
-    #expect(hold.look(at: speakers, level(0.25), now: .seconds(5)) == .volume(1))
-  }
-
   @Test func aVolumeChangedBetweenRecordingsIsTurnedDownFromWhereItIs() {
     var hold = OutputHold(changes: [speakers: .lowered(from: 0.8, to: 0.4)])
     hold.begin(.lower, share: 0.1)
@@ -226,11 +203,25 @@ private func lowered(_ volume: Float) -> OutputHold.Write {
     #expect(hold.leave(call, level(0.05)) == .volume(0.1))
   }
 
-  @Test func quietLeftFromBeforeWaitsForAVolumeItCanRead() {
-    var hold = OutputHold(changes: [speakers: .lowered(from: 0.8, to: 0.4)])
+  @Test func quietLeftFromBeforeStaysWhereItIsForAnotherShare() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.5)
+    #expect(hold.look(at: speakers, level(0.8), now: .zero) == .volume(0.8 * 0.5))
     hold.begin(.lower, share: 0.1)
-    #expect(hold.look(at: speakers, level(nil), now: .zero) == nil)
-    #expect(hold.look(at: speakers, level(0.4), now: .milliseconds(50)) == .volume(0.8 * 0.1))
+    #expect(hold.look(at: speakers, level(0.4), now: .seconds(3)) == nil)
+    hold.end()
+    #expect(hold.look(at: speakers, level(0.4), now: .seconds(5)) == .volume(0.8))
+  }
+
+  @Test func silenceTheUserSetBetweenRecordingsIsNotTakenForRounding() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.5)
+    #expect(hold.look(at: speakers, level(1), now: .zero) == .volume(0.5))
+    #expect(hold.look(at: speakers, level(0), now: .seconds(2)) == nil)
+    hold.begin(.lower, share: 0.1)
+    #expect(hold.look(at: speakers, level(0), now: .seconds(3)) == nil)
+    hold.end()
+    #expect(hold.look(at: speakers, level(0), now: .seconds(5)) == nil)
   }
 
   @Test func quietOfTheOtherKindIsPutBackFirst() {
