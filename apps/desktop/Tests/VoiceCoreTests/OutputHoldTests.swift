@@ -224,6 +224,27 @@ private func lowered(_ volume: Float) -> OutputHold.Write {
     #expect(hold.look(at: speakers, level(0), now: .seconds(5)) == nil)
   }
 
+  @Test func aLowVolumeSetAfterTheOutputRoundedToNothingIsLeftAlone() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.1)
+    #expect(hold.look(at: speakers, level(1), now: .zero) == .volume(0.1))
+    #expect(hold.look(at: speakers, level(0), now: .milliseconds(50)) == nil)
+    // The user turns it up a little, after it settled.
+    #expect(hold.look(at: speakers, level(0.015625), now: .seconds(2)) == nil)
+    hold.end()
+    #expect(hold.look(at: speakers, level(0.015625), now: .seconds(5)) == nil)
+    #expect(!hold.isWatching)
+  }
+
+  @Test func aLowVolumeAHeadsetBringsBackAfterNothingIsTurnedDown() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.1)
+    #expect(hold.look(at: call, level(1), now: .zero) == .volume(0.1))
+    #expect(hold.look(at: call, level(0), now: .milliseconds(50)) == nil)
+    #expect(
+      hold.look(at: call, level(0.015625), now: .milliseconds(350)) == .volume(0.015625 * 0.1))
+  }
+
   @Test func quietOfTheOtherKindIsPutBackFirst() {
     var hold = OutputHold(changes: [speakers: .muted])
     hold.begin(.lower)

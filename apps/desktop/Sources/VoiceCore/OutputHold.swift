@@ -161,7 +161,7 @@ public struct OutputHold: Equatable, Sendable {
       changes[mode] = nil
       // A volume that is not the one it was left at was changed meanwhile: it is where
       // it is wanted.
-      return abs(volume - to) < Self.same ? .volume(from) : nil
+      return Self.isAt(volume, to) ? .volume(from) : nil
     }
   }
 
@@ -184,13 +184,19 @@ public struct OutputHold: Equatable, Sendable {
     }
   }
 
+  /// Whether a volume is the one that was set. Nothing is only nothing: the lowest volume
+  /// an output has is closer to it than two volumes have to be to be the same.
+  private static func isAt(_ volume: Float, _ set: Float) -> Bool {
+    set == 0 ? volume == 0 : abs(volume - set) < same
+  }
+
   /// Makes a mode quiet again when it is not anymore, a moment after it was made so.
   private mutating func keep(_ change: Change, _ mode: Mode, _ level: Level) -> Write? {
     switch change {
     case .muted:
       return level.isMuted == false ? .mute(true) : nil
     case .lowered(let from, let to):
-      guard let volume = level.volume, abs(volume - to) >= Self.same else { return nil }
+      guard let volume = level.volume, !Self.isAt(volume, to) else { return nil }
       // An output with few steps of volume rounds a low one to nothing.
       let roundedToNothing =
         volume == 0 && from * share <= Self.nothing && turnedDown.contains(mode)
