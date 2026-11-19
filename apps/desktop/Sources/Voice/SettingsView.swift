@@ -5,6 +5,7 @@ import VoiceCore
 struct SettingsView: View {
   @Bindable var settings: Settings
   let loginItem: LoginItem
+  let permissions: Permissions
   @State private var microphones = AudioCapture.microphones
 
   var body: some View {
@@ -26,9 +27,34 @@ struct SettingsView: View {
               selection: $settings.microphone)
           }
           SettingRow(title: "Media", detail: mediaDetail) {
-            Select(
-              options: MediaBehavior.allCases.map { ($0, $0.title) },
-              selection: $settings.mediaBehavior)
+            HStack(spacing: Design.small) {
+              if needsSystemAudio {
+                Button("Allow", action: permissions.requestSystemAudio)
+                  .buttonStyle(.plain)
+                  .font(.voiceLabel)
+                  .padding(.horizontal, 10)
+                  .frame(height: 26)
+                  .background(
+                    Design.surface,
+                    in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
+                  )
+                  .contentShape(Rectangle())
+                  .pointer()
+                  .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+              }
+              if settings.mediaBehavior == .lower {
+                Select(
+                  options: LoweredVolume.allCases.map { ($0, $0.title) },
+                  selection: $settings.loweredVolume
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+              }
+              Select(
+                options: MediaBehavior.allCases.map { ($0, $0.title) },
+                selection: $settings.mediaBehavior)
+            }
+            .animation(Design.move, value: needsSystemAudio)
+            .animation(Design.move, value: settings.mediaBehavior)
           }
         }
 
@@ -139,11 +165,34 @@ struct SettingsView: View {
     ) { _ in microphones = AudioCapture.microphones }
   }
 
+  /// Muting works without a permission on an output that can be muted. On one that cannot,
+  /// it takes the permission to mute the other apps, so the row asks for it, and only then.
+  private var needsSystemAudio: Bool {
+    settings.mediaBehavior == .mute && permissions.systemAudio != .allowed
+      && !OtherAudio.canMuteOutput
+  }
+
+  /// Whether the microphone that records is the one of the Bluetooth headset that plays. It
+  /// plays in call quality while its microphone is open, so media that plays on is heard
+  /// that way.
+  private var recordsWithHeadset: Bool {
+    guard let output = AudioDevice.output, AudioDevice.isBluetooth(output) else { return false }
+    let microphone = settings.microphone.flatMap { AudioDevice.withID($0.id) } ?? AudioDevice.input
+    return microphone.map(AudioDevice.isBluetooth) ?? false
+  }
+
   private var mediaDetail: String {
-    switch settings.mediaBehavior {
+    if needsSystemAudio { return "Allow System Audio Recording to mute this output" }
+    return switch settings.mediaBehavior {
     case .pause: "Pauses while you record, and resumes after"
     case .mute: "Plays on while you record, muted"
-    case .keep: "Plays on while you record"
+    case .lower:
+      recordsWithHeadset
+        ? "Quieter, and like a phone call with this microphone"
+        : "Plays on while you record, quieter"
+    case .keep:
+      recordsWithHeadset
+        ? "Like a phone call with this microphone" : "Plays on while you record"
     }
   }
 

@@ -53,6 +53,11 @@ final class Settings {
     didSet { defaults.set(mediaBehavior.rawValue, forKey: "mediaBehavior") }
   }
 
+  /// How much of its volume the media keeps while a dictation records, when it is lowered.
+  var loweredVolume: LoweredVolume {
+    didSet { defaults.set(loweredVolume.rawValue, forKey: "loweredVolume") }
+  }
+
   /// The microphone to dictate with. Without one, the system's records.
   var microphone: Microphone? {
     didSet {
@@ -104,6 +109,7 @@ final class Settings {
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     mediaBehavior = defaults.string(forKey: "mediaBehavior").flatMap(MediaBehavior.init) ?? .pause
+    loweredVolume = LoweredVolume(rawValue: defaults.integer(forKey: "loweredVolume")) ?? .thirty
     microphone = defaults.data(forKey: "microphone").flatMap {
       try? JSONDecoder().decode(Microphone.self, from: $0)
     }

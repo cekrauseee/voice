@@ -11,9 +11,11 @@ private final class FakeMedia {
   /// When set, sound is not back after a recording until `release`.
   var holdsSound = false
   private(set) var commands: [MediaPause.Command] = []
-  /// Whether the other apps are muted, and how many times that changed.
+  /// Whether the other apps are muted, how many times that changed, and how many times
+  /// they were asked to be.
   private(set) var othersMuted = false
   private(set) var muteChanges = 0
+  private(set) var muteRequests = 0
   /// How many times sound was asked to get back to normal.
   private(set) var soundReturns = 0
   private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -34,8 +36,9 @@ private final class FakeMedia {
         if self.holdsSound { await self.hold() }
       },
       muteOthers: {
+        if $0 { self.muteRequests += 1 }
+        if $0 != self.othersMuted { self.muteChanges += 1 }
         self.othersMuted = $0
-        self.muteChanges += 1
       })
   }
 
@@ -53,6 +56,29 @@ private final class FakeMedia {
 /// Lets the tasks that are waiting run.
 private func settle() async {
   for _ in 0..<20 { await Task.yield() }
+}
+
+@Suite struct MediaBehaviorTests {
+  @Test func mutingMutesTheOutputWithoutThePermission() {
+    #expect(MediaBehavior.mute.muting(appsAllowed: true) == .apps)
+    #expect(MediaBehavior.mute.muting(appsAllowed: false) == .output)
+  }
+
+  @Test func pausingMutesTheOtherAppsOnlyWithThePermission() {
+    #expect(MediaBehavior.pause.muting(appsAllowed: true) == .apps)
+    #expect(MediaBehavior.pause.muting(appsAllowed: false) == nil)
+  }
+
+  @Test func loweringTurnsTheOutputDownWithOrWithoutThePermission() {
+    #expect(MediaBehavior.lower.muting(appsAllowed: true) == .lowerOutput(share: 0.3))
+    #expect(
+      MediaBehavior.lower.muting(appsAllowed: false, lowered: .ten) == .lowerOutput(share: 0.1))
+  }
+
+  @Test func keepingMutesNothing() {
+    #expect(MediaBehavior.keep.muting(appsAllowed: true) == nil)
+    #expect(MediaBehavior.keep.muting(appsAllowed: false) == nil)
+  }
 }
 
 @MainActor @Suite struct MediaPauseTests {
@@ -203,6 +229,8 @@ private func settle() async {
     await settle()
     #expect(media.othersMuted)
     #expect(media.muteChanges == 1)
+    // Asked again, so that what was given back for the last one is quiet for this one.
+    #expect(media.muteRequests == 2)
   }
 
   @Test func theNextDictationPausesAgain() async {

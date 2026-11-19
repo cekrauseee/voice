@@ -29,14 +29,28 @@ final class DictationController {
   @ObservationIgnored private var warming: Task<Void, Never>?
   @ObservationIgnored private var startedAt = ContinuousClock.now
 
-  init(settings: Settings, history: HistoryStore, statistics: StatisticsStore) {
+  init(
+    settings: Settings, permissions: Permissions, history: HistoryStore,
+    statistics: StatisticsStore
+  ) {
     self.settings = settings
     self.history = history
     self.statistics = statistics
     media = MediaPause(
       isPlaying: MediaControl.isPlaying, send: MediaControl.send,
-      soundIsBack: { [capture] in await MediaControl.soundIsBack(microphone: capture.device) },
-      muteOthers: { [others] in $0 ? others.mute() : others.unmute() })
+      soundIsBack: { [capture, others] in
+        others.recordingEnded()
+        await MediaControl.soundIsBack(microphone: capture.device) {
+          others.leavingCallQuality()
+        }
+      },
+      muteOthers: { [others, settings, permissions] muted in
+        guard muted else { return others.unmute() }
+        let appsAllowed = permissions.systemAudio == .allowed
+        let muting = settings.mediaBehavior.muting(
+          appsAllowed: appsAllowed, lowered: settings.loweredVolume)
+        if let muting { others.mute(muting, appsAllowed: appsAllowed) }
+      })
   }
 
   var isRecording: Bool {

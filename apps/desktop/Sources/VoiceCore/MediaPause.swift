@@ -4,6 +4,8 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
   case pause
   /// It plays on, unheard.
   case mute
+  /// It plays on, quieter.
+  case lower
   /// It plays on.
   case keep
 
@@ -11,7 +13,63 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
     switch self {
     case .pause: "Pause"
     case .mute: "Mute"
+    case .lower: "Lower"
     case .keep: "Keep playing"
+    }
+  }
+}
+
+/// How much of its volume the media keeps while a dictation records, when it is lowered.
+public enum LoweredVolume: Int, CaseIterable, Sendable {
+  case ten = 10
+  case twenty = 20
+  case thirty = 30
+  case forty = 40
+  case fifty = 50
+
+  public var title: String {
+    "\(rawValue)%"
+  }
+
+  /// The part of the volume that is left, from 0 to 1.
+  public var share: Float {
+    Float(rawValue) / 100
+  }
+}
+
+/// How the sound of the other apps is turned off, or down, while a dictation records.
+public enum MediaMuting: Equatable, Sendable {
+  /// The other apps alone, which macOS allows with the System Audio Recording permission.
+  case apps
+  /// Everything the Mac plays, by muting its output. It needs no permission.
+  case output
+  /// Everything the Mac plays, quieter, by turning its output down to a share of its
+  /// volume. It needs no permission.
+  case lowerOutput(share: Float)
+
+  /// How the output is kept quiet, when it is the output that is.
+  public var hold: OutputHold.Kind? {
+    switch self {
+    case .apps: nil
+    case .output: .mute
+    case .lowerOutput: .lower
+    }
+  }
+}
+
+extension MediaBehavior {
+  /// How to mute while recording, if at all. `appsAllowed` is whether macOS lets this app
+  /// mute the other apps, and `lowered` the volume that lowering leaves.
+  ///
+  /// Muting always mutes: without the permission, it mutes the output. Pausing mutes what
+  /// it cannot pause only with the permission, and never asks for it: the media that
+  /// matters is paused either way.
+  public func muting(appsAllowed: Bool, lowered: LoweredVolume = .thirty) -> MediaMuting? {
+    switch self {
+    case .pause: appsAllowed ? .apps : nil
+    case .mute: appsAllowed ? .apps : .output
+    case .lower: .lowerOutput(share: lowered.share)
+    case .keep: nil
     }
   }
 }
@@ -22,7 +80,7 @@ public enum MediaBehavior: String, CaseIterable, Sendable {
 /// It resumes only what it paused: media that was not playing when the recording started
 /// is left alone. Only the app macOS shows as playing can be paused, so the other apps are
 /// muted meanwhile, and heard again with the media. Muting alone mutes every app, and
-/// pauses none.
+/// pauses none, and so does lowering, which turns them down.
 @MainActor
 public final class MediaPause {
   public enum Command: Equatable, Sendable {
@@ -47,7 +105,8 @@ public final class MediaPause {
   ///   - soundIsBack: Gets sound back to normal after a recording, and returns once it
   ///     is. A Bluetooth headset has to leave call quality.
   ///   - muteOthers: Mutes, or unmutes, what the other apps play. The app that was paused
-  ///     is among them, with nothing to hear.
+  ///     is among them, with nothing to hear. It is asked to mute again by a dictation
+  ///     that starts before the last one unmuted.
   public init(
     isPlaying: @escaping @Sendable () async -> Bool,
     send: @escaping (Command) -> Void,
@@ -60,16 +119,15 @@ public final class MediaPause {
     self.muteOthers = muteOthers
   }
 
-  /// A dictation starts: pause the media, if any is playing, or mute it, or leave it.
+  /// A dictation starts: pause the media, if any is playing, or mute it, lower it, or
+  /// leave it.
   public func pause(_ behavior: MediaBehavior = .pause) {
     // Media about to resume from the last dictation stays as it is for this one.
     resuming?.cancel()
     resuming = nil
     guard behavior != .keep else { return }
-    if !isMuted {
-      isMuted = true
-      muteOthers(true)
-    }
+    isMuted = true
+    muteOthers(true)
     guard behavior == .pause, check == nil, !didPause else { return }
     check = Task { [isPlaying] in
       let playing = await isPlaying()
