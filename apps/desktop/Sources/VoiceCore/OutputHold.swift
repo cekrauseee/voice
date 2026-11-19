@@ -64,8 +64,11 @@ public struct OutputHold: Equatable, Sendable {
   static let settling: Duration = .milliseconds(1500)
   /// How close a volume has to be to the one that was set to be the same one.
   static let same: Float = 0.02
-  /// How far above the volume it was given an output can round it.
+  /// How far from the volume it was given an output can round it.
   static let rounding: Float = 0.08
+  /// The highest volume an output can round to nothing: half of a quarter, the largest
+  /// step outputs have.
+  static let nothing: Float = 0.125
 
   /// What was changed and is not put back yet. It is kept between two runs of the app, so
   /// what a run did not live to put back is put back by the next.
@@ -125,6 +128,8 @@ public struct OutputHold: Equatable, Sendable {
     // Quiet of the other kind is left from an earlier recording.
     guard change.kind == kind else { return putBack(mode, level) }
     let firstLook = watched[mode] == nil
+    // A volume left from an earlier recording waits to be read before it is looked at.
+    if firstLook, change.kind == .lower, level.volume == nil { return nil }
     let until = watched[mode] ?? now + Self.settling
     watched[mode] = until
     // Use this recording's share if the volume is still where the last one left it.
@@ -132,7 +137,7 @@ public struct OutputHold: Equatable, Sendable {
       let volume = level.volume, abs(volume - to) < Self.same
     {
       let target = from * share
-      if abs(target - to) > Self.same {
+      if target != to {
         changes[mode] = .lowered(from: from, to: target)
         return .volume(target)
       }
@@ -191,7 +196,11 @@ public struct OutputHold: Equatable, Sendable {
       return level.isMuted == false ? .mute(true) : nil
     case .lowered(let from, let to):
       guard let volume = level.volume, abs(volume - to) >= Self.same else { return nil }
-      if volume <= from * share + Self.rounding || cameBack.contains(mode) {
+      // An output with few steps of volume rounds a low one to nothing.
+      let roundedToNothing = volume == 0 && from * share <= Self.nothing
+      if abs(volume - from * share) <= Self.rounding || roundedToNothing
+        || cameBack.contains(mode)
+      {
         // The output rounded the volume it was given: that is the one to find after.
         changes[mode] = .lowered(from: from, to: volume)
         return nil

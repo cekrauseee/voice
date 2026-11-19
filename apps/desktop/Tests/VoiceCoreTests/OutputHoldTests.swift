@@ -205,6 +205,34 @@ private func lowered(_ volume: Float) -> OutputHold.Write {
     #expect(hold.look(at: speakers, level(0.03), now: .seconds(5)) == .volume(0.3))
   }
 
+  @Test func aVolumeTurnedFurtherDownBetweenRecordingsIsTheOneToPutBack() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.5)
+    #expect(hold.look(at: speakers, level(0.8), now: .zero) == .volume(0.8 * 0.5))
+    // The next recording starts before this one was put back, with the volume changed.
+    hold.begin(.lower, share: 0.3)
+    #expect(hold.look(at: speakers, level(0.1), now: .seconds(3)) == .volume(0.1 * 0.3))
+    hold.end()
+    #expect(hold.look(at: speakers, level(0.1 * 0.3), now: .seconds(5)) == .volume(0.1))
+  }
+
+  @Test func aQuieterVolumeAHeadsetBringsBackIsTurnedDownAndPutBack() {
+    var hold = OutputHold()
+    hold.begin(.lower, share: 0.5)
+    #expect(hold.look(at: call, level(0.8), now: .zero) == .volume(0.8 * 0.5))
+    #expect(hold.look(at: call, level(0.4), now: .milliseconds(50)) == nil)
+    // The headset brings back the volume it had for calls, which is lower.
+    #expect(hold.look(at: call, level(0.1), now: .milliseconds(350)) == .volume(0.1 * 0.5))
+    #expect(hold.leave(call, level(0.05)) == .volume(0.1))
+  }
+
+  @Test func quietLeftFromBeforeWaitsForAVolumeItCanRead() {
+    var hold = OutputHold(changes: [speakers: .lowered(from: 0.8, to: 0.4)])
+    hold.begin(.lower, share: 0.1)
+    #expect(hold.look(at: speakers, level(nil), now: .zero) == nil)
+    #expect(hold.look(at: speakers, level(0.4), now: .milliseconds(50)) == .volume(0.8 * 0.1))
+  }
+
   @Test func quietOfTheOtherKindIsPutBackFirst() {
     var hold = OutputHold(changes: [speakers: .muted])
     hold.begin(.lower)
