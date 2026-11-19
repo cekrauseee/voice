@@ -12,11 +12,15 @@ final class PillPanel {
   /// Takes the window down once the pill has animated out.
   private var putAway: Task<Void, Never>?
 
+  /// The room around the pill for its shadow, which the window would otherwise cut off.
+  fileprivate static let shadowRoom = 40.0
+
   init(controller: DictationController, settings: Settings) {
     self.controller = controller
     self.settings = settings
     panel = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 440, height: 240),
+      contentRect: NSRect(
+        x: 0, y: 0, width: 440 + 2 * Self.shadowRoom, height: 240 + Self.shadowRoom),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     // Above the menu bar, so the pill can grow out of the notch.
     panel.level = .statusBar
@@ -78,7 +82,8 @@ final class PillPanel {
         screen.frame.maxY - panel.frame.height
       } else {
         switch settings.pillPosition {
-        case .bottom: area.minY
+        // The room for the shadow goes under the pill, over the Dock.
+        case .bottom: area.minY - Self.shadowRoom
         // Under the menu bar, also when it is hidden.
         case .top: area.maxY - panel.frame.height
         }
@@ -129,6 +134,6 @@ private struct PillContainer: View {
 
   private var padding: Double {
     if placement.notch != nil { return 0 }
-    return edge == .bottom ? 24 : 8
+    return edge == .bottom ? 24 + PillPanel.shadowRoom : 8
   }
 }
