@@ -1,4 +1,4 @@
-import type OpenAI from "openai";
+import OpenAI from "openai";
 import { OpenAIRealtimeWS } from "openai/realtime/ws";
 import type { RealtimeClientEvent } from "openai/resources/realtime/realtime";
 import { SAMPLE_RATE } from "./protocol.ts";
@@ -19,6 +19,28 @@ export interface TranscriberEvents {
    * without them. `param` names the hint refused.
    */
   hintsRejected(rejection: { code: string; param: string }): void;
+}
+
+/** OpenAI could not be reached: the connection failed before anything was transcribed. */
+export class UnreachableError extends Error {}
+
+/**
+ * Whether a transcription failed because OpenAI could not be reached, rather than because of
+ * what it was sent or how it answered. The cause of an error is looked at too.
+ */
+export function isUnreachable(error: unknown): boolean {
+  for (let depth = 0; error instanceof Error && depth < 5; depth += 1) {
+    if (error instanceof UnreachableError || error instanceof OpenAI.APIConnectionError) {
+      return true;
+    }
+    error = error.cause;
+  }
+  return false;
+}
+
+/** An error of the network itself, such as a refused connection or an unknown host. */
+function isNetworkError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && typeof error.code === "string";
 }
 
 export interface Transcriber {
@@ -69,6 +91,8 @@ export function createOpenAITranscriber(
     let bytes = 0;
     let skipped = 0;
     let closed = false;
+    /** Whether the connection to OpenAI opened. */
+    let opened = false;
 
     const turnOf = (itemId: string): number => {
       const index = items.indexOf(itemId);
@@ -79,10 +103,17 @@ export function createOpenAITranscriber(
       else realtime.send(event);
     };
     const fail = (error: Error) => {
-      if (!closed) events.error(error);
+      if (closed) return;
+      // A connection that never opened, for a reason of the network, never reached OpenAI.
+      events.error(
+        !opened && isNetworkError(error.cause)
+          ? new UnreachableError(error.message, { cause: error })
+          : error,
+      );
     };
 
     realtime.socket.on("open", () => {
+      opened = true;
       realtime.send({
         type: "session.update",
         session: {

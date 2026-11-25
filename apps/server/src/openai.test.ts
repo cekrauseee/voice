@@ -12,7 +12,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { audio, until } from "./fixtures.ts";
 import { createOpenAIRecordingTranscriber } from "./recording.ts";
 import { createOpenAIRefiner, RefinementError } from "./refiner.ts";
-import { createOpenAITranscriber } from "./transcriber.ts";
+import { createOpenAITranscriber, isUnreachable } from "./transcriber.ts";
 
 /** The SDK only opens realtime sockets over TLS, so the stand-in needs a certificate to trust. */
 function certificate() {
@@ -253,6 +253,48 @@ test("the transcriber reports a connection that drops", async (t) => {
   await until(() => errors.length > 0);
 });
 
+/** A client of an OpenAI that cannot be reached: nothing listens at its address. */
+async function unreachableOpenAI() {
+  const http = createServer();
+  await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+  const { port } = http.address() as AddressInfo;
+  await new Promise((resolve) => http.close(resolve));
+  return new OpenAI({ apiKey: "test-key", baseURL: `https://127.0.0.1:${port}/v1`, maxRetries: 0 });
+}
+
+test("the transcriber reports an OpenAI it cannot reach as unreachable", async () => {
+  const errors: Error[] = [];
+  const transcriber = createOpenAITranscriber(await unreachableOpenAI(), {
+    model: "m",
+    languages: [],
+  })({
+    ready() {},
+    delta() {},
+    final() {},
+    error: (error) => errors.push(error),
+    hintsRejected() {},
+  });
+  await until(() => errors.length > 0);
+  transcriber.close();
+  assert.ok(isUnreachable(errors[0]));
+});
+
+test("a connection that drops once open is not reported as unreachable", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const errors: Error[] = [];
+  createOpenAITranscriber(client, { model: "m", languages: [] })({
+    ready() {},
+    delta() {},
+    final() {},
+    error: (error) => errors.push(error),
+    hintsRejected() {},
+  });
+  await until(() => realtime.socket !== undefined);
+  realtime.socket?.close();
+  await until(() => errors.length > 0);
+  assert.ok(!isUnreachable(errors[0]));
+});
+
 /** The events of a transcriber, recorded in order. */
 function recorder() {
   const events: unknown[] = [];
@@ -381,6 +423,46 @@ test("the recording transcriber completes a turn too short to send, and reports 
   assert.deepEqual(events.slice(1, 2), [["final", 0, ""]]);
   assert.equal(transcriptions.forms.length, 1);
   assert.match(String((events[2] as unknown[])[1]), /Audio file is corrupted/);
+});
+
+test("the recording transcriber reports an OpenAI it cannot reach as unreachable", async () => {
+  const errors: Error[] = [];
+  const transcriber = createOpenAIRecordingTranscriber(await unreachableOpenAI(), {
+    model: "m",
+    languages: [],
+  })({
+    ready() {},
+    delta() {},
+    final() {},
+    error: (error) => errors.push(error),
+    hintsRejected() {},
+  });
+  transcriber.append(audio(500));
+  transcriber.commit();
+  await until(() => errors.length > 0);
+  transcriber.close();
+  assert.ok(isUnreachable(errors[0]));
+});
+
+test("a transcription OpenAI refuses is not reported as unreachable", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const errors: Error[] = [];
+  const transcriber = createOpenAIRecordingTranscriber(client, { model: "m", languages: [] })({
+    ready() {},
+    delta() {},
+    final() {},
+    error: (error) => errors.push(error),
+    hintsRejected() {},
+  });
+  t.after(() => transcriber.close());
+  transcriptions.answers.push({
+    status: 400,
+    body: { error: { message: "Audio file is corrupted", type: "invalid_request_error" } },
+  });
+  transcriber.append(audio(500));
+  transcriber.commit();
+  await until(() => errors.length > 0);
+  assert.ok(!isUnreachable(errors[0]));
 });
 
 test("the refiner connects ahead, then asks for the transcript to be rewritten", async (t) => {

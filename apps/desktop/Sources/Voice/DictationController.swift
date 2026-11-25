@@ -8,6 +8,8 @@ final class DictationController {
   private(set) var pill: PillState = .hidden
   private(set) var transcript = Transcript()
   private(set) var mode: RecordingMode = .toggle
+  /// Whether the dictation records without a connection. It is sent once it ends.
+  private(set) var isOffline = false
 
   /// The microphone levels, for the waveform.
   @ObservationIgnored let levels = LevelFeed()
@@ -21,8 +23,7 @@ final class DictationController {
   @ObservationIgnored private let media: MediaPause
   @ObservationIgnored private let others = OtherAudio()
   /// The dictation the pill shows.
-  @ObservationIgnored private var session: DictationSession?
-  @ObservationIgnored private var delivery: DictationDelivery?
+  @ObservationIgnored private var dictation: Dictation?
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
   /// Says the microphone is starting, when it does not deliver sound right away.
@@ -58,7 +59,7 @@ final class DictationController {
   }
 
   var allowsShiftToStop: Bool {
-    isRecording && delivery?.enterBehavior == .withShift
+    isRecording && dictation?.delivery.enterBehavior == .withShift
   }
 
   /// Whether a dictation is recording or finishing, so Escape can cancel it.
@@ -104,9 +105,11 @@ final class DictationController {
 
     // The pill shows at once. The microphone opens behind it, and the recording does not
     // wait for the server: the audio is sent as it comes, and what comes before the server
-    // is ready waits for it on the way.
+    // is ready waits for it on the way. Should the server not be there, the recording goes
+    // on all the same, and is sent once it ends.
     self.mode = mode
     transcript = Transcript()
+    isOffline = false
     dismissal?.cancel()
     pill = .listening
     startedAt = .now
@@ -119,44 +122,28 @@ final class DictationController {
       log.debug("field read", ["field_ms": Int((ContinuousClock.now - reading) / .milliseconds(1))])
     }
 
-    let session = DictationSession(
+    let dictation = Dictation(
       server: settings.serverURL, instructions: settings.instructions,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary, context: context,
-      live: settings.transcribesLive)
-    session.onReady = { [weak self, weak session] in
-      guard let self, self.session === session else { return }
+      live: settings.transcribesLive,
+      delivery: DictationDelivery(
+        keepOnClipboard: settings.keepOnClipboard, enterBehavior: settings.enterBehavior))
+    let session = dictation.session(live: dictation.recovery.live)
+    session.onReady = { [weak self] in
+      guard let self, self.dictation === dictation else { return }
       log.debug("ready", ["connect_ms": elapsed])
     }
     session.onChange = { [weak self, weak session] in
-      guard let self, let session, self.session === session else { return }
+      guard let self, let session, self.dictation === dictation else { return }
       transcript = session.transcript
     }
-    let delivery = DictationDelivery(
-      keepOnClipboard: settings.keepOnClipboard, enterBehavior: settings.enterBehavior)
-    self.delivery = delivery
-    session.onText = { [weak session, inserter, history, statistics, log, delivery] text, error in
-      if !text.isEmpty {
-        inserter.insert(
-          text, keepOnClipboard: delivery.keepOnClipboard,
-          pressEnter: delivery.pressesEnter(text: text, failed: error != nil))
-        log.debug("typed", ["chars": text.count])
-      }
-      guard let session else { return }
-      // Kept without the space that joined it to the field.
-      let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-      history.add(
-        text: text, duration: session.recorded, recording: session.recording,
-        failed: error != nil)
-      if let usage = session.usage {
-        statistics.record(text: text, seconds: session.recorded, usage: usage)
-      }
+    session.onEnd = { [weak self, weak session] end in
+      dictation.usage = session?.usage
+      self?.sessionEnded(dictation, end, draft: session?.transcript.typed ?? "")
     }
-    session.onEnd = { [weak self, weak session] error in
-      guard let self, self.session === session else { return }
-      finish(error)
-    }
+    dictation.sending = session
     session.start()
-    self.session = session
+    self.dictation = dictation
     media.pause(settings.mediaBehavior)
     log.info("started", ["mode": mode, "context_chars": context.count])
 
@@ -165,7 +152,7 @@ final class DictationController {
     // than a moment, the pill says the microphone is starting, until the sound comes.
     warming = Task {
       try? await Task.sleep(for: .milliseconds(250))
-      if !Task.isCancelled, self.session === session, pill == .listening { pill = .starting }
+      if !Task.isCancelled, self.dictation === dictation, pill == .listening { pill = .starting }
     }
 
     audio = Task {
@@ -178,23 +165,26 @@ final class DictationController {
           if pill == .starting { pill = .listening }
           log.debug("recording", ["microphone_ms": elapsed])
         }
-        session.send(chunk.pcm)
+        dictation.recording.append(chunk.pcm)
+        dictation.sending?.send(chunk.pcm)
         levels.push(chunk.level)
       }
       guard !Task.isCancelled else { return }
-      if self.session === session, pill.isRecording {
+      if self.dictation === dictation, pill.isRecording {
         // Nobody stopped the recording: the microphone did not start.
-        session.cancel()
+        dictation.sending?.cancel()
+        dictation.sending = nil
+        self.dictation = nil
         finish(.microphoneUnavailable)
       } else {
-        // The recording ended and all of it is sent.
-        session.stop()
+        // The recording ended, all of it captured.
+        recordingEnded(dictation)
       }
     }
   }
 
   private func stop(shiftHeld: Bool) {
-    delivery?.stop(shiftHeld: shiftHeld)
+    dictation?.delivery.stop(shiftHeld: shiftHeld)
     release()
     pill = .finishing
   }
@@ -204,25 +194,108 @@ final class DictationController {
       audio?.cancel()
       release()
     }
-    session?.cancel()
-    session = nil
+    dictation?.sending?.cancel()
+    dictation?.sending = nil
+    dictation = nil
+    isOffline = false
     pill = .hidden
     log.info("cancelled", ["duration_ms": elapsed])
   }
 
-  /// The dictation the pill shows is over.
-  private func finish(_ error: DictationError?) {
-    if isRecording {
-      audio?.cancel()
-      release()
+  /// A session of the dictation ended. While the speaker talks, the recording goes on.
+  private func sessionEnded(_ dictation: Dictation, _ end: SessionEnd, draft: String) {
+    dictation.sending = nil
+    if case .done = end {
+    } else {
+      log.warn(
+        "session failed", ["reason": end.reason, "recording": !dictation.recovery.hasRecorded])
     }
-    session = nil
+    let step = dictation.recovery.sessionEnded(end, draft: draft)
+    if self.dictation === dictation { isOffline = dictation.recovery.isOffline }
+    if let step { take(step, for: dictation) }
+  }
+
+  /// The recording ended: the dictation gets its text, or waits for it.
+  private func recordingEnded(_ dictation: Dictation) {
+    if self.dictation === dictation { isOffline = false }
+    if let step = dictation.recovery.recordingEnded() {
+      take(step, for: dictation)
+    } else {
+      // All of the recording is sent. The text follows.
+      dictation.sending?.stop()
+    }
+  }
+
+  private func take(_ step: DictationStep, for dictation: Dictation) {
+    switch step {
+    case .type(let text):
+      deliver(text, of: dictation, failed: false)
+      conclude(dictation, nil, chars: text.count)
+    case .resend:
+      // Once, not live, as fast as the server takes it.
+      log.info("resending", ["seconds": Int(dictation.recorded)])
+      let session = dictation.session(live: false)
+      session.onEnd = { [weak self, weak session] end in
+        dictation.usage = session?.usage
+        dictation.sending = nil
+        if case .done = end {
+        } else {
+          self?.log.warn("resend failed", ["reason": end.reason])
+        }
+        self?.take(dictation.recovery.resent(end), for: dictation)
+      }
+      dictation.sending = session
+      session.start()
+      session.send(recording: dictation.recording)
+    case .save(let draft, let offline):
+      // What was heard is typed, and all of it is kept to be tried again.
+      let saved = deliver(draft, of: dictation, failed: true)
+      conclude(
+        dictation,
+        offline ? .offline(saved: saved) : .transcriptionFailed(saved: saved),
+        chars: draft.count)
+    }
+  }
+
+  /// Types the text, and keeps the dictation in the history. Returns whether it was kept.
+  @discardableResult
+  private func deliver(_ text: String, of dictation: Dictation, failed: Bool) -> Bool {
+    let delivery = dictation.delivery
+    if !text.isEmpty {
+      inserter.insert(
+        text, keepOnClipboard: delivery.keepOnClipboard,
+        pressEnter: delivery.pressesEnter(text: text, failed: failed))
+      log.debug("typed", ["chars": text.count])
+    }
+    // Kept without the space that joined it to the field.
+    let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let kept = history.add(
+      text: text, duration: dictation.recorded, recording: dictation.recording, failed: failed)
+    if !failed, let usage = dictation.usage {
+      statistics.record(text: text, seconds: dictation.recorded, usage: usage)
+    }
+    return kept
+  }
+
+  /// The dictation is over. The pill shows it, unless another dictation has started since.
+  private func conclude(_ dictation: Dictation, _ error: DictationError?, chars: Int) {
+    guard self.dictation === dictation else { return }
+    self.dictation = nil
     if let error {
       fail(error)
     } else {
       pill = .hidden
-      log.info("finished", ["duration_ms": elapsed, "chars": transcript.text.count])
+      log.info("finished", ["duration_ms": elapsed, "chars": chars])
     }
+  }
+
+  /// The dictation the pill shows is over before its recording ended.
+  private func finish(_ error: DictationError) {
+    if isRecording {
+      audio?.cancel()
+      release()
+    }
+    fail(error)
   }
 
   /// Closes the microphone and gives the sound back. The media does not wait for the text.
@@ -239,12 +312,58 @@ final class DictationController {
 
   /// Shows the error for a moment.
   private func fail(_ error: DictationError) {
-    log.error("failed", ["reason": error])
+    log.error("failed", ["reason": error.reason])
     pill = .failed(error)
     dismissal?.cancel()
     dismissal = Task {
       try? await Task.sleep(for: .seconds(3))
       if !Task.isCancelled { pill = .hidden }
     }
+  }
+}
+
+/// One dictation, from the shortcut to its text: what it was started with, its recording, and
+/// the session sending it.
+@MainActor
+private final class Dictation {
+  let delivery: DictationDelivery
+  var recovery: DictationRecovery
+  /// The audio recorded: 16-bit mono PCM at 24 kHz.
+  var recording = Data()
+  /// The session that has the dictation now: its own, then the one that sends it again.
+  var sending: DictationSession?
+  /// What the dictation used on the server, once it has its text.
+  var usage: Usage?
+
+  private let server: URL
+  private let instructions: String
+  private let translateTo: String
+  private let vocabulary: [String]
+  /// The text before the cursor in the field the text goes into, if known.
+  private let context: String
+
+  init(
+    server: URL, instructions: String, translateTo: String, vocabulary: [String],
+    context: String, live: Bool, delivery: DictationDelivery
+  ) {
+    self.server = server
+    self.instructions = instructions
+    self.translateTo = translateTo
+    self.vocabulary = vocabulary
+    self.context = context
+    self.delivery = delivery
+    recovery = DictationRecovery(live: live)
+  }
+
+  /// How long the recording is, in seconds.
+  var recorded: TimeInterval {
+    Double(recording.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
+  }
+
+  /// A session with the server for this dictation, with what it was started with.
+  func session(live: Bool) -> DictationSession {
+    DictationSession(
+      server: server, instructions: instructions, translateTo: translateTo,
+      vocabulary: vocabulary, context: context, live: live)
   }
 }

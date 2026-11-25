@@ -38,13 +38,14 @@ final class HistoryStore {
   }
 
   /// Keeps a dictation that just ended, with its recording. One that failed is kept even
-  /// without words, to be tried again.
-  func add(text: String, duration: TimeInterval, recording: Data, failed: Bool) {
+  /// without words, to be tried again. Returns whether it was kept.
+  @discardableResult
+  func add(text: String, duration: TimeInterval, recording: Data, failed: Bool) -> Bool {
     let transcription = Transcription(
       date: .now, text: text, duration: duration, failed: failed)
     guard !failed || !text.isEmpty || duration >= Self.shortestKept,
       history.add(transcription)
-    else { return }
+    else { return false }
     let (recordings, file, log) = (recordings, url(of: transcription.id), log)
     disk.async {
       do {
@@ -56,6 +57,7 @@ final class HistoryStore {
       }
     }
     save()
+    return true
   }
 
   /// The recording of a transcription, if it was kept.

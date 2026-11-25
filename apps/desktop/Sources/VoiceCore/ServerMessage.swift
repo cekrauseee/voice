@@ -58,6 +58,22 @@ public enum ServerMessage: Equatable, Sendable {
   }
 }
 
+/// The codes of the errors the server ends a dictation with.
+public enum ServerErrorCode {
+  /// The app sent a message that is not part of the protocol, or out of order.
+  public static let badRequest = "bad_request"
+  /// The transcription provider failed or disconnected.
+  public static let transcriptionFailed = "transcription_failed"
+  /// The server could not reach the transcription provider.
+  public static let unreachable = "unreachable"
+  /// Transcription was not ready in time, or nothing was heard in time.
+  public static let timeout = "timeout"
+
+  /// The errors that, without live transcription, come only once the server has tried to
+  /// transcribe the whole recording.
+  public static let transcribedWhole: Set<String> = [transcriptionFailed, unreachable, timeout]
+}
+
 /// A message to the dictation server.
 public enum ClientMessage: Equatable, Sendable {
   /// Opens the dictation, with how the speaker wants the text written, the language to write

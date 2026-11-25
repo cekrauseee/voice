@@ -14,6 +14,8 @@ The client opens the socket when recording starts, sends `start`, and may send a
 
 `GET /health` on the same host returns `{"status":"ok"}`.
 
+The server answers WebSocket pings. A client can ping as it opens the socket to learn that the server is there, before `ready`.
+
 ## Client to server
 
 ### `start`
@@ -101,9 +103,12 @@ The cost is an estimate. OpenAI reports the tokens but not the price, so the ser
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bad_request`          | The client sent a message that is not part of the protocol, or out of order.                                                                          |
 | `transcription_failed` | The transcription provider failed or disconnected.                                                                                                    |
+| `unreachable`          | The server could not reach the transcription provider: its connection failed before anything was transcribed.                                         |
 | `timeout`              | Transcription was not ready within 10 s of `start`. Or nothing was heard, and the transcriber sent nothing for 5 s after `stop`, 60 s without `live`. |
 
 An error ends the dictation without a `done`. The client still has the draft from the `delta` messages, if any came.
+
+Without `live`, the server keeps the audio and transcribes nothing before `stop`, so `transcription_failed`, `unreachable`, and `timeout` come only after it: the server has tried the whole recording. With `live`, they can come at any moment, and the server may not have had all of it.
 
 ## Example
 

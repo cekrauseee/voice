@@ -26,7 +26,8 @@ final class Retry {
       let pcm = (try? Data(contentsOf: url)).flatMap(WAV.pcm)
     else { return }
     running.insert(id)
-    log.info("started", ["seconds": Int(Double(pcm.count) / 2 / AudioFormat.sampleRate)])
+    let seconds = Double(pcm.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
+    log.info("started", ["seconds": Int(seconds)])
 
     // Without the field's text: the field focused now is not the one dictated into, and the
     // text is not typed anywhere.
@@ -34,30 +35,22 @@ final class Retry {
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary)
-    session.onText = { [weak session, history, statistics, log] text, error in
-      if let session, let usage = session.usage {
-        statistics.record(text: text, seconds: session.recorded, usage: usage)
-      }
-      if error == nil, !text.isEmpty {
+    session.onEnd = { [weak self, weak session] end in
+      self?.running.remove(id)
+      guard let self else { return }
+      if case .done(let text) = end, !text.isEmpty {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let usage = session?.usage {
+          statistics.record(text: text, seconds: seconds, usage: usage)
+        }
         history.resolve(id, text: text)
         log.info("finished", ["chars": text.count])
       } else {
-        log.error("failed", ["reason": error.map { "\($0)" } ?? "no words"])
+        log.error("failed", ["reason": end.reason])
       }
     }
-    // The session is held until it is over.
-    session.onEnd = { [weak self] _ in
-      self?.running.remove(id)
-      _ = session
-    }
+    // The session holds itself until it is over.
     session.start()
-    // The server takes the recording as fast as it comes, not at the pace it was spoken.
-    let chunk = AudioFormat.chunkSamples * MemoryLayout<Int16>.size
-    for offset in stride(from: 0, to: pcm.count, by: chunk) {
-      session.send(
-        pcm.subdata(
-          in: (pcm.startIndex + offset)..<min(pcm.startIndex + offset + chunk, pcm.endIndex)))
-    }
-    session.stop()
+    session.send(recording: pcm)
   }
 }

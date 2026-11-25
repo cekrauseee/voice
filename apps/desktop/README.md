@@ -95,7 +95,9 @@ While holding the push-to-talk shortcut, press Space to keep recording hands-fre
 
 Recording starts the moment the shortcut is pressed. It does not wait for the server: audio recorded before the connection is up is sent once it is, also when the recording has already ended by then.
 
-The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards by default. Turn on Keep on clipboard to leave the transcription there instead. A newer copy made while pasting is left alone.
+Recording never depends on the connection either. If the server cannot be reached, or the connection drops, or OpenAI cannot be reached, the microphone records on until you stop or cancel, and the pill shows a small offline sign. When you stop, the app sends the whole recording once more, and types the text as usual if it comes back. If it does not, the dictation is saved to the history, marked as not transcribed, and the pill says `No connection. Saved to History`. The app does not try again by itself: Try Again in the history does. A dictation that was not live and failed once the server had all of it is saved at once, since sending it again would fail the same way. The server counts as unreachable when it does not answer within 5 seconds.
+
+The text is typed once, when the recording ends and the server has refined it. If the dictation fails after words were recognized live, they are typed as they were heard. Text is typed by pasting. The clipboard is restored afterwards by default. Turn on Keep on clipboard to leave the transcription there instead. A newer copy made while pasting is left alone.
 
 ## The window
 
@@ -176,12 +178,12 @@ With Live transcription on, the detailed style shows the last three lines of the
 
 The waveform follows the voice from the center outward: the middle bars answer at once, and the level travels to the edges over half a second. While the microphone starts and while the text is being refined, the bars ripple, dimmed. The ripple comes and goes the way the voice does, in at the center and out through the edges, so one turns into the other without a jump. With Reduce Motion on, the bars only show the level, a few times a second, and dim instead of rippling.
 
-| State     | Shown                                                                                                                                     |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Starting  | A rippling waveform, while the microphone starts and delivers no sound yet. What is said then is not heard                                |
-| Listening | The waveform follows the microphone                                                                                                       |
-| Finishing | A rippling waveform. Recording ended, the text is being refined                                                                           |
-| Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `Can't reach the server`, or `Transcription failed` |
+| State     | Shown                                                                                                                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Starting  | A rippling waveform, while the microphone starts and delivers no sound yet. What is said then is not heard                                                                                                           |
+| Listening | The waveform follows the microphone. Without a connection, a small `wifi.slash` sign too: beside the waveform, in place of the microphone at the notch, and in the status of the detailed style, `Listening offline` |
+| Finishing | A rippling waveform. Recording ended, the text is being refined, or the recording is being sent again                                                                                                                |
+| Failed    | A short message for three seconds: `Microphone access needed`, `No microphone found`, `No connection`, or `Transcription failed`, followed by `Saved to History` when the dictation was kept                         |
 
 ## Logs
 
