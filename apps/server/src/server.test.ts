@@ -61,6 +61,7 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
       instructions: "Write formally.",
       translate_to: "Spanish",
       vocabulary: ["Claude"],
+      context: "Hola Ana,",
     }),
   );
   ws.send(audio(500));
@@ -76,6 +77,7 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
     instructions: "Write formally.",
     translateTo: "Spanish",
     vocabulary: ["Claude"],
+    context: "Hola Ana,",
   });
   assert.deepEqual(transcriber.hints, { keywords: ["Claude"] });
   refiner.calls[0]?.resolve("Hi there.");
@@ -86,7 +88,7 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
     { type: "delta", text: "hi" },
     {
       type: "done",
-      text: "Hi there.",
+      text: " Hi there.",
       usage: { audio_seconds: 0.5, input_tokens: 0, output_tokens: 0, cost: 0.005 },
     },
   ]);
@@ -105,6 +107,7 @@ test("start needs no instructions, language, or vocabulary", async (t) => {
   assert.equal(refiner.calls[0]?.input.instructions, "");
   assert.equal(refiner.calls[0]?.input.translateTo, "");
   assert.deepEqual(refiner.calls[0]?.input.vocabulary, []);
+  assert.equal(refiner.calls[0]?.input.context, "");
   ws.close();
   await until(() => transcriber.closed);
 });
@@ -118,6 +121,7 @@ test("a message that is not part of the protocol ends the dictation with an erro
     '{"type":"start","translate_to":7}',
     '{"type":"start","vocabulary":"Claude"}',
     '{"type":"start","vocabulary":["Claude",7]}',
+    '{"type":"start","context":7}',
   ]) {
     const { ws, messages, closeCode } = await connect(host);
     ws.send(message);

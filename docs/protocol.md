@@ -25,7 +25,8 @@ A text message, and the first message of the dictation.
   "type": "start",
   "instructions": "Write in a formal tone.",
   "translate_to": "Spanish",
-  "vocabulary": ["Claude", "Supabase"]
+  "vocabulary": ["Claude", "Supabase"],
+  "context": "Hi Ana,\n\nThanks for the update"
 }
 ```
 
@@ -34,6 +35,8 @@ A text message, and the first message of the dictation.
 `translate_to` is the language to write the text in, as the speaker typed it, such as `Spanish` or `Brazilian Portuguese`. The refinement then translates what was said, by meaning and not word for word. It is optional: without it, or when it is empty, the text stays in the language spoken.
 
 `vocabulary` is the speaker's dictionary: names and terms they use, spelled the way they write them. The transcription listens for them, the rewrite writes a word that was misheard as one of them as the term, where the context fits, and a translation keeps them as written. It is optional. The server puts each term on one line, takes out `<` and `>`, and leaves out blanks, terms longer than 100 characters, and terms already listed in another case. It passes on the first 500.
+
+`context` is the text before the cursor in the field the dictation goes into, as the app read it: the end of it, up to about 2000 characters. The refinement uses it to spell names and terms the same way, match its register, and continue a sentence it leaves unfinished. It is never part of the text: the model does not rewrite or repeat it, nor follow instructions in it. It also decides whether `done` begins with a space. It is optional: without it, or when it is empty, the dictation is written on its own. The transcription does not get it.
 
 ### Audio
 
@@ -67,8 +70,9 @@ All server messages are JSON text.
 ### Text
 
 - The `delta` messages, appended in order, are the text heard so far. It is a draft to show, not to type: it has no leading whitespace, and it keeps arriving for a moment after `stop`.
-- `done` carries the whole text of the dictation once, refined. It replaces the draft and has no leading or trailing whitespace. It is empty when nothing was said.
-- When the refinement fails, `done` carries the transcript as it was heard. A dictation that reaches `done` never loses what was said.
+- `done` carries the whole text of the dictation once, refined. It replaces the draft and has no trailing whitespace. It is empty when nothing was said.
+- `done` has no leading whitespace either, unless it follows a `context` and needs a space to be separated from it: then it begins with one space. That is when the context ends in a word or in punctuation such as `.` or `,`, and the text does not begin with punctuation that attaches to what is before it, such as `,` or `)`. A context that ends in whitespace, in an opening bracket or quote, or in a language written without spaces, such as Chinese or Japanese, gets none. Type the text as it is, space included.
+- When the refinement fails, `done` carries the transcript as it was heard, with the same space before it. A dictation that reaches `done` never loses what was said.
 - Exactly one of `done` and `error` ends a dictation, and nothing follows it.
 
 ### Usage

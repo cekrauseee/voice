@@ -37,6 +37,7 @@ test("a dictation passes on the text heard, then ends with the refined text", as
     instructions: "",
     translateTo: "",
     vocabulary: [],
+    context: "",
   });
 
   refiner.calls[0]?.resolve("Hello, world.", [3, 2]);
@@ -75,7 +76,7 @@ test("the audio is one turn: it is committed once, when the speaker stops", () =
 
 test("the refiner is prepared when the dictation starts, and gets what the speaker asked for", () => {
   const { session, transcriber, refiner } = setup();
-  session.start("Write formally.", "Spanish");
+  session.start("Write formally.", "Spanish", [], "Hola Ana,");
   assert.equal(refiner.created, 1);
 
   session.stop();
@@ -85,6 +86,40 @@ test("the refiner is prepared when the dictation starts, and gets what the speak
     instructions: "Write formally.",
     translateTo: "Spanish",
     vocabulary: [],
+    context: "Hola Ana,",
+  });
+});
+
+test("a dictation that continues the text before the cursor is spaced from it", async () => {
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("", "", [], "Thanks for the update");
+  session.stop();
+  transcriber.events.final(0, "and see you friday");
+  refiner.calls[0]?.resolve("and see you Friday.");
+  await settle();
+  assert.deepEqual(messages, [{ type: "done", text: " and see you Friday.", usage: unused }]);
+});
+
+test("the transcript a failed refinement falls back to is spaced from the context too", async () => {
+  const { session, transcriber, refiner, messages } = setup();
+  session.start("", "", [], "Thanks");
+  session.stop();
+  transcriber.events.final(0, "keep me");
+  refiner.calls[0]?.reject(new Error("boom"));
+  await settle();
+  assert.deepEqual(messages, [{ type: "done", text: " keep me", usage: unused }]);
+});
+
+test("the context is logged by its length only", (t) => {
+  const info = t.mock.fn(silent.info);
+  const { session } = setup({ ...silent, info });
+  session.start("", "", [], "Private words");
+  const started = info.mock.calls.find((call) => call.arguments[0] === "started");
+  assert.deepEqual(started?.arguments[1], {
+    instructions_chars: 0,
+    translates: false,
+    vocabulary_terms: 0,
+    context_chars: 13,
   });
 });
 
@@ -149,7 +184,7 @@ test("an empty refinement falls back to the transcript", async () => {
 
 test("a dictation without words ends without refining", async () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("");
+  session.start("", "", [], "Text before");
   session.audio(audio(1000));
   session.stop();
   transcriber.events.final(0, " ");

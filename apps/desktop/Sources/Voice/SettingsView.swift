@@ -95,6 +95,11 @@ struct SettingsView: View {
             TranslationControl(isOn: $settings.translates, language: $settings.translationLanguage)
           }
           SettingRow(
+            title: "Use text in the field", detail: "Sends the text before the cursor, to fit it"
+          ) {
+            Switch(title: "Use text in the field", isOn: $settings.usesFieldText)
+          }
+          SettingRow(
             title: "Keep on clipboard", detail: "Replaces the previous clipboard contents"
           ) {
             Switch(title: "Keep on clipboard", isOn: $settings.keepOnClipboard)

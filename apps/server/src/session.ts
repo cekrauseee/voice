@@ -1,4 +1,5 @@
 import type { Logger } from "@voice/log";
+import { joinAfter } from "./joining.ts";
 import {
   BYTES_PER_SECOND,
   type ErrorCode,
@@ -38,6 +39,8 @@ interface Started {
   translateTo: string;
   /** Names and terms the speaker uses, as they spell them. */
   vocabulary: string[];
+  /** The text before the cursor in the field the dictation goes into. Empty when unknown. */
+  context: string;
 }
 
 /**
@@ -70,9 +73,9 @@ export class DictationSession {
 
   /**
    * The client opens the dictation, with how and in what language the speaker wants the text,
-   * and the names and terms they use.
+   * the names and terms they use, and the text the dictation follows in the field.
    */
-  start(instructions: string, translateTo = "", terms: readonly string[] = []): void {
+  start(instructions: string, translateTo = "", terms: readonly string[] = [], context = ""): void {
     if (this.ended) return;
     if (this.started) {
       this.reject();
@@ -93,6 +96,7 @@ export class DictationSession {
       instructions,
       translateTo,
       vocabulary,
+      context,
     };
     this.readyTimer = setTimeout(() => {
       this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
@@ -102,6 +106,7 @@ export class DictationSession {
       instructions_chars: instructions.trim().length,
       translates: translateTo.trim() !== "",
       vocabulary_terms: vocabulary.length,
+      context_chars: context.length,
     });
   }
 
@@ -202,7 +207,8 @@ export class DictationSession {
       refined.outputTokens,
     );
     this.deps.log.info("used", { ...used });
-    this.send({ type: "done", text: refined.text, usage: used });
+    // The text goes right after the text before the cursor, and may need a space to follow it.
+    this.send({ type: "done", text: joinAfter(started.context, refined.text), usage: used });
     this.end("done");
   }
 
@@ -212,14 +218,14 @@ export class DictationSession {
    */
   private async refine(
     transcript: string,
-    { refiner, instructions, translateTo, vocabulary }: Started,
+    { refiner, instructions, translateTo, vocabulary, context }: Started,
   ): Promise<Refinement> {
     const log = this.deps.log;
     const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     try {
       const refined = await refiner.refine(
-        { text: transcript, instructions, translateTo, vocabulary },
+        { text: transcript, instructions, translateTo, vocabulary, context },
         signal,
       );
       if (refined.text !== "") {

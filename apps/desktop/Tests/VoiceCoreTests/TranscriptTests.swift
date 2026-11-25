@@ -35,13 +35,17 @@ import Testing
     #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
     #expect(
       ClientMessage.start(instructions: "").json
-        == #"{"instructions":"","translate_to":"","type":"start","vocabulary":[]}"#)
+        == #"{"context":"","instructions":"","translate_to":"","type":"start","vocabulary":[]}"#)
     #expect(
       ClientMessage.start(
         instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish",
         vocabulary: ["Claude", "R&D"]
       ).json
-        == #"{"instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
+        == #"{"context":"","instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
+    )
+    #expect(
+      ClientMessage.start(instructions: "", context: "Dear Ana,\n").json
+        == #"{"context":"Dear Ana,\n","instructions":"","translate_to":"","type":"start","vocabulary":[]}"#
     )
   }
 }
@@ -67,6 +71,23 @@ import Testing
 
     transcript.apply(.delta(text: " late"))
     #expect(transcript.text == "Hello, world.")
+  }
+
+  @Test func typesTheSpaceThatJoinsTheRefinedTextToTheFieldButDoesNotShowIt() {
+    var transcript = Transcript()
+    transcript.apply(.done(text: " and see you Friday.", usage: Usage()))
+    #expect(transcript.text == "and see you Friday.")
+    #expect(transcript.typed == " and see you Friday.")
+
+    var empty = Transcript()
+    empty.apply(.done(text: " ", usage: Usage()))
+    #expect(empty.typed == "")
+  }
+
+  @Test func typesTheDraftTrimmed() {
+    var transcript = Transcript()
+    transcript.apply(.delta(text: "so far "))
+    #expect(transcript.typed == "so far")
   }
 }
 

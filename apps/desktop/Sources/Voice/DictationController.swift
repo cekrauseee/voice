@@ -111,10 +111,17 @@ final class DictationController {
     pill = .listening
     startedAt = .now
     let chunks = capture.start(with: settings.microphone)
+    // Read once the microphone is opening, so the recording does not wait for it.
+    var context = ""
+    if settings.usesFieldText {
+      let reading = ContinuousClock.now
+      context = FocusedField.textBeforeCursor()
+      log.debug("field read", ["field_ms": Int((ContinuousClock.now - reading) / .milliseconds(1))])
+    }
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
-      translateTo: settings.translateTo, vocabulary: settings.vocabulary)
+      translateTo: settings.translateTo, vocabulary: settings.vocabulary, context: context)
     session.onReady = { [weak self, weak session] in
       guard let self, self.session === session else { return }
       log.debug("ready", ["connect_ms": elapsed])
@@ -134,6 +141,8 @@ final class DictationController {
         log.debug("typed", ["chars": text.count])
       }
       guard let session else { return }
+      // Kept without the space that joined it to the field.
+      let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
       history.add(
         text: text, duration: session.recorded, recording: session.recording,
         failed: error != nil)
@@ -148,7 +157,7 @@ final class DictationController {
     session.start()
     self.session = session
     media.pause(settings.mediaBehavior)
-    log.info("started", ["mode": mode])
+    log.info("started", ["mode": mode, "context_chars": context.count])
 
     // The Mac's own microphone delivers sound in about a tenth of a second, a Bluetooth
     // headset in about a second, while it switches to call quality. When it takes longer

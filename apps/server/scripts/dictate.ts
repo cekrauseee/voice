@@ -1,7 +1,7 @@
 // Streams a WAV file to a running server at speaking pace and prints what comes back,
 // with the time of each message. For tuning the pipeline without the desktop app.
 //
-//   pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "Write formally."] [--translate-to "English"] [--term Claude]...
+//   pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "Write formally."] [--translate-to "English"] [--term Claude]... [--context "Dear Ana,"]
 //
 // The file must be 16-bit mono PCM at 24 kHz:
 //   afconvert -f WAVE -d LEI16@24000 -c 1 input.m4a recording.wav
@@ -52,12 +52,13 @@ const { positionals, values } = parseArgs({
     instructions: { type: "string", default: "" },
     "translate-to": { type: "string", default: "" },
     term: { type: "string", multiple: true, default: [] },
+    context: { type: "string", default: "" },
   },
 });
 const [path, server = "ws://127.0.0.1:8787"] = positionals;
 if (!path) {
   fatal(
-    'usage: pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "..."] [--translate-to "..."] [--term "..."]...',
+    'usage: pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "..."] [--translate-to "..."] [--term "..."]... [--context "..."]',
   );
 }
 
@@ -93,6 +94,7 @@ ws.on("open", () => {
       instructions: values.instructions,
       translate_to: values["translate-to"],
       vocabulary: values.term,
+      context: values.context,
     }),
   );
   let offset = 0;

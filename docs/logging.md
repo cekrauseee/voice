@@ -37,7 +37,7 @@ In a terminal, records are printed for people, in columns and in color:
 ```
 16:22:47.485 INFO  build       built app="build/Voice (Development).app" identifier=eu.cekrause.voice.dev duration_ms=1829
 16:22:47.908 INFO  app         launched version=0.0.0 build=development
-16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0 translates=false
+16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0 translates=false context_chars=212
 16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
 16:24:40.007 WARN  dictation   refinement failed dictation=2 refine_ms=5003 error="Refinement stalled"
 16:24:20.310 ERROR server      OPENAI_API_KEY is not set hint="add your key to apps/server/.env"

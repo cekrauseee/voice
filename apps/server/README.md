@@ -90,7 +90,7 @@ pnpm dictate recording.wav --term Claude --term Supabase
  16012ms  done   "So the plan is simple. We ship on Friday."
 ```
 
-`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings.
+`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings. `--context` sends text as if it were before the cursor in the field, as the app does from the focused field.
 
 ## Tests
 
@@ -110,6 +110,7 @@ The tests run the real server, session, transcriber, and refiner. The OpenAI API
 | `src/transcriber.ts` | The OpenAI realtime transcription session                                            |
 | `src/responses.ts`   | A request to the Responses API over a WebSocket                                      |
 | `src/refiner.ts`     | The refinement prompt                                                                |
+| `src/joining.ts`     | Whether the text needs a space to follow the text before the cursor                  |
 | `src/protocol.ts`    | The messages exchanged with the app                                                  |
 | `scripts/dictate.ts` | Replays a recording against a running server                                         |
 | `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                       |
