@@ -20,9 +20,10 @@ final class Settings {
   var toggle: Shortcut {
     didSet { save(toggle, forKey: "toggle") }
   }
-  /// How the user wants their words written, on top of the server's own instructions.
-  var instructions: String {
-    didSet { defaults.set(instructions, forKey: "instructions") }
+  /// What the models are told about the user: how they want their words written, what their
+  /// recordings are like, and the languages they speak.
+  var profile: Profile {
+    didSet { defaults.set(try? JSONEncoder().encode(profile), forKey: "profile") }
   }
 
   /// Whether what the user says is written in another language.
@@ -120,7 +121,10 @@ final class Settings {
     pillPosition = defaults.string(forKey: "pillPosition").flatMap(PillPosition.init) ?? .bottom
     pushToTalk = Self.shortcut(defaults, forKey: "pushToTalk") ?? .defaultPushToTalk
     toggle = Self.shortcut(defaults, forKey: "toggle") ?? .defaultToggle
-    instructions = defaults.string(forKey: "instructions") ?? ""
+    // The instructions set before profiles are left where they were, and read into the
+    // profile until it is changed.
+    profile = Profile.stored(
+      defaults.data(forKey: "profile"), instructions: defaults.string(forKey: "instructions"))
     translates = defaults.bool(forKey: "translates")
     translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
     vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []

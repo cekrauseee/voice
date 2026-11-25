@@ -12,7 +12,9 @@ ws://<host>:<port>/v1/dictation
 
 The client opens the socket when recording starts, sends `start`, and may send audio at once: the server buffers it until transcription is ready. Either side ends the dictation by closing the socket.
 
-`GET /health` on the same host returns `{"status":"ok"}`.
+`GET /health` on the same host returns `{"status":"ok"}`. `ws://<host>:<port>/v1/profile` is one turn of the conversation that writes the speaker's profile: see [The profile conversation](#the-profile-conversation).
+
+The server refuses a WebSocket whose handshake has an `Origin` header, with `403`. Browsers send one, and the app does not: a web page cannot use the server through the loopback address.
 
 The server answers WebSocket pings. A client can ping as it opens the socket to learn that the server is there, before `ready`.
 
@@ -29,11 +31,13 @@ A text message, and the first message of the dictation.
   "translate_to": "Spanish",
   "vocabulary": ["Claude", "Supabase"],
   "context": "Hi Ana,\n\nThanks for the update",
-  "live": false
+  "live": false,
+  "transcription_prompt": "A software developer speaking Brazilian Portuguese about Git, with English terms such as merge and rebase.",
+  "languages": ["pt", "en"]
 }
 ```
 
-`instructions` says how the speaker wants the text written. The server adds it to its own instructions for the translation if one is requested, or for the rewrite otherwise. It takes precedence over the server's instructions. It is optional: without it, or when it is empty, the server refines its default way.
+`instructions` says how the speaker wants the text written, and what the rewrite needs to know about them to tell a misheard term. The server adds it to its own instructions for the rewrite, and for the translation if one is requested. It takes precedence over the server's instructions. It is optional: without it, or when it is empty, the server refines its default way.
 
 `translate_to` is the language to write the text in, as the speaker typed it, such as `Spanish` or `Brazilian Portuguese`. The refinement then translates what was said, by meaning and not word for word. It is optional: without it, or when it is empty, the text stays in the language spoken.
 
@@ -41,7 +45,15 @@ A text message, and the first message of the dictation.
 
 `context` is the text before the cursor in the field the dictation goes into, as the app read it: the end of it, up to about 2000 characters. The refinement uses it to spell names and terms the same way, match its register, and continue a sentence it leaves unfinished. It is never part of the text: the model does not rewrite or repeat it, nor follow instructions in it. It also decides whether `done` begins with a space. It is optional: without it, or when it is empty, the dictation is written on its own. The transcription does not get it.
 
-`live` says whether the audio is transcribed while the speaker talks. With `true`, the server sends `delta` messages as it hears the words. Without it, or with `false`, the audio is transcribed once the speaker stops, and no `delta` comes: the first text is `done`. Both get the same hints from `vocabulary`.
+`live` says whether the audio is transcribed while the speaker talks. With `true`, the server sends `delta` messages as it hears the words. Without it, or with `false`, the audio is transcribed once the speaker stops, and no `delta` comes: the first text is `done`. Both get the same hints: `vocabulary`, `transcription_prompt`, and `languages`.
+
+`transcription_prompt` describes the speaker's recordings to the transcription: who speaks, in which languages, and about what. It is optional. The server makes it one paragraph, takes out control characters, and cuts it at a word to 1000 characters, for both models: the live model refuses a prompt longer than 1024, and the other one longer than 65536.
+
+`languages` are the languages the speaker speaks, as ISO 639-1 codes, the one spoken most first. They take the place of the server's `TRANSCRIBE_LANGUAGES` for the dictation. It is optional: without it, or when it is empty, the server's are used, and without those the model tells the language itself. The server lowercases each code, drops a region (`pt-BR` is `pt`), leaves out what is not two letters and codes already listed, and passes on the first 10.
+
+The instructions, the transcription prompt, and the languages are the speaker's profile, which the app keeps, and the agent writes in a conversation with the speaker: see [The profile conversation](#the-profile-conversation).
+
+The transcription prompt, the languages, and the vocabulary are hints, and a hint never fails a dictation. When OpenAI refuses them, as it does a language code it does not know, the server transcribes again without them, with its own `TRANSCRIBE_LANGUAGES`, and logs a warning. A recording in parts is transcribed without them from the part refused on.
 
 ### Audio
 
@@ -125,5 +137,97 @@ client                                   server
   │ ── stop ────────────────────────────▶ │
   │ ◀── delta " we ship on friday"        │
   │ ◀── done "So the plan is simple. We ship on Friday." + usage
+  │ ◀──────────────────────────── close ─ │
+```
+
+## The profile conversation
+
+The speaker's profile is what the models are told about them: how they want their text written, what their recordings are like, and the languages they speak. An agent writes it in a conversation with them, by voice: it asks, they answer, and it updates the profile as it learns. The client keeps the profile, and sends it with each `start` of a dictation.
+
+One WebSocket is one turn of the conversation: what the speaker says, and the agent's answer.
+
+```
+ws://<host>:<port>/v1/profile
+```
+
+The server keeps nothing between turns. The client holds the conversation, in memory, and sends it with each turn, with the profile as it is now.
+
+### `start`
+
+A text message, and the first message of the turn.
+
+```json
+{
+  "type": "start",
+  "history": [
+    {
+      "role": "assistant",
+      "text": "Oi! Me conta sobre você: o que você faz e o que costuma ditar?"
+    },
+    { "role": "user", "text": "Sou desenvolvedor de software." },
+    {
+      "role": "assistant",
+      "text": "Você costuma ditar em português, em inglês ou mistura os dois?",
+      "profile": {
+        "instructions": "A pessoa é desenvolvedora de software…",
+        "transcription_prompt": "Desenvolvedor de software falando português.",
+        "languages": ["pt"],
+        "terms": []
+      }
+    }
+  ],
+  "profile": {
+    "instructions": "A pessoa é desenvolvedora de software…",
+    "transcription_prompt": "Desenvolvedor de software falando português.",
+    "languages": ["pt"],
+    "terms": []
+  },
+  "vocabulary": ["Claude"]
+}
+```
+
+| Field        | Meaning                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `history`    | The conversation so far, oldest first. `user` is the speaker and `assistant` the agent. An agent message has the `profile` it wrote, when it changed it, so the agent can undo a change. Optional |
+| `profile`    | The speaker's profile as it is now. `terms` are the terms suggested for their dictionary and not added yet. Optional: without it, the speaker has none                                            |
+| `vocabulary` | The speaker's dictionary. Optional                                                                                                                                                                |
+
+The client opens the conversation itself, with a question of its own, as the first `assistant` message: the agent is not asked for it.
+
+Audio and `stop` follow, as in a dictation. What the speaker says is transcribed live, always, so their words can be shown as they speak, with the profile's transcription prompt and languages, and the dictionary, as hints. It is not rewritten: the agent reads the transcript as it is.
+
+### To the client
+
+| Message                                                                               | Meaning                                                                             |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `{ "type": "ready" }`                                                                 | Transcription is running.                                                           |
+| `{ "type": "delta", "text": "sou des" }`                                              | More of what the speaker says, heard while they talk. Append it to the text so far. |
+| `{ "type": "heard", "text": "Sou desenvolvedor." }`                                   | All of what the speaker said. It replaces the deltas. Empty when nothing was heard. |
+| `{ "type": "reply", "text": "Entendi. " }`                                            | More of the agent's reply, as it is written. Append it to the reply so far.         |
+| `{ "type": "done", "reply": "…", "profile": { … }, "add_terms": [], "usage": { … } }` | The agent's answer. The server closes the socket.                                   |
+| `{ "type": "error", "code": "agent_failed", "message": "…" }`                         | The turn failed. The server closes the socket.                                      |
+
+`done` carries the whole reply, which stands for the `reply` messages, and:
+
+- `profile`: the whole profile, when the agent changed it, in the shape of `start`'s, or `null`. `transcription_prompt` is at most 1000 characters, `languages` are codes the transcription model takes, and `terms` are up to 15 terms suggested for the dictionary, without the ones in it. They are suggestions: the client adds only the ones the speaker accepts.
+- `add_terms`: the terms the speaker asked the agent, in this turn, to add to their dictionary. Usually empty.
+- `usage`: what the turn used, as for a dictation: the audio, and the tokens of the agent.
+
+When nothing was heard, `heard` is empty, the agent is not asked, and `done` has an empty `reply` and no profile.
+
+The errors are those of a dictation, and `agent_failed` when the agent failed, gave an answer that is not one, or took more than 30 s in all, or 5 s without a word. A failure changes nothing: the client keeps the profile it had.
+
+```
+client                                   server
+  │ ── open /v1/profile ────────────────▶ │
+  │ ── start (history, profile) ────────▶ │
+  │ ── audio … ─────────────────────────▶ │
+  │ ◀──────────────────────────── ready ─ │
+  │ ◀── delta "falo português"            │
+  │ ── stop ────────────────────────────▶ │
+  │ ◀── heard "Falo português, com os termos de Git em inglês."
+  │ ◀── reply "Vou manter os termos"      │
+  │ ◀── reply " em inglês. Como você…"    │
+  │ ◀── done reply + profile + usage      │
   │ ◀──────────────────────────── close ─ │
 ```

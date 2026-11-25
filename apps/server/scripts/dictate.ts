@@ -2,6 +2,10 @@
 // with the time of each message. For tuning the pipeline without the desktop app.
 //
 //   pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "Write formally."] [--translate-to "English"] [--term Claude]... [--context "Dear Ana,"] [--live]
+//     [--prompt "A developer speaking Portuguese."] [--language pt]... [--profile profile.json]
+//
+// --profile reads a profile as the profile conversation writes it, and sends its instructions,
+// transcription prompt, languages, and terms, as the app does once the terms are accepted.
 //
 // The file must be 16-bit mono PCM at 24 kHz:
 //   afconvert -f WAVE -d LEI16@24000 -c 1 input.m4a recording.wav
@@ -9,42 +13,16 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { WebSocket } from "ws";
-import { DICTATION_PATH, SAMPLE_RATE, type ServerMessage } from "../src/protocol.ts";
+import {
+  DICTATION_PATH,
+  SAMPLE_RATE,
+  type ServerMessage,
+  type WireProfile,
+} from "../src/protocol.ts";
+import { fatal, readPcm } from "./wav.ts";
 
 const CHUNK_MS = 20;
 const CHUNK_BYTES = ((SAMPLE_RATE * CHUNK_MS) / 1000) * 2;
-
-function fatal(message: string): never {
-  console.error(`error: ${message}`);
-  process.exit(1);
-}
-
-/** Returns the samples of a 16-bit mono 24 kHz WAV file. */
-function readPcm(path: string): Buffer {
-  const file = readFileSync(path);
-  if (file.toString("ascii", 0, 4) !== "RIFF" || file.toString("ascii", 8, 12) !== "WAVE") {
-    fatal(`${path} is not a WAV file.`);
-  }
-  let pcm: Buffer | undefined;
-  let format = "";
-  for (let offset = 12; offset + 8 <= file.length; ) {
-    const id = file.toString("ascii", offset, offset + 4);
-    const size = file.readUInt32LE(offset + 4);
-    const body = file.subarray(offset + 8, offset + 8 + size);
-    if (id === "fmt ") {
-      format = `${body.readUInt16LE(0)}/${body.readUInt16LE(2)}/${body.readUInt32LE(4)}/${body.readUInt16LE(14)}`;
-    } else if (id === "data") {
-      pcm = body;
-    }
-    offset += 8 + size + (size % 2);
-  }
-  if (format !== `1/1/${SAMPLE_RATE}/16` || !pcm) {
-    fatal(
-      `${path} must be 16-bit mono PCM at 24 kHz. Convert it with:\n  afconvert -f WAVE -d LEI16@24000 -c 1 ${path} converted.wav`,
-    );
-  }
-  return pcm;
-}
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -54,15 +32,28 @@ const { positionals, values } = parseArgs({
     term: { type: "string", multiple: true, default: [] },
     context: { type: "string", default: "" },
     live: { type: "boolean", default: false },
+    prompt: { type: "string", default: "" },
+    language: { type: "string", multiple: true, default: [] },
+    profile: { type: "string" },
   },
 });
 const [path, server = "ws://127.0.0.1:8787"] = positionals;
 if (!path) {
   fatal(
-    'usage: pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "..."] [--translate-to "..."] [--term "..."]... [--context "..."] [--live]',
+    'usage: pnpm dictate recording.wav [ws://127.0.0.1:8787] [--instructions "..."] [--translate-to "..."] [--term "..."]... [--context "..."] [--live] [--prompt "..."] [--language pt]... [--profile profile.json]',
   );
 }
 
+/** A profile as the profile conversation writes it. */
+function readProfile(path: string): Partial<WireProfile> {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    fatal(`${path} is not a profile: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+const profile = values.profile ? readProfile(values.profile) : {};
 const pcm = readPcm(path);
 const ws = new WebSocket(server + DICTATION_PATH);
 const startedAt = Date.now();
@@ -92,11 +83,13 @@ ws.on("open", () => {
   ws.send(
     JSON.stringify({
       type: "start",
-      instructions: values.instructions,
+      instructions: values.instructions || profile.instructions || "",
       translate_to: values["translate-to"],
-      vocabulary: values.term,
+      vocabulary: [...values.term, ...(profile.terms ?? [])],
       context: values.context,
       live: values.live,
+      transcription_prompt: values.prompt || profile.transcription_prompt || "",
+      languages: values.language.length > 0 ? values.language : (profile.languages ?? []),
     }),
   );
   let offset = 0;

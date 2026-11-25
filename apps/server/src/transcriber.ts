@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { OpenAIRealtimeError } from "openai/realtime/index";
 import { OpenAIRealtimeWS } from "openai/realtime/ws";
 import type { RealtimeClientEvent } from "openai/resources/realtime/realtime";
 import { SAMPLE_RATE } from "./protocol.ts";
@@ -15,8 +16,8 @@ export interface TranscriberEvents {
   final(turn: number, text: string): void;
   error(error: Error): void;
   /**
-   * OpenAI refused the hints, such as a prompt it finds too long. The transcription goes on
-   * without them. `param` names the hint refused.
+   * OpenAI refused the session with the hints, such as a prompt it finds too long. The
+   * transcription goes on without them. `param` names the hint refused.
    */
   hintsRejected(rejection: { code: string; param: string }): void;
 }
@@ -53,7 +54,11 @@ export interface Transcriber {
 /** What the transcriber is told about the audio it will hear. */
 export interface TranscriptionHints {
   /** Names and terms that may be said, as they are spelled. */
-  keywords: readonly string[];
+  keywords?: readonly string[];
+  /** What the recording is like: who speaks, in what languages, about what. */
+  prompt?: string;
+  /** The languages spoken, as ISO 639-1 codes. They take the place of the server's. */
+  languages?: readonly string[];
 }
 
 export type CreateTranscriber = (
@@ -63,6 +68,7 @@ export type CreateTranscriber = (
 
 export interface OpenAITranscriberOptions {
   model: string;
+  /** The languages spoken, when a dictation does not say. */
   languages: string[];
 }
 
@@ -75,12 +81,16 @@ const MIN_COMMIT_BYTES = (SAMPLE_RATE / 10) * 2;
  * The audio is sent as turns that the caller commits: a dictation is one turn, a meeting
  * channel many. The model hears each turn whole, so it punctuates and recognizes better
  * than on audio cut at every pause.
+ *
+ * The hints are only hints: when OpenAI refuses the session with them, the session is
+ * configured again without them, with the server's own languages, and the transcription goes
+ * on.
  */
 export function createOpenAITranscriber(
   client: OpenAI,
   options: OpenAITranscriberOptions,
 ): CreateTranscriber {
-  return (events, { keywords } = { keywords: [] }) => {
+  return (events, { keywords = [], prompt = "", languages = [] } = {}) => {
     const realtime = new OpenAIRealtimeWS({ intent: "transcription" }, client);
     // Item ids in order of first appearance. Each commit makes one item, so the index of
     // an item is its turn.
@@ -112,8 +122,17 @@ export function createOpenAITranscriber(
       );
     };
 
-    realtime.socket.on("open", () => {
-      opened = true;
+    // The server's own languages are its configuration, not a hint: they stay when the hints go.
+    const configured = options.languages.length > 0 ? { languages: [...options.languages] } : {};
+    const hints = {
+      ...configured,
+      ...(languages.length > 0 && { languages: [...languages] }),
+      ...(keywords.length > 0 && { keywords: [...keywords] }),
+      ...(prompt !== "" && { prompt }),
+    };
+    /** Whether the session update OpenAI is answering has the hints of this transcription. */
+    let hinted = languages.length > 0 || keywords.length > 0 || prompt !== "";
+    const configure = () => {
       realtime.send({
         type: "session.update",
         session: {
@@ -121,19 +140,30 @@ export function createOpenAITranscriber(
           audio: {
             input: {
               format: { type: "audio/pcm", rate: SAMPLE_RATE },
-              transcription: {
-                model: options.model,
-                ...(options.languages.length > 0 && { languages: options.languages }),
-                ...(keywords.length > 0 && { keywords: [...keywords] }),
-              },
+              transcription: { model: options.model, ...(hinted ? hints : configured) },
               turn_detection: null,
             },
           },
         },
       });
+    };
+
+    realtime.socket.on("open", () => {
+      opened = true;
+      configure();
     });
     realtime.socket.on("close", () => fail(new Error("Transcription connection closed")));
-    realtime.on("error", fail);
+    realtime.on("error", (error: OpenAIRealtimeError) => {
+      // Until the session is configured, nothing else is sent, so an error from OpenAI is
+      // about the session update: one with hints is sent again without them.
+      if (queued && hinted && error.error && !closed) {
+        hinted = false;
+        events.hintsRejected({ code: error.error.code ?? "", param: error.error.param ?? "" });
+        configure();
+        return;
+      }
+      fail(error);
+    });
 
     realtime.on("session.updated", () => {
       if (!queued) return;

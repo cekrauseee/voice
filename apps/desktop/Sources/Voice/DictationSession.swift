@@ -30,13 +30,14 @@ final class DictationSession {
   /// `context` is the text before the cursor in the field the text goes into, if known.
   /// `live` asks for the words to be transcribed while the speaker talks, for the pill to show.
   init(
-    server: URL, instructions: String, translateTo: String, vocabulary: [String],
+    server: URL, profile: Profile, translateTo: String, vocabulary: [String],
     context: String = "", live: Bool = false
   ) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
     opening = .start(
-      instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
-      context: context, live: live)
+      instructions: profile.instructions, translateTo: translateTo, vocabulary: vocabulary,
+      context: context, live: live, transcriptionPrompt: profile.transcriptionPrompt,
+      languages: profile.languages)
   }
 
   func start() {

@@ -29,17 +29,7 @@ struct SettingsView: View {
           SettingRow(title: "Media", detail: mediaDetail) {
             HStack(spacing: Design.small) {
               if needsSystemAudio {
-                Button("Allow", action: permissions.requestSystemAudio)
-                  .buttonStyle(.plain)
-                  .font(.voiceLabel)
-                  .padding(.horizontal, 10)
-                  .frame(height: 26)
-                  .background(
-                    Design.surface,
-                    in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
-                  )
-                  .contentShape(Rectangle())
-                  .pointer()
+                TextButton(title: "Allow", action: permissions.requestSystemAudio)
                   .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
               }
               if settings.mediaBehavior == .lower {
@@ -118,33 +108,6 @@ struct SettingsView: View {
               options: EnterBehavior.allCases.map { ($0, $0.title) },
               selection: $settings.enterBehavior)
           }
-        }
-
-        group("Instructions") {
-          TextEditor(text: $settings.instructions)
-            .font(.voiceBody)
-            .scrollContentBackground(.hidden)
-            .frame(height: 64)
-            .overlay(alignment: .topLeading) {
-              if settings.instructions.isEmpty {
-                Text("Write in a formal tone.")
-                  .font(.voiceBody)
-                  .foregroundStyle(.tertiary)
-                  .padding(.leading, 5)
-                  .allowsHitTesting(false)
-              }
-            }
-            .padding(.horizontal, Design.small - 5)
-            .padding(.vertical, Design.small)
-            .background(
-              Design.surface,
-              in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
-            )
-            .padding(.vertical, Design.tight)
-          Text("How to write what you say. Added to the built-in instructions.")
-            .font(.voiceCaption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, Design.small)
         }
 
         group("History") {

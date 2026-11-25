@@ -2,10 +2,14 @@ import AVFoundation
 import Observation
 import VoiceCore
 
-/// Runs dictations: records while a shortcut says so, and types what comes back.
+/// Runs dictations: records while a shortcut says so, and types what comes back. On the
+/// profile page, what is recorded goes to the agent instead, as a turn of the conversation.
 @MainActor @Observable
 final class DictationController {
+  /// The state of the recording. The pill shows it, for a dictation.
   private(set) var pill: PillState = .hidden
+  /// Where the recording goes: it is decided when the recording starts.
+  private(set) var target = ShortcutTarget.dictation
   private(set) var transcript = Transcript()
   private(set) var mode: RecordingMode = .toggle
   /// Whether the dictation records without a connection. It is sent once it ends.
@@ -22,8 +26,13 @@ final class DictationController {
   @ObservationIgnored private let inserter = TextInserter()
   @ObservationIgnored private let media: MediaPause
   @ObservationIgnored private let others = OtherAudio()
+  /// Where a recording that starts now goes. A dictation, unless the app says otherwise.
+  @ObservationIgnored var route: () -> ShortcutTarget = { .dictation }
   /// The dictation the pill shows.
   @ObservationIgnored private var dictation: Dictation?
+  /// The turn of the profile conversation the page shows, while it is recorded and answered.
+  @ObservationIgnored private var turn: ProfileTurnSession?
+  @ObservationIgnored private let conversation: ProfileConversation
   @ObservationIgnored private var audio: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
   /// Says the microphone is starting, when it does not deliver sound right away.
@@ -32,11 +41,12 @@ final class DictationController {
 
   init(
     settings: Settings, permissions: Permissions, history: HistoryStore,
-    statistics: StatisticsStore
+    statistics: StatisticsStore, conversation: ProfileConversation
   ) {
     self.settings = settings
     self.history = history
     self.statistics = statistics
+    self.conversation = conversation
     media = MediaPause(
       isPlaying: MediaControl.isPlaying, send: MediaControl.send,
       soundIsBack: { [capture, others] in
@@ -56,6 +66,12 @@ final class DictationController {
 
   var isRecording: Bool {
     pill.isRecording
+  }
+
+  /// What the pill shows: nothing for a turn of the profile conversation, which the page
+  /// shows instead.
+  var shownPill: PillState {
+    target == .dictation ? pill : .hidden
   }
 
   var allowsShiftToStop: Bool {
@@ -90,6 +106,10 @@ final class DictationController {
 
   private func start(_ mode: RecordingMode) {
     guard !isRecording else { return }
+    let target = route()
+    // The profile page is in front, and the agent is still on the last turn.
+    if target == .none { return }
+    self.target = target
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
     case .authorized:
       break
@@ -114,6 +134,7 @@ final class DictationController {
     pill = .listening
     startedAt = .now
     let chunks = capture.start(with: settings.microphone)
+    guard target.keepsRecording else { return talk(chunks) }
     // Read once the microphone is opening, so the recording does not wait for it.
     var context = ""
     if settings.usesFieldText {
@@ -123,7 +144,7 @@ final class DictationController {
     }
 
     let dictation = Dictation(
-      server: settings.serverURL, instructions: settings.instructions,
+      server: settings.serverURL, profile: settings.profile,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary, context: context,
       live: settings.transcribesLive,
       delivery: DictationDelivery(
@@ -145,7 +166,7 @@ final class DictationController {
     session.start()
     self.dictation = dictation
     media.pause(settings.mediaBehavior)
-    log.info("started", ["mode": mode, "context_chars": context.count])
+    log.info("started", ["mode": mode, "target": target, "context_chars": context.count])
 
     // The Mac's own microphone delivers sound in about a tenth of a second, a Bluetooth
     // headset in about a second, while it switches to call quality. When it takes longer
@@ -183,10 +204,62 @@ final class DictationController {
     }
   }
 
+  /// A turn of the profile conversation: what is said goes to the agent, live, and nothing is
+  /// typed, kept, or counted. A turn that fails says so in the conversation, and the user says
+  /// it again: nothing is kept to send again.
+  private func talk(_ chunks: AsyncStream<AudioChunk>) {
+    dictation = nil
+    let turn = conversation.turn()
+    turn.onEnd = { [weak self, weak turn] error in
+      guard let self, let turn, self.turn === turn else { return }
+      self.turn = nil
+      if let error {
+        finish(error)
+      } else if pill == .finishing {
+        pill = .hidden
+        log.info("finished", ["duration_ms": elapsed, "target": ShortcutTarget.conversation])
+      }
+    }
+    self.turn = turn
+    turn.start()
+    media.pause(settings.mediaBehavior)
+    log.info("started", ["mode": mode, "target": ShortcutTarget.conversation])
+
+    warming = Task {
+      try? await Task.sleep(for: .milliseconds(250))
+      if !Task.isCancelled, self.turn === turn, pill == .listening { pill = .starting }
+    }
+
+    audio = Task {
+      var isLive = false
+      for await chunk in chunks {
+        if !isLive, !Level.isZero(chunk.pcm) {
+          isLive = true
+          warming?.cancel()
+          if pill == .starting { pill = .listening }
+          log.debug("recording", ["microphone_ms": elapsed])
+        }
+        turn.send(chunk.pcm)
+        levels.push(chunk.level)
+      }
+      guard !Task.isCancelled else { return }
+      if self.turn === turn, pill.isRecording {
+        // Nobody stopped the recording: the microphone did not start.
+        turn.cancel()
+        self.turn = nil
+        finish(.microphoneUnavailable)
+      } else {
+        // The recording ended and all of it is sent. The agent answers.
+        turn.stop()
+      }
+    }
+  }
+
   private func stop(shiftHeld: Bool) {
     dictation?.delivery.stop(shiftHeld: shiftHeld)
     release()
     pill = .finishing
+    if target == .conversation { conversation.stopped() }
   }
 
   private func cancel() {
@@ -197,6 +270,11 @@ final class DictationController {
     dictation?.sending?.cancel()
     dictation?.sending = nil
     dictation = nil
+    if target == .conversation {
+      turn?.cancel()
+      turn = nil
+      conversation.cancelled()
+    }
     isOffline = false
     pill = .hidden
     log.info("cancelled", ["duration_ms": elapsed])
@@ -313,6 +391,7 @@ final class DictationController {
   /// Shows the error for a moment.
   private func fail(_ error: DictationError) {
     log.error("failed", ["reason": error.reason])
+    if target == .conversation { conversation.failed(error) }
     pill = .failed(error)
     dismissal?.cancel()
     dismissal = Task {
@@ -336,18 +415,18 @@ private final class Dictation {
   var usage: Usage?
 
   private let server: URL
-  private let instructions: String
+  private let profile: Profile
   private let translateTo: String
   private let vocabulary: [String]
   /// The text before the cursor in the field the text goes into, if known.
   private let context: String
 
   init(
-    server: URL, instructions: String, translateTo: String, vocabulary: [String],
+    server: URL, profile: Profile, translateTo: String, vocabulary: [String],
     context: String, live: Bool, delivery: DictationDelivery
   ) {
     self.server = server
-    self.instructions = instructions
+    self.profile = profile
     self.translateTo = translateTo
     self.vocabulary = vocabulary
     self.context = context
@@ -363,7 +442,7 @@ private final class Dictation {
   /// A session with the server for this dictation, with what it was started with.
   func session(live: Bool) -> DictationSession {
     DictationSession(
-      server: server, instructions: instructions, translateTo: translateTo,
-      vocabulary: vocabulary, context: context, live: live)
+      server: server, profile: profile, translateTo: translateTo, vocabulary: vocabulary,
+      context: context, live: live)
   }
 }

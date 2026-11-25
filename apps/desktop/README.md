@@ -58,11 +58,14 @@ The app needs two permissions:
 
 A third one, System Audio Recording, is optional, and the app never asks for it by itself. With it, the app mutes the other apps alone while a dictation records. Without it, the Mute setting mutes the Mac's output instead, and the Pause setting pauses the media and leaves the other apps playing. The settings ask for it only when Mute is chosen and the output cannot be muted, as with most displays: the Media row then shows Allow.
 
-On first launch a setup window takes the user through three steps, one at a time:
+On first launch a setup window takes the user through four steps:
 
 1. **Accessibility.** Open Settings adds the app to the Accessibility list in System Settings and opens that page. The user turns the app on there.
 2. **Microphone.** Allow shows the macOS prompt.
 3. **Try it.** A text field takes the focus. Holding the push-to-talk shortcut and speaking types into it.
+4. **About you.** Optional. Open Profile opens the [profile](#the-profile) page in the app's window, where the user tells an agent about themselves, with the shortcut they just tried. The step is done once the agent has written their profile.
+
+The permissions come first, one at a time. Once they are granted, the last two steps can be taken in either order, or left.
 
 Under the steps is Open at login, off by default. It is not a step: the setup is done without it, and it is the same setting as in the app's window.
 
@@ -101,9 +104,11 @@ The text is typed once, when the recording ends and the server has refined it. I
 
 ## The window
 
-The app lives in the menu bar. Its menu opens the app's window on one of its three sections:
+The app lives in the menu bar. Its menu opens the app's window on one of its sections:
 
 - **Transcriptions**: what was dictated before, day by day, newest first. Each one shows when it was dictated, the start of its text, and how long the recording was. Clicking one opens its page, made for reading a long one: all of the text, which can be selected, and the recording, which can be played. The page's header has the way back, which Escape also takes, and buttons to copy and delete. In the list, hovering shows a button to copy a transcription, and the context menu deletes it.
+- **Profile**: what the app knows about the user, to write their words right. See [the profile](#the-profile).
+- **Dictionary**: the names and terms the user says, spelled the way they write them. Each dictation is told about them.
 - **Statistics**: how much was dictated today, in the last 7 days, in the last 30 days, or in all time: the words, the words per minute, the dictations, the time speaking, the tokens the refinement took, and an estimate of the cost. Under them is a chart of the words of each day: of each hour for today, and of each month once there are more than 90 days. Pointing at a bar shows when it is and its words.
 - **Settings**: the settings below.
 
@@ -145,8 +150,30 @@ Settings:
 - **Live transcription**: transcribes while you speak, with `gpt-live-transcribe`, so the detailed pill shows your words as they are heard. Off by default: the recording is transcribed once it ends, with `gpt-transcribe`, which costs about a quarter as much and types the text a moment later, under a second for a short dictation. Both get the same dictionary. A dictation tried again from the history is never live.
 - **Keep on clipboard**: leaves the pasted transcription on the clipboard, replacing its previous contents. Off by default.
 - **Press Enter**: Never, the default; With Shift, when Shift is held as you stop recording; or Always. Enter follows the paste. The choice is remembered for that dictation, so Shift can be released while the text is being refined. A failed or empty dictation never presses Enter. These preferences apply to new dictations.
-- **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
 - **History**: how long transcriptions and their recordings are kept before they are deleted by themselves, chosen from a menu.
+
+## The profile
+
+The Profile page is a conversation with an agent, by voice, that writes the user's profile: what each dictation is told about them. The profile is the writing instructions, a description of the user's recordings, and the languages they speak: see [the architecture](../../docs/architecture.md#the-profile).
+
+While the window is in front on this page, the push-to-talk and toggle shortcuts talk to the agent instead of dictating. Anywhere else they dictate as always. There is no pill: the page shows the conversation.
+
+- The agent opens with a question, in the language of the Mac or in English, or asks what to change when there is a profile already.
+- The user answers with the shortcut. Their words fill in a message on the right as they are heard, dimmed until they stop, as in the pill.
+- The agent's reply comes in on the left as it is written, about a second after the user stops. Under the messages, a line says what is happening: what to hold, Listening, Thinking, or what went wrong. Escape cancels a turn, and a turn that fails leaves nothing. Unlike a dictation, a turn is not kept to send again when there is no connection: the line says so, and the user says it again once it is back.
+- The agent asks one question at a time, says when it has enough, and from then on changes the profile as the user asks, including undoing a change.
+
+Beside the conversation is the profile, as the agent has written it, to read. It changes as the conversation goes, and only through it: nothing on the page is typed.
+
+- **Writing**: the instructions every dictation is written with.
+- **Suggested words**: names and terms of the user's field, for the dictionary. A click adds one, and Add All adds them all. Asking the agent adds them too, and the conversation notes it. None is added otherwise.
+- **Languages** and **Listens for**: what the transcription is told.
+
+The header has New Conversation, which starts over from the profile as it is, and the trash button, which clears the profile and starts over. The dictionary stays.
+
+Nothing the user says is kept. The conversation is held in memory until the app quits: it is not written to disk, not in the history, not counted in the statistics, and not logged. A turn is not a dictation: nothing is typed, and there is no recording. The media pauses or mutes while the user speaks, as for a dictation. Only the profile and the terms added are kept.
+
+The profile replaces the Instructions setting. Instructions set before it become the profile's writing instructions, and the agent starts from them.
 
 ## Microphone and media
 
@@ -206,7 +233,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, the text read from the focused field, when media is paused and resumed, how an output is kept quiet, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the profile and the terms it suggests, the profile conversation and where the shortcuts send what is said, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, the text read from the focused field, when media is paused and resumed, how an output is kept quiet, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -221,6 +248,9 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/HistoryStore.swift`                                  | The files that keep the past transcriptions and their recordings |
 | `Sources/Voice/Retry.swift`, `Player.swift`                         | Transcribing a failed dictation again, and playing a recording   |
 | `Sources/Voice/StatisticsView.swift`, `StatisticsStore.swift`       | The page of figures, and the file that keeps them                |
+| `Sources/Voice/ProfileView.swift`, `ProfileConversation.swift`      | The profile page, and the conversation it holds, in memory       |
+| `Sources/Voice/ProfileTurnSession.swift`                            | The WebSocket of one turn of the conversation                    |
+| `Sources/Voice/DictionaryView.swift`                                | The dictionary page                                              |
 | `Sources/Voice/Permissions.swift`                                   | The state of the permissions                                     |
 | `Sources/Voice/LoginItem.swift`                                     | Whether macOS opens the app at login                             |
 | `Sources/Voice/OnboardingView.swift`                                | The setup window                                                 |

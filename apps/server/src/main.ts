@@ -1,5 +1,6 @@
 import { createLogger, type Fields } from "@voice/log";
 import OpenAI from "openai";
+import { createOpenAIAgent } from "./agent.ts";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
 import { DICTATION_PATH } from "./protocol.ts";
 import { createOpenAIRecordingTranscriber } from "./recording.ts";
@@ -54,6 +55,7 @@ const {
   liveTranscribeModel,
   transcribeLanguages,
   refineModel,
+  profileReasoning,
   prices,
   stopWithParent,
 } = config();
@@ -70,6 +72,7 @@ const server = createServer({
     languages: transcribeLanguages,
   }),
   createRefiner: createOpenAIRefiner(client, { model: refineModel }),
+  createAgent: createOpenAIAgent(client, { model: refineModel, reasoning: profileReasoning }),
   prices,
   log,
 });

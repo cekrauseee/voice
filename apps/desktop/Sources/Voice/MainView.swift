@@ -6,6 +6,7 @@ import VoiceCore
 /// A section of the app's window.
 enum AppSection: String, CaseIterable, Identifiable {
   case transcriptions
+  case profile
   case dictionary
   case statistics
   case settings
@@ -15,6 +16,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .transcriptions: "Transcriptions"
+    case .profile: "Profile"
     case .dictionary: "Dictionary"
     case .statistics: "Statistics"
     case .settings: "Settings"
@@ -24,6 +26,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .transcriptions: "text.quote"
+    case .profile: "person.crop.circle"
     case .dictionary: "character.book.closed"
     case .statistics: "chart.bar"
     case .settings: "gearshape"
@@ -54,11 +57,14 @@ struct MainView: View {
   let retry: Retry
   let loginItem: LoginItem
   let permissions: Permissions
+  let conversation: ProfileConversation
+  let controller: DictationController
   @Bindable var settings: Settings
 
   @Environment(\.windowButtonsWidth) private var windowButtonsWidth
   @State private var didCopy = false
   @State private var isDeleting = false
+  @State private var isClearingProfile = false
   /// The period the statistics are shown for.
   @State private var period = Statistics.Period.week
 
@@ -75,6 +81,11 @@ struct MainView: View {
           Group {
             switch navigation.section {
             case .transcriptions: transcriptions
+            case .profile:
+              ProfileView(
+                settings: settings, conversation: conversation, levels: controller.levels,
+                isMicrophoneStarting: controller.target == .conversation
+                  && controller.pill == .starting)
             case .dictionary: DictionaryView(terms: $settings.vocabulary)
             case .statistics:
               StatisticsView(statistics: statistics.statistics, period: period)
@@ -155,6 +166,25 @@ struct MainView: View {
         )
         // Its edge is the edge of the page under it.
         .padding(.trailing, Design.wide - Design.small)
+      }
+      if navigation.section == .profile {
+        HStack(spacing: 2) {
+          if conversation.conversation.hasStarted {
+            IconButton(symbol: "arrow.counterclockwise", help: "New Conversation") {
+              conversation.restart()
+            }
+            .disabled(!conversation.canTalk)
+          }
+          if !settings.profile.isEmpty {
+            IconButton(symbol: "trash", help: "Clear Profile") { isClearingProfile = true }
+              .disabled(!conversation.canTalk)
+              .confirmationDialog("Clear your profile?", isPresented: $isClearingProfile) {
+                Button("Clear", role: .destructive, action: conversation.clear)
+              } message: {
+                Text("The conversation starts over. Your dictionary stays.")
+              }
+          }
+        }
       }
       if let open {
         HStack(spacing: 2) {

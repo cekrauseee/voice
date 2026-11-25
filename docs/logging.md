@@ -105,6 +105,7 @@ The development build uses the subsystem `eu.cekrause.voice.dev`.
 | `env`         | server  | Changes to `apps/server/.env` made by `pnpm dev`                       |
 | `server`      | server  | Startup, the address it listens on, and why it cannot start            |
 | `dictation`   | server  | Each dictation: started, its timings, ended                            |
+| `profile`     | server  | Each turn of the profile conversation: started, its timings, ended     |
 | `build`       | desktop | Compiling and signing the app                                          |
 | `desktop`     | desktop | The development script: running and quitting the app                   |
 | `reset`       | desktop | Forgetting the app's permissions and settings                          |
@@ -112,6 +113,7 @@ The development build uses the subsystem `eu.cekrause.voice.dev`.
 | `permissions` | app     | The state of the permissions, and each change                          |
 | `setup`       | app     | The step the setup is on                                               |
 | `dictation`   | app     | Each dictation: started, finished, cancelled, failed                   |
+| `profile`     | app     | Each turn of the profile conversation, never what was said             |
 | `history`     | app     | Loading, saving, and pruning the past transcriptions, never their text |
 | `retry`       | app     | Transcribing a failed dictation again                                  |
 | `statistics`  | app     | Loading and saving the figures of what was dictated                    |

@@ -1,26 +1,12 @@
 import type { Logger } from "@voice/log";
+import { normalizeLanguages, normalizePrompt } from "./hints.ts";
 import { joinAfter } from "./joining.ts";
-import {
-  BYTES_PER_SECOND,
-  type ErrorCode,
-  type Prices,
-  type ServerMessage,
-  type Start,
-  usage,
-} from "./protocol.ts";
+import { type Prices, type ServerMessage, type Start, usage } from "./protocol.ts";
 import { type CreateRefiner, type Refinement, RefinementError, type Refiner } from "./refiner.ts";
-import { type CreateTranscriber, isUnreachable, type Transcriber } from "./transcriber.ts";
+import type { CreateTranscriber } from "./transcriber.ts";
+import { type Answering, chargedAt, SpeechTurn } from "./turn.ts";
 import { normalizeVocabulary } from "./vocabulary.ts";
 
-/** How long transcription may take to be ready for audio. */
-const READY_TIMEOUT_MS = 10_000;
-/** How long the live transcriber may send nothing once the speaker has stopped. */
-const TRANSCRIPT_TIMEOUT_MS = 5_000;
-/**
- * How long a recording may take to be transcribed once the speaker has stopped, plus a tenth
- * of its length: a long one is sent in parts.
- */
-const RECORDING_TIMEOUT_MS = 60_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
 
@@ -38,54 +24,29 @@ export interface SessionDeps {
   log: Logger;
 }
 
-/** What a dictation runs on, from the moment the client starts it. */
-interface Started {
-  transcriber: Transcriber;
-  refiner: Refiner;
-  /** How the speaker wants the text written. */
-  instructions: string;
-  /** The language to write the text in. Empty to keep the speaker's. */
-  translateTo: string;
-  /** Names and terms the speaker uses, as they spell them. */
-  vocabulary: string[];
-  /** Whether the audio is transcribed while the speaker talks. */
-  live: boolean;
-  /** The text before the cursor in the field the dictation goes into. Empty when unknown. */
-  context: string;
-}
+/** What the refinement is asked for. */
+type Wanted = Omit<Start, "transcriptionPrompt" | "languages" | "live">;
 
 /**
  * One dictation: audio in, one refined text out.
  *
- * The audio is transcribed as a single turn while the speaker talks, and the text heard is
- * passed on as it comes. When the speaker stops, the complete transcript is refined, and the
+ * The audio is transcribed as one turn, once the speaker stops, or, live, while they talk,
+ * with the text heard passed on as it comes. The complete transcript is refined, and the
  * result ends the dictation.
  */
 export class DictationSession {
   private readonly deps: SessionDeps;
-  private readonly abort = new AbortController();
-  private readonly startedAt = Date.now();
-  private started: Started | undefined;
-  /** The text heard so far. */
-  private heard = "";
-  /** How much audio the client sent. */
-  private audioBytes = 0;
-  private ready = false;
-  private stoppedAt: number | undefined;
-  /** Set once the transcript is complete. Nothing from the transcriber matters after it. */
-  private transcribed = false;
-  private readyTimer: NodeJS.Timeout | undefined;
-  private transcriptTimer: NodeJS.Timeout | undefined;
-  private ended = false;
+  private readonly turn: SpeechTurn<ServerMessage>;
 
   constructor(deps: SessionDeps) {
     this.deps = deps;
+    this.turn = new SpeechTurn<ServerMessage>(deps);
   }
 
   /**
    * The client opens the dictation, with how and in what language the speaker wants the text,
-   * the names and terms they use, the text the dictation follows in the field, and whether
-   * it is transcribed while they talk.
+   * the names and terms they use, the text the dictation follows in the field, whether it is
+   * transcribed while they talk, and what their recordings are like.
    */
   start({
     instructions = "",
@@ -93,167 +54,72 @@ export class DictationSession {
     vocabulary: terms = [],
     context = "",
     live = false,
+    transcriptionPrompt = "",
+    languages: codes = [],
   }: Partial<Start> = {}): void {
-    if (this.ended) return;
-    if (this.started) {
-      this.reject();
-      return;
-    }
     const vocabulary = normalizeVocabulary(terms);
-    const createTranscriber = live ? this.deps.createLiveTranscriber : this.deps.createTranscriber;
-    this.started = {
-      transcriber: createTranscriber(
-        {
-          ready: () => this.onReady(),
-          delta: (_turn, text) => this.onDelta(text),
-          final: (_turn, text) => this.onFinal(text),
-          error: (error) => this.onError(error),
-          hintsRejected: ({ code, param }) => {
-            this.deps.log.warn("transcription hints rejected", {
-              code,
-              param,
-              hint: "the dictation goes on without them",
-            });
-          },
-        },
-        { keywords: vocabulary },
-      ),
-      refiner: this.deps.createRefiner(),
-      instructions,
-      translateTo,
-      vocabulary,
-      context,
-      live,
-    };
-    this.readyTimer = setTimeout(() => {
-      this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
-      this.fail("timeout", "Transcription timed out");
-    }, READY_TIMEOUT_MS);
+    const prompt = normalizePrompt(transcriptionPrompt);
+    const languages = normalizeLanguages(codes);
+    const wanted: Wanted = { instructions, translateTo, vocabulary, context };
+    const started = this.turn.begin({ keywords: vocabulary, prompt, languages }, live, () => {
+      const refiner = this.deps.createRefiner();
+      return {
+        respond: (transcript, answering) => this.respond(transcript, refiner, wanted, answering),
+        close: () => refiner.close(),
+      };
+    });
+    if (!started) return;
     this.deps.log.info("started", {
       instructions_chars: instructions.trim().length,
       live,
       translates: translateTo.trim() !== "",
       vocabulary_terms: vocabulary.length,
       context_chars: context.length,
+      prompt_chars: prompt.length,
+      languages: languages.length,
     });
   }
 
   audio(pcm: Buffer): void {
-    if (this.ended || this.stoppedAt !== undefined) return;
-    if (!this.started) {
-      this.reject();
-      return;
-    }
-    this.audioBytes += pcm.length;
-    this.started.transcriber.append(pcm);
+    this.turn.audio(pcm);
   }
 
   /** The client finished speaking: complete the transcript, refine it, then end. */
   stop(): void {
-    if (this.ended || this.stoppedAt !== undefined) return;
-    if (!this.started) {
-      this.reject();
-      return;
-    }
-    this.stoppedAt = Date.now();
-    this.started.transcriber.commit();
-    // Audio sent before transcription is ready waits for it, and so does the transcript.
-    if (this.ready) this.awaitTranscript();
+    this.turn.stop();
   }
 
   /** The client sent something that is not part of the protocol. */
   reject(): void {
-    this.fail("bad_request", "Unexpected message");
+    this.turn.reject();
   }
 
   /** The client went away: drop everything. */
   close(): void {
-    this.end("cancelled");
+    this.turn.close();
   }
 
-  private onReady(): void {
-    this.ready = true;
-    clearTimeout(this.readyTimer);
-    this.send({ type: "ready" });
-    if (this.stoppedAt !== undefined && !this.transcribed) this.awaitTranscript();
-  }
-
-  /**
-   * Gives the transcriber a fresh while to send what comes next: a live one sends text as it
-   * goes, and a recording takes the time to be transcribed whole.
-   */
-  private awaitTranscript(): void {
-    clearTimeout(this.transcriptTimer);
-    const timeout = this.started?.live
-      ? TRANSCRIPT_TIMEOUT_MS
-      : RECORDING_TIMEOUT_MS + (this.audioBytes / BYTES_PER_SECOND) * 100;
-    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), timeout);
-  }
-
-  private onDelta(text: string): void {
-    if (this.transcribed) return;
-    if (this.stoppedAt !== undefined) this.awaitTranscript();
-    // The first words arrive with a space before them.
-    const delta = this.heard === "" ? text.trimStart() : text;
-    if (delta === "") return;
-    this.heard += delta;
-    this.send({ type: "delta", text: delta });
-  }
-
-  private onFinal(text: string): void {
-    if (this.stoppedAt === undefined || this.transcribed) return;
-    void this.finish(text.trim());
-  }
-
-  /** The transcriber went silent before completing the transcript. What was heard stands in. */
-  private onTranscriptTimeout(): void {
-    const heard = this.heard.trim();
-    if (heard === "") {
-      this.fail("timeout", "Transcription timed out");
-    } else {
-      this.deps.log.warn("transcript timed out", { chars: heard.length });
-      void this.finish(heard);
-    }
-  }
-
-  private onError(error: Error): void {
-    if (this.transcribed) return;
-    if (isUnreachable(error)) {
-      this.deps.log.error("transcription unreachable", {
-        error: error.message,
-        hint: "check the network of the server",
-      });
-      this.fail("unreachable", "OpenAI could not be reached");
-      return;
-    }
-    this.deps.log.error("transcription failed", { error: error.message });
-    this.fail("transcription_failed", "Transcription failed");
-  }
-
-  private async finish(transcript: string): Promise<void> {
-    const started = this.started;
-    if (this.ended || !started) return;
-    this.transcribed = true;
-    clearTimeout(this.transcriptTimer);
-    this.deps.log.info("transcribed", {
-      transcript_ms: Date.now() - (this.stoppedAt ?? Date.now()),
-      chars: transcript.length,
-    });
+  /** Refines the transcript and sends it, with what the dictation used. */
+  private async respond(
+    transcript: string,
+    refiner: Refiner,
+    wanted: Wanted,
+    { audioSeconds, live, signal, send }: Answering<ServerMessage>,
+  ): Promise<string> {
     const unrefined = { text: transcript, inputTokens: 0, outputTokens: 0 };
-    const refined = transcript === "" ? unrefined : await this.refine(transcript, started);
-    if (this.ended) return;
-    const { prices } = this.deps;
+    const refined =
+      transcript === "" ? unrefined : await this.refine(transcript, refiner, wanted, signal);
     const used = usage(
-      // Live transcription is charged at its own price.
-      started.live ? { ...prices, transcribeMinute: prices.liveTranscribeMinute } : prices,
-      this.audioBytes / BYTES_PER_SECOND,
+      chargedAt(this.deps.prices, live),
+      audioSeconds,
       refined.inputTokens,
       refined.outputTokens,
     );
+    if (signal.aborted) return "cancelled";
     this.deps.log.info("used", { ...used });
     // The text goes right after the text before the cursor, and may need a space to follow it.
-    this.send({ type: "done", text: joinAfter(started.context, refined.text), usage: used });
-    this.end("done");
+    send({ type: "done", text: joinAfter(wanted.context, refined.text), usage: used });
+    return "done";
   }
 
   /**
@@ -262,11 +128,13 @@ export class DictationSession {
    */
   private async refine(
     transcript: string,
-    { refiner, instructions, translateTo, vocabulary, context }: Started,
+    refiner: Refiner,
+    { instructions, translateTo, vocabulary, context }: Wanted,
+    ended: AbortSignal,
   ): Promise<Refinement> {
     const log = this.deps.log;
     const startedAt = Date.now();
-    const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
+    const signal = AbortSignal.any([ended, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     try {
       const refined = await refiner.refine(
         { text: transcript, instructions, translateTo, vocabulary, context },
@@ -279,7 +147,7 @@ export class DictationSession {
       log.warn("refinement empty", { refine_ms: Date.now() - startedAt });
       return { ...refined, text: transcript };
     } catch (error) {
-      if (!this.ended) {
+      if (!ended.aborted) {
         log.warn("refinement failed", {
           refine_ms: Date.now() - startedAt,
           error: error instanceof Error ? error.message : String(error),
@@ -294,26 +162,5 @@ export class DictationSession {
       }
       return { text: transcript, inputTokens: 0, outputTokens: 0 };
     }
-  }
-
-  private fail(code: ErrorCode, message: string): void {
-    this.send({ type: "error", code, message });
-    this.end(code);
-  }
-
-  private send(message: ServerMessage): void {
-    if (!this.ended) this.deps.send(message);
-  }
-
-  private end(outcome: "done" | "cancelled" | ErrorCode): void {
-    if (this.ended) return;
-    this.ended = true;
-    this.deps.log.info("ended", { outcome, duration_ms: Date.now() - this.startedAt });
-    clearTimeout(this.readyTimer);
-    clearTimeout(this.transcriptTimer);
-    this.abort.abort();
-    this.started?.transcriber.close();
-    this.started?.refiner.close();
-    this.deps.end();
   }
 }
