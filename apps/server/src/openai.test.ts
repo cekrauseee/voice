@@ -59,6 +59,8 @@ class Transcriptions {
   readonly forms: FormData[] = [];
   /** Answered in order. Without one left, a transcript of nothing. */
   readonly answers: { status: number; body: object }[] = [];
+  /** Answers instead, when set: from the form received. */
+  respond: ((form: FormData) => Promise<{ status: number; body: object }>) | undefined;
 }
 
 /**
@@ -81,7 +83,9 @@ async function fakeOpenAI(t: TestContext) {
       headers: { "content-type": request.headers["content-type"] ?? "" },
     }).formData();
     transcriptions.forms.push(form);
-    const { status, body } = transcriptions.answers.shift() ?? { status: 200, body: { text: "" } };
+    const { status, body } = transcriptions.respond
+      ? await transcriptions.respond(form)
+      : (transcriptions.answers.shift() ?? { status: 200, body: { text: "" } });
     response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
   });
   const sockets = new WebSocketServer({ server: http });
@@ -295,6 +299,31 @@ test("the recording transcriber sends the whole turn as one file, with the hints
   assert.equal(bytes.subarray(0, 4).toString("ascii"), "RIFF");
   assert.equal(bytes.length, 44 + audio(500).length);
   assert.deepEqual(events[1], ["final", 0, "Ask Claude."]);
+});
+
+test("the recording transcriber sends a long turn in parts, and joins them in order", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAIRecordingTranscriber(client, {
+    model: "m",
+    languages: [],
+    partSeconds: 1,
+  })(handlers, { keywords: ["Claude"] });
+  t.after(() => transcriber.close());
+  // Each part is answered with its length, the later one first.
+  transcriptions.respond = async (form) => {
+    const file = form.get("file") as File;
+    if (file.size > 40_000) await new Promise((resolve) => setTimeout(resolve, 50));
+    return { status: 200, body: { text: ` ${file.size} ` } };
+  };
+  transcriber.append(audio(1700));
+  transcriber.commit();
+  await until(() => events.length === 2);
+
+  // A second of silence, cut a frame's half before its end, then the rest.
+  assert.deepEqual(events[1], ["final", 0, `${44 + 45_600} ${44 + 36_000}`]);
+  assert.equal(transcriptions.forms.length, 2);
+  for (const form of transcriptions.forms) assert.deepEqual(form.getAll("keywords[]"), ["Claude"]);
 });
 
 test("the recording transcriber tries again without hints OpenAI refuses", async (t) => {

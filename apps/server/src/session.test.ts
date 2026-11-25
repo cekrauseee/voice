@@ -380,7 +380,10 @@ test("a recording has longer than live text to be transcribed", (t) => {
   session.stop();
   t.mock.timers.tick(30_000);
   assert.deepEqual(messages, [{ type: "ready" }]);
-  t.mock.timers.tick(30_000);
+  // A minute, and a tenth of the half second recorded.
+  t.mock.timers.tick(30_049);
+  assert.deepEqual(messages, [{ type: "ready" }]);
+  t.mock.timers.tick(1);
   assert.deepEqual(messages, [
     { type: "ready" },
     { type: "error", code: "timeout", message: "Transcription timed out" },

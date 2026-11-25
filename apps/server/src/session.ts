@@ -16,7 +16,10 @@ import { normalizeVocabulary } from "./vocabulary.ts";
 const READY_TIMEOUT_MS = 10_000;
 /** How long the live transcriber may send nothing once the speaker has stopped. */
 const TRANSCRIPT_TIMEOUT_MS = 5_000;
-/** How long a recording may take to be transcribed once the speaker has stopped. */
+/**
+ * How long a recording may take to be transcribed once the speaker has stopped, plus a tenth
+ * of its length: a long one is sent in parts.
+ */
 const RECORDING_TIMEOUT_MS = 60_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
@@ -181,7 +184,9 @@ export class DictationSession {
    */
   private awaitTranscript(): void {
     clearTimeout(this.transcriptTimer);
-    const timeout = this.started?.live ? TRANSCRIPT_TIMEOUT_MS : RECORDING_TIMEOUT_MS;
+    const timeout = this.started?.live
+      ? TRANSCRIPT_TIMEOUT_MS
+      : RECORDING_TIMEOUT_MS + (this.audioBytes / BYTES_PER_SECOND) * 100;
     this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), timeout);
   }
 
