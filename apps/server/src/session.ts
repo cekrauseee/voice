@@ -9,7 +9,7 @@ import {
   usage,
 } from "./protocol.ts";
 import { type CreateRefiner, type Refinement, RefinementError, type Refiner } from "./refiner.ts";
-import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
+import { type CreateTranscriber, isUnreachable, type Transcriber } from "./transcriber.ts";
 import { normalizeVocabulary } from "./vocabulary.ts";
 
 /** How long transcription may take to be ready for audio. */
@@ -218,6 +218,14 @@ export class DictationSession {
 
   private onError(error: Error): void {
     if (this.transcribed) return;
+    if (isUnreachable(error)) {
+      this.deps.log.error("transcription unreachable", {
+        error: error.message,
+        hint: "check the network of the server",
+      });
+      this.fail("unreachable", "OpenAI could not be reached");
+      return;
+    }
     this.deps.log.error("transcription failed", { error: error.message });
     this.fail("transcription_failed", "Transcription failed");
   }

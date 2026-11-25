@@ -4,6 +4,7 @@ import { audio, FakeRefiner, FakeTranscriber, prices, settle, silent, unused } f
 import type { ServerMessage } from "./protocol.ts";
 import { RefinementError } from "./refiner.ts";
 import { DictationSession } from "./session.ts";
+import { UnreachableError } from "./transcriber.ts";
 
 function setup(log = silent) {
   const transcriber = new FakeTranscriber();
@@ -303,6 +304,19 @@ test("a transcription error ends the session", () => {
   session.audio(audio(500));
   transcriber.events.delta(0, "late");
   assert.equal(messages.length, 1);
+});
+
+test("a transcription that cannot reach OpenAI ends the session as unreachable", () => {
+  const { session, transcriber, messages, ended } = setup();
+  session.start();
+  session.audio(audio(500));
+  session.stop();
+  const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+  transcriber.events.error(new UnreachableError("Connection error.", { cause: refused }));
+  assert.deepEqual(messages, [
+    { type: "error", code: "unreachable", message: "OpenAI could not be reached" },
+  ]);
+  assert.ok(ended());
 });
 
 test("a transcription error after the transcript is complete changes nothing", async () => {

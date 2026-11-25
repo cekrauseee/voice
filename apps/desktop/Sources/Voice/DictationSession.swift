@@ -4,34 +4,28 @@ import VoiceCore
 /// One dictation on the server: audio goes out, text comes back.
 @MainActor
 final class DictationSession {
+  /// How long the server has to answer once the session opens, before it counts as
+  /// unreachable. The server on this Mac answers at once, or refuses at once.
+  static let connectTimeout = Duration.seconds(5)
+
   private let socket: URLSessionWebSocketTask
-  private let instructions: String
-  private let translateTo: String
-  private let vocabulary: [String]
-  private let context: String
-  private let live: Bool
+  private let opening: ClientMessage
   private(set) var transcript = Transcript()
-  /// The audio that was sent: 16-bit mono PCM at 24 kHz.
-  private(set) var recording = Data()
   /// What the dictation used on the server, once it has its text.
   private(set) var usage: Usage?
 
-  /// How long the recording is, in seconds.
-  var recorded: TimeInterval {
-    Double(recording.count / MemoryLayout<Int16>.size) / AudioFormat.sampleRate
-  }
-  private var isReady = false
+  private var isConnected = false
+  private var hasStopped = false
   private var isOver = false
+  private var connecting: Task<Void, Never>?
 
   /// The server is transcribing.
   var onReady: () -> Void = {}
   /// The transcript changed.
   var onChange: () -> Void = {}
-  /// The dictation has its text to type, which is empty when it failed before any word came
-  /// back. Refined, it may begin with a space that joins it to the text before the cursor.
-  var onText: (String, DictationError?) -> Void = { _, _ in }
-  /// The dictation is over, with the reason when it failed.
-  var onEnd: (DictationError?) -> Void = { _ in }
+  /// The session is over. Done, `transcript.typed` is the text to type, which may begin with
+  /// a space that joins it to the text before the cursor. Failed, it is the draft heard.
+  var onEnd: (SessionEnd) -> Void = { _ in }
 
   /// `context` is the text before the cursor in the field the text goes into, if known.
   /// `live` asks for the words to be transcribed while the speaker talks, for the pill to show.
@@ -40,39 +34,59 @@ final class DictationSession {
     context: String = "", live: Bool = false
   ) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
-    self.instructions = instructions
-    self.translateTo = translateTo
-    self.vocabulary = vocabulary
-    self.context = context
-    self.live = live
+    opening = .start(
+      instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
+      context: context, live: live)
   }
 
   func start() {
     socket.resume()
-    send(
-      .start(
-        instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
-        context: context, live: live))
+    send(opening)
+    // The pong says the server is there, live or not, before it has anything to say.
+    socket.sendPing { [weak self] error in
+      guard error == nil else { return }
+      Task { @MainActor in self?.isConnected = true }
+    }
+    connecting = Task { [weak self] in
+      try? await Task.sleep(for: Self.connectTimeout)
+      guard !Task.isCancelled, let self, !isConnected else { return }
+      end(.disconnected)
+    }
     Task { await receive() }
   }
 
   func send(_ pcm: Data) {
-    recording.append(pcm)
+    guard !isOver else { return }
     socket.send(.data(pcm)) { _ in }
+  }
+
+  /// Sends a whole recording as fast as the server takes it, not at the pace it was spoken,
+  /// and says the speaker is done.
+  func send(recording pcm: Data) {
+    let chunk = AudioFormat.chunkSamples * MemoryLayout<Int16>.size
+    for offset in stride(from: 0, to: pcm.count, by: chunk) {
+      send(
+        pcm.subdata(
+          in: (pcm.startIndex + offset)..<min(pcm.startIndex + offset + chunk, pcm.endIndex)))
+    }
+    stop()
   }
 
   /// Tells the server the speaker is done. The text follows.
   func stop() {
+    hasStopped = true
     send(.stop)
   }
 
   /// Drops the dictation. Nothing is typed.
   func cancel() {
     isOver = true
+    connecting?.cancel()
     socket.cancel()
   }
 
   private func send(_ message: ClientMessage) {
+    guard !isOver else { return }
     socket.send(.string(message.json)) { _ in }
   }
 
@@ -82,9 +96,10 @@ final class DictationSession {
         guard case .string(let json) = try await socket.receive(),
           let message = ServerMessage(json: json)
         else { continue }
+        isConnected = true
         handle(message)
       } catch {
-        end(isReady ? .transcriptionFailed : .serverUnreachable)
+        end(.disconnected)
       }
     }
   }
@@ -92,7 +107,6 @@ final class DictationSession {
   private func handle(_ message: ServerMessage) {
     switch message {
     case .ready:
-      isReady = true
       onReady()
     case .delta:
       transcript.apply(message)
@@ -101,18 +115,17 @@ final class DictationSession {
       self.usage = usage
       transcript.apply(message)
       onChange()
-      end(nil)
-    case .error:
-      end(.transcriptionFailed)
+      end(.done(transcript.typed))
+    case .error(let code):
+      end(.failed(code: code, afterStop: hasStopped))
     }
   }
 
-  private func end(_ error: DictationError?) {
+  private func end(_ end: SessionEnd) {
     guard !isOver else { return }
     isOver = true
+    connecting?.cancel()
     socket.cancel(with: .normalClosure, reason: nil)
-    // Refined when the dictation finished, as heard when it failed: what was said is not lost.
-    onText(transcript.typed, error)
-    onEnd(error)
+    onEnd(end)
   }
 }

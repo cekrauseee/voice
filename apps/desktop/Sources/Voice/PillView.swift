@@ -10,6 +10,8 @@ struct PillView: View {
   let style: PillStyle
   let feed: LevelFeed
   let transcript: Transcript
+  /// Whether the dictation records without a connection, to be sent once it ends.
+  let isOffline: Bool
   let mode: RecordingMode
   let toggle: Shortcut
   /// The edge of the screen the pill is at. It grows out of that edge, and away from it.
@@ -48,6 +50,7 @@ struct PillView: View {
     }
     .animation(state == .hidden ? Self.retract : Self.morph, value: state)
     .animation(Self.morph, value: style)
+    .animation(Self.morph, value: showsOffline)
     .animation(.smooth(duration: 0.3), value: transcript)
   }
 
@@ -68,6 +71,15 @@ struct PillView: View {
     state == .starting || state == .finishing
   }
 
+  /// A quiet sign, while recording, that the recording is sent once it ends.
+  private var showsOffline: Bool {
+    isOffline && state.isRecording
+  }
+
+  private var symbol: String {
+    showsOffline ? "wifi.slash" : "mic.fill"
+  }
+
   @ViewBuilder private var content: some View {
     if case .failed(let error) = state {
       Label(error.message, systemImage: "exclamationmark.triangle.fill")
@@ -83,9 +95,10 @@ struct PillView: View {
     } else if style == .minimal, let notch {
       // On either side of the notch, which hides what is under it, and a little below it.
       HStack(spacing: 0) {
-        Image(systemName: "mic.fill")
+        Image(systemName: symbol)
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
+          .contentTransition(.symbolEffect(.replace))
           .frame(width: 48)
         Color.clear.frame(width: notch.width)
         Waveform(feed: feed, barCount: 5, isLoading: isLoading)
@@ -95,11 +108,19 @@ struct PillView: View {
       .frame(height: notch.height + 10)
       .transition(Self.content)
     } else if style == .minimal {
-      Waveform(feed: feed, barCount: 7, isLoading: isLoading)
-        .frame(width: 40, height: 16)
-        .padding(.horizontal, 12)
-        .frame(height: 28)
-        .transition(Self.content)
+      HStack(spacing: 6) {
+        if showsOffline {
+          Image(systemName: symbol)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .transition(.opacity)
+        }
+        Waveform(feed: feed, barCount: 7, isLoading: isLoading)
+          .frame(width: 40, height: 16)
+      }
+      .padding(.horizontal, 12)
+      .frame(height: 28)
+      .transition(Self.content)
     } else {
       detailed
         .padding(.top, notch?.height ?? 0)
@@ -116,7 +137,7 @@ struct PillView: View {
           .transition(.blurReplace)
       }
       HStack(spacing: 12) {
-        Label(status, systemImage: "mic.fill")
+        Label(status, systemImage: symbol)
           .contentTransition(.interpolate)
         Spacer()
         if state != .finishing {
@@ -148,7 +169,7 @@ struct PillView: View {
     switch state {
     case .starting: "Starting"
     case .finishing: "Finishing"
-    default: "Listening"
+    default: showsOffline ? "Listening offline" : "Listening"
     }
   }
 }

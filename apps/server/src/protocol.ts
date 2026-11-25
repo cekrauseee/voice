@@ -7,7 +7,7 @@ export const SAMPLE_RATE = 24_000;
 /** The audio is 16-bit mono at 24 kHz. */
 export const BYTES_PER_SECOND = SAMPLE_RATE * 2;
 
-export type ErrorCode = "bad_request" | "transcription_failed" | "timeout";
+export type ErrorCode = "bad_request" | "transcription_failed" | "unreachable" | "timeout";
 
 /** What a dictation used, and what that costs. */
 export interface Usage {

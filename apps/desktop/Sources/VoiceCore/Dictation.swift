@@ -1,16 +1,30 @@
 /// Why a dictation could not start or finish.
-public enum DictationError: Error, Equatable {
+public enum DictationError: Error, Equatable, Sendable {
   case microphoneDenied
   case microphoneUnavailable
-  case serverUnreachable
-  case transcriptionFailed
+  /// There was no connection: to the server, or from the server to OpenAI. `saved` when the
+  /// dictation is in the history, with its recording, to be tried again.
+  case offline(saved: Bool)
+  /// The server reached OpenAI, and transcribing failed. `saved` as for `offline`.
+  case transcriptionFailed(saved: Bool)
 
   public var message: String {
     switch self {
     case .microphoneDenied: "Microphone access needed"
     case .microphoneUnavailable: "No microphone found"
-    case .serverUnreachable: "Can't reach the server"
-    case .transcriptionFailed: "Transcription failed"
+    case .offline(let saved): saved ? "No connection. Saved to History" : "No connection"
+    case .transcriptionFailed(let saved):
+      saved ? "Transcription failed. Saved to History" : "Transcription failed"
+    }
+  }
+
+  /// For the log.
+  public var reason: String {
+    switch self {
+    case .microphoneDenied: "microphone denied"
+    case .microphoneUnavailable: "microphone unavailable"
+    case .offline: "offline"
+    case .transcriptionFailed: "transcription failed"
     }
   }
 }

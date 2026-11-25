@@ -61,11 +61,14 @@ The app adds up what each dictation used, day by day, and shows it on its Statis
 
 ## Failure
 
-- A transcription failure ends the dictation with an error. The app types the draft it has, so what was said is not lost, and shows the failure.
-- A transcription session that is not ready within 10 s of the start ends the dictation with a timeout. So does a dictation that hears nothing and gets no transcript within 5 s of the stop.
-- Cancelling types nothing.
-- A dictation that fails is kept in the app's history with its recording. The app can send that recording again, as a new dictation, at once instead of at the pace it was spoken.
-- The app shows a failure in the pill for three seconds: no microphone access, no microphone, server unreachable, or transcription failed.
+Nothing said is lost to a connection. The app keeps the whole recording of each dictation, and the recording never depends on the server: whatever happens to the connection, the microphone records until the speaker stops or cancels.
+
+- On the server, a transcription failure ends the dictation with an error. One that could not reach OpenAI says so: `unreachable`. A transcription session that is not ready within 10 s of the start ends the dictation with a timeout. So does a dictation that hears nothing and gets no transcript in time after the stop.
+- In the app, a session that fails while the speaker talks does not end the recording. The server counts as unreachable when it does not answer within 5 s, or refuses at once. When the session has no connection, the pill shows a small sign, and the live draft stops growing.
+- When the speaker stops, a dictation whose session failed sends its whole recording once more, as a new dictation that is not live, at once instead of at the pace it was spoken. If that brings text, it is typed as usual. A dictation that was not live and failed after the stop is not sent again: the server already had the whole recording, and transcribing it once more would fail the same way.
+- If there is still no text, the dictation is kept in the app's history with its recording, marked as not transcribed, and the app types the draft it has, if any. The history can send the recording again by hand. Nothing is retried by itself.
+- Cancelling types nothing, and keeps nothing.
+- The app shows a failure in the pill for three seconds: no microphone access, no microphone, no connection, or transcription failed, and whether the dictation was saved to the history.
 
 ## Why these choices
 
