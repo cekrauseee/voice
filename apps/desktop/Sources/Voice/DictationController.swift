@@ -121,7 +121,8 @@ final class DictationController {
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
-      translateTo: settings.translateTo, vocabulary: settings.vocabulary, context: context)
+      translateTo: settings.translateTo, vocabulary: settings.vocabulary, context: context,
+      live: settings.transcribesLive)
     session.onReady = { [weak self, weak session] in
       guard let self, self.session === session else { return }
       log.debug("ready", ["connect_ms": elapsed])

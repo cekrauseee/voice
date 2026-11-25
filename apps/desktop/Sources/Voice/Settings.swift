@@ -51,6 +51,12 @@ final class Settings {
     didSet { defaults.set(usesFieldText, forKey: "usesFieldText") }
   }
 
+  /// Whether dictations are transcribed while the user talks, for the pill to show the words.
+  /// Off by default: the recording is transcribed once it ends, for less.
+  var transcribesLive: Bool {
+    didSet { defaults.set(transcribesLive, forKey: "transcribesLive") }
+  }
+
   var enterBehavior: EnterBehavior {
     didSet { defaults.set(enterBehavior.rawValue, forKey: "enterBehavior") }
   }
@@ -119,6 +125,7 @@ final class Settings {
     translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
     vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []
     usesFieldText = defaults.object(forKey: "usesFieldText") as? Bool ?? true
+    transcribesLive = defaults.bool(forKey: "transcribesLive")
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     mediaBehavior = defaults.string(forKey: "mediaBehavior").flatMap(MediaBehavior.init) ?? .pause

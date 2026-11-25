@@ -9,6 +9,7 @@ final class DictationSession {
   private let translateTo: String
   private let vocabulary: [String]
   private let context: String
+  private let live: Bool
   private(set) var transcript = Transcript()
   /// The audio that was sent: 16-bit mono PCM at 24 kHz.
   private(set) var recording = Data()
@@ -33,15 +34,17 @@ final class DictationSession {
   var onEnd: (DictationError?) -> Void = { _ in }
 
   /// `context` is the text before the cursor in the field the text goes into, if known.
+  /// `live` asks for the words to be transcribed while the speaker talks, for the pill to show.
   init(
     server: URL, instructions: String, translateTo: String, vocabulary: [String],
-    context: String = ""
+    context: String = "", live: Bool = false
   ) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
     self.instructions = instructions
     self.translateTo = translateTo
     self.vocabulary = vocabulary
     self.context = context
+    self.live = live
   }
 
   func start() {
@@ -49,7 +52,7 @@ final class DictationSession {
     send(
       .start(
         instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
-        context: context))
+        context: context, live: live))
     Task { await receive() }
   }
 

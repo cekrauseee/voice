@@ -14,7 +14,7 @@ pnpm start   # runs once
 On start the server checks the key and both models with OpenAI, then prints the address it listens on. If OpenAI cannot be reached, as just after login, it warns and starts anyway:
 
 ```
-16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation transcribe=gpt-live-transcribe refine=gpt-6-luna
+16:24:02.118 INFO  server      listening url=ws://127.0.0.1:8787/v1/dictation transcribe=gpt-transcribe live_transcribe=gpt-live-transcribe refine=gpt-6-luna
 ```
 
 If something is missing it says what to fix:
@@ -29,20 +29,22 @@ TypeScript runs directly on Node.js. There is no build step. The production app 
 
 Environment variables, read from `.env`. `pnpm start` also runs without the file, with the variables set in the environment.
 
-| Variable                          | Default                             | Meaning                                                                                                                                          |
-| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OPENAI_API_KEY`                  | required                            | The key used for transcription and refinement                                                                                                    |
-| `HOST`                            | `127.0.0.1`                         | The address to listen on                                                                                                                         |
-| `PORT`                            | `8787`                              | The port to listen on                                                                                                                            |
-| `TRANSCRIBE_MODEL`                | `gpt-live-transcribe`               | The realtime transcription model                                                                                                                 |
-| `TRANSCRIBE_LANGUAGES`            | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy                                          |
-| `REFINE_MODEL`                    | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                                                                 |
-| `TRANSCRIBE_PRICE_PER_MINUTE`     | `0.017`                             | What OpenAI charges for a minute of audio transcribed, in US dollars                                                                             |
-| `REFINE_PRICE_PER_MILLION_INPUT`  | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                                                                     |
-| `REFINE_PRICE_PER_MILLION_OUTPUT` | `0.50`                              | What OpenAI charges for a million tokens the refinement writes, in US dollars                                                                    |
-| `LOG_FORMAT`                      | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                                                                  |
-| `LOG_LEVEL`                       | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                                                                     |
-| `STOP_WITH_PARENT`                | none                                | `1` to stop when the program that started the server ends, as the app does. The server watches its standard input, which that program holds open |
+| Variable                           | Default                             | Meaning                                                                                                                                          |
+| ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`                   | required                            | The key used for transcription and refinement                                                                                                    |
+| `HOST`                             | `127.0.0.1`                         | The address to listen on                                                                                                                         |
+| `PORT`                             | `8787`                              | The port to listen on                                                                                                                            |
+| `TRANSCRIBE_MODEL`                 | `gpt-transcribe`                    | The model that transcribes a recording once the speaker stops                                                                                    |
+| `LIVE_TRANSCRIBE_MODEL`            | `gpt-live-transcribe`               | The realtime model that transcribes while the speaker talks, when the app asks for live transcription                                            |
+| `TRANSCRIBE_LANGUAGES`             | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy                                          |
+| `REFINE_MODEL`                     | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                                                                 |
+| `TRANSCRIBE_PRICE_PER_MINUTE`      | `0.0045`                            | What OpenAI charges for a minute of audio transcribed once recorded, in US dollars                                                               |
+| `LIVE_TRANSCRIBE_PRICE_PER_MINUTE` | `0.017`                             | What OpenAI charges for a minute of audio transcribed live, in US dollars                                                                        |
+| `REFINE_PRICE_PER_MILLION_INPUT`   | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                                                                     |
+| `REFINE_PRICE_PER_MILLION_OUTPUT`  | `0.50`                              | What OpenAI charges for a million tokens the refinement writes, in US dollars                                                                    |
+| `LOG_FORMAT`                       | `pretty` in a terminal, else `json` | How log records are written: `pretty` or `json`                                                                                                  |
+| `LOG_LEVEL`                        | `info`                              | The lowest level logged: `debug`, `info`, `warn`, or `error`                                                                                     |
+| `STOP_WITH_PARENT`                 | none                                | `1` to stop when the program that started the server ends, as the app does. The server watches its standard input, which that program holds open |
 
 The prices are what the server estimates the cost of a dictation with, for the app's statistics. OpenAI reports what a dictation used, not what it costs. The defaults are [OpenAI's prices](https://developers.openai.com/api/docs/pricing) for the default models in November 2026: set them when you change a model, or when the prices change.
 
@@ -53,14 +55,14 @@ The server has no authentication and listens on the loopback address only. Do no
 The server logs [structured records](../../docs/logging.md): in columns in a terminal, and as one JSON object per line anywhere else, which is what a service manager or a log collector sees.
 
 ```
-16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0 translates=false vocabulary_terms=12
+16:24:10.120 INFO  dictation   started dictation=1 live=false instructions_chars=0 translates=false vocabulary_terms=12
 16:24:20.462 INFO  dictation   transcribed dictation=1 transcript_ms=684 chars=340
 16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
 16:24:21.642 INFO  dictation   used dictation=1 audio_seconds=10.3 input_tokens=318 output_tokens=71 cost=0.002986
 16:24:21.643 INFO  dictation   ended dictation=1 outcome=done duration_ms=11523
 ```
 
-Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions, `translates` whether the text is written in another language, and `vocabulary_terms` how many names and terms of the speaker's dictionary the models were given. The terms themselves are not logged. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `live` is whether the dictation is transcribed while the speaker talks. `instructions_chars` is the length of the speaker's own instructions, `translates` whether the text is written in another language, and `vocabulary_terms` how many names and terms of the speaker's dictionary the models were given. The terms themselves are not logged. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
 ## Tuning
 
@@ -90,7 +92,7 @@ pnpm dictate recording.wav --term Claude --term Supabase
  16012ms  done   "So the plan is simple. We ship on Friday."
 ```
 
-`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings. `--context` sends text as if it were before the cursor in the field, as the app does from the focused field.
+`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings. `--context` sends text as if it were before the cursor in the field, as the app does from the focused field. `--live` transcribes while the recording plays, as the app does with live transcription on.
 
 ## Tests
 

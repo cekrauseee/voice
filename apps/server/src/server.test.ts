@@ -11,6 +11,7 @@ async function start(t: TestContext) {
   const refiner = new FakeRefiner();
   const server = createServer({
     createTranscriber: transcriber.create,
+    createLiveTranscriber: transcriber.createLive,
     createRefiner: refiner.create,
     prices,
     log: silent,
@@ -62,10 +63,12 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
       translate_to: "Spanish",
       vocabulary: ["Claude"],
       context: "Hola Ana,",
+      live: true,
     }),
   );
   ws.send(audio(500));
   await until(() => transcriber.bytes === audio(500).length);
+  assert.equal(transcriber.live, true);
   transcriber.events.ready();
   transcriber.events.delta(0, "hi");
   ws.send(JSON.stringify({ type: "stop" }));
@@ -96,12 +99,13 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   assert.ok(transcriber.closed);
 });
 
-test("start needs no instructions, language, or vocabulary", async (t) => {
+test("start needs no instructions, language, or vocabulary, and is not live", async (t) => {
   const { host, transcriber, refiner } = await start(t);
   const { ws } = await connect(host);
   ws.send(JSON.stringify({ type: "start" }));
   ws.send(JSON.stringify({ type: "stop" }));
   await until(() => transcriber.commits === 1);
+  assert.equal(transcriber.live, false);
   transcriber.events.final(0, "hi");
   await until(() => refiner.calls.length === 1);
   assert.equal(refiner.calls[0]?.input.instructions, "");
@@ -122,6 +126,7 @@ test("a message that is not part of the protocol ends the dictation with an erro
     '{"type":"start","vocabulary":"Claude"}',
     '{"type":"start","vocabulary":["Claude",7]}',
     '{"type":"start","context":7}',
+    '{"type":"start","live":"yes"}',
   ]) {
     const { ws, messages, closeCode } = await connect(host);
     ws.send(message);

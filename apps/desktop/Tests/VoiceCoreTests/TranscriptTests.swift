@@ -35,17 +35,22 @@ import Testing
     #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
     #expect(
       ClientMessage.start(instructions: "").json
-        == #"{"context":"","instructions":"","translate_to":"","type":"start","vocabulary":[]}"#)
+        == #"{"context":"","instructions":"","live":false,"translate_to":"","type":"start","vocabulary":[]}"#
+    )
     #expect(
       ClientMessage.start(
         instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish",
         vocabulary: ["Claude", "R&D"]
       ).json
-        == #"{"context":"","instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
+        == #"{"context":"","instructions":"Say \"hi\".\nUse a/b.","live":false,"translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
     )
     #expect(
       ClientMessage.start(instructions: "", context: "Dear Ana,\n").json
-        == #"{"context":"Dear Ana,\n","instructions":"","translate_to":"","type":"start","vocabulary":[]}"#
+        == #"{"context":"Dear Ana,\n","instructions":"","live":false,"translate_to":"","type":"start","vocabulary":[]}"#
+    )
+    #expect(
+      ClientMessage.start(instructions: "", live: true).json
+        == #"{"context":"","instructions":"","live":true,"translate_to":"","type":"start","vocabulary":[]}"#
     )
   }
 }

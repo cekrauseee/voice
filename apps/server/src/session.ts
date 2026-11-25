@@ -5,6 +5,7 @@ import {
   type ErrorCode,
   type Prices,
   type ServerMessage,
+  type Start,
   usage,
 } from "./protocol.ts";
 import { type CreateRefiner, type Refinement, RefinementError, type Refiner } from "./refiner.ts";
@@ -13,13 +14,18 @@ import { normalizeVocabulary } from "./vocabulary.ts";
 
 /** How long transcription may take to be ready for audio. */
 const READY_TIMEOUT_MS = 10_000;
-/** How long the transcriber may send nothing once the speaker has stopped. */
+/** How long the live transcriber may send nothing once the speaker has stopped. */
 const TRANSCRIPT_TIMEOUT_MS = 5_000;
+/** How long a recording may take to be transcribed once the speaker has stopped. */
+const RECORDING_TIMEOUT_MS = 60_000;
 /** A refinement slower than this is dropped and the transcript is used as is. */
 const REFINE_TIMEOUT_MS = 60_000;
 
 export interface SessionDeps {
+  /** Transcribes the recording once the speaker stops. */
   createTranscriber: CreateTranscriber;
+  /** Transcribes while the speaker talks. */
+  createLiveTranscriber: CreateTranscriber;
   createRefiner: CreateRefiner;
   /** What the dictation is charged at, to tell the client what it cost. */
   prices: Prices;
@@ -39,6 +45,8 @@ interface Started {
   translateTo: string;
   /** Names and terms the speaker uses, as they spell them. */
   vocabulary: string[];
+  /** Whether the audio is transcribed while the speaker talks. */
+  live: boolean;
   /** The text before the cursor in the field the dictation goes into. Empty when unknown. */
   context: string;
 }
@@ -73,22 +81,37 @@ export class DictationSession {
 
   /**
    * The client opens the dictation, with how and in what language the speaker wants the text,
-   * the names and terms they use, and the text the dictation follows in the field.
+   * the names and terms they use, the text the dictation follows in the field, and whether
+   * it is transcribed while they talk.
    */
-  start(instructions: string, translateTo = "", terms: readonly string[] = [], context = ""): void {
+  start({
+    instructions = "",
+    translateTo = "",
+    vocabulary: terms = [],
+    context = "",
+    live = false,
+  }: Partial<Start> = {}): void {
     if (this.ended) return;
     if (this.started) {
       this.reject();
       return;
     }
     const vocabulary = normalizeVocabulary(terms);
+    const createTranscriber = live ? this.deps.createLiveTranscriber : this.deps.createTranscriber;
     this.started = {
-      transcriber: this.deps.createTranscriber(
+      transcriber: createTranscriber(
         {
           ready: () => this.onReady(),
           delta: (_turn, text) => this.onDelta(text),
           final: (_turn, text) => this.onFinal(text),
           error: (error) => this.onError(error),
+          hintsRejected: ({ code, param }) => {
+            this.deps.log.warn("transcription hints rejected", {
+              code,
+              param,
+              hint: "the dictation goes on without them",
+            });
+          },
         },
         { keywords: vocabulary },
       ),
@@ -97,6 +120,7 @@ export class DictationSession {
       translateTo,
       vocabulary,
       context,
+      live,
     };
     this.readyTimer = setTimeout(() => {
       this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
@@ -104,6 +128,7 @@ export class DictationSession {
     }, READY_TIMEOUT_MS);
     this.deps.log.info("started", {
       instructions_chars: instructions.trim().length,
+      live,
       translates: translateTo.trim() !== "",
       vocabulary_terms: vocabulary.length,
       context_chars: context.length,
@@ -150,10 +175,14 @@ export class DictationSession {
     if (this.stoppedAt !== undefined && !this.transcribed) this.awaitTranscript();
   }
 
-  /** Gives the transcriber a fresh `TRANSCRIPT_TIMEOUT_MS` to send what comes next. */
+  /**
+   * Gives the transcriber a fresh while to send what comes next: a live one sends text as it
+   * goes, and a recording takes the time to be transcribed whole.
+   */
   private awaitTranscript(): void {
     clearTimeout(this.transcriptTimer);
-    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), TRANSCRIPT_TIMEOUT_MS);
+    const timeout = this.started?.live ? TRANSCRIPT_TIMEOUT_MS : RECORDING_TIMEOUT_MS;
+    this.transcriptTimer = setTimeout(() => this.onTranscriptTimeout(), timeout);
   }
 
   private onDelta(text: string): void {
@@ -200,8 +229,10 @@ export class DictationSession {
     const unrefined = { text: transcript, inputTokens: 0, outputTokens: 0 };
     const refined = transcript === "" ? unrefined : await this.refine(transcript, started);
     if (this.ended) return;
+    const { prices } = this.deps;
     const used = usage(
-      this.deps.prices,
+      // Live transcription is charged at its own price.
+      started.live ? { ...prices, transcribeMinute: prices.liveTranscribeMinute } : prices,
       this.audioBytes / BYTES_PER_SECOND,
       refined.inputTokens,
       refined.outputTokens,

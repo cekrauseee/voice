@@ -14,6 +14,11 @@ export interface TranscriberEvents {
   /** The complete transcript of a committed turn. Turns may complete out of order. */
   final(turn: number, text: string): void;
   error(error: Error): void;
+  /**
+   * OpenAI refused the hints, such as a prompt it finds too long. The transcription goes on
+   * without them. `param` names the hint refused.
+   */
+  hintsRejected(rejection: { code: string; param: string }): void;
 }
 
 export interface Transcriber {

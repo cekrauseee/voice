@@ -2,6 +2,7 @@ import { createLogger, type Fields } from "@voice/log";
 import OpenAI from "openai";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
 import { DICTATION_PATH } from "./protocol.ts";
+import { createOpenAIRecordingTranscriber } from "./recording.ts";
 import { createOpenAIRefiner } from "./refiner.ts";
 import { createServer } from "./server.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
@@ -50,17 +51,22 @@ const {
   host,
   port,
   transcribeModel,
+  liveTranscribeModel,
   transcribeLanguages,
   refineModel,
   prices,
   stopWithParent,
 } = config();
 const client = new OpenAI({ apiKey });
-await checkOpenAI(client, [transcribeModel, refineModel]);
+await checkOpenAI(client, [transcribeModel, liveTranscribeModel, refineModel]);
 
 const server = createServer({
-  createTranscriber: createOpenAITranscriber(client, {
+  createTranscriber: createOpenAIRecordingTranscriber(client, {
     model: transcribeModel,
+    languages: transcribeLanguages,
+  }),
+  createLiveTranscriber: createOpenAITranscriber(client, {
+    model: liveTranscribeModel,
     languages: transcribeLanguages,
   }),
   createRefiner: createOpenAIRefiner(client, { model: refineModel }),
@@ -76,6 +82,7 @@ server.listen(port, host, () => {
   log.info("listening", {
     url: `ws://${host}:${port}${DICTATION_PATH}`,
     transcribe: transcribeModel,
+    live_transcribe: liveTranscribeModel,
     refine: refineModel,
   });
 });

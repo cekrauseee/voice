@@ -10,6 +10,7 @@ import tls from "node:tls";
 import OpenAI from "openai";
 import { type WebSocket, WebSocketServer } from "ws";
 import { audio, until } from "./fixtures.ts";
+import { createOpenAIRecordingTranscriber } from "./recording.ts";
 import { createOpenAIRefiner, RefinementError } from "./refiner.ts";
 import { createOpenAITranscriber } from "./transcriber.ts";
 
@@ -53,13 +54,35 @@ class Endpoint {
   }
 }
 
-/** A local stand-in for the OpenAI API: the realtime and the Responses WebSockets. */
+/** The transcriptions endpoint of the stand-in: the forms it received, and what it answers. */
+class Transcriptions {
+  readonly forms: FormData[] = [];
+  /** Answered in order. Without one left, a transcript of nothing. */
+  readonly answers: { status: number; body: object }[] = [];
+}
+
+/**
+ * A local stand-in for the OpenAI API: the realtime and the Responses WebSockets, and the
+ * transcription of audio files.
+ */
 async function fakeOpenAI(t: TestContext) {
   const realtime = new Endpoint();
   const responses = new Endpoint();
+  const transcriptions = new Transcriptions();
 
-  const http = createServer({ key, cert }, (_request, response) => {
-    response.writeHead(404).end();
+  const http = createServer({ key, cert }, async (request, response) => {
+    if (request.method !== "POST" || request.url !== "/v1/audio/transcriptions") {
+      response.writeHead(404).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    const form = await new Response(Buffer.concat(chunks), {
+      headers: { "content-type": request.headers["content-type"] ?? "" },
+    }).formData();
+    transcriptions.forms.push(form);
+    const { status, body } = transcriptions.answers.shift() ?? { status: 200, body: { text: "" } };
+    response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
   });
   const sockets = new WebSocketServer({ server: http });
   sockets.on("connection", (socket, request) => {
@@ -79,7 +102,7 @@ async function fakeOpenAI(t: TestContext) {
   });
   const { port } = http.address() as AddressInfo;
   const client = new OpenAI({ apiKey: "test-key", baseURL: `https://127.0.0.1:${port}/v1` });
-  return { realtime, responses, client };
+  return { realtime, responses, transcriptions, client };
 }
 
 function transcription(type: string, fields: object) {
@@ -96,7 +119,7 @@ test("the transcriber configures a transcription session before sending audio", 
   const transcriber = createOpenAITranscriber(client, {
     model: "gpt-live-transcribe",
     languages: ["en", "pt"],
-  })({ ready: () => (ready = true), delta() {}, final() {}, error() {} });
+  })({ ready: () => (ready = true), delta() {}, final() {}, error() {}, hintsRejected() {} });
   t.after(() => transcriber.close());
 
   transcriber.append(audio(100));
@@ -134,7 +157,7 @@ test("the transcriber configures a transcription session before sending audio", 
 test("the transcriber listens for the speaker's keywords", async (t) => {
   const { realtime, client } = await fakeOpenAI(t);
   const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })(
-    { ready() {}, delta() {}, final() {}, error() {} },
+    { ready() {}, delta() {}, final() {}, error() {}, hintsRejected() {} },
     { keywords: ["Claude", "Supabase"] },
   );
   t.after(() => transcriber.close());
@@ -163,6 +186,7 @@ test("the transcriber passes on the text heard, the transcript, and failures", a
     delta: (turn, text) => events.push(["delta", turn, text]),
     final: (turn, text) => events.push(["final", turn, text]),
     error: (error) => events.push(["error", error.message]),
+    hintsRejected() {},
   });
   await until(() => realtime.socket !== undefined);
 
@@ -192,6 +216,7 @@ test("the transcriber completes a recording too short to commit by itself", asyn
     delta() {},
     final: (_turn, text) => finals.push(text),
     error() {},
+    hintsRejected() {},
   });
   t.after(() => transcriber.close());
   await until(() => realtime.received.length === 1);
@@ -217,10 +242,116 @@ test("the transcriber reports a connection that drops", async (t) => {
     delta() {},
     final() {},
     error: (error) => errors.push(error.message),
+    hintsRejected() {},
   });
   await until(() => realtime.socket !== undefined);
   realtime.socket?.close();
   await until(() => errors.length > 0);
+});
+
+/** The events of a transcriber, recorded in order. */
+function recorder() {
+  const events: unknown[] = [];
+  return {
+    events,
+    handlers: {
+      ready: () => events.push(["ready"]),
+      delta: (turn: number, text: string) => events.push(["delta", turn, text]),
+      final: (turn: number, text: string) => events.push(["final", turn, text]),
+      error: (error: Error) => events.push(["error", error.message]),
+      hintsRejected: ({ code, param }: { code: string; param: string }) =>
+        events.push(["hintsRejected", code, param]),
+    },
+  };
+}
+
+test("the recording transcriber sends the whole turn as one file, with the hints", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAIRecordingTranscriber(client, {
+    model: "gpt-transcribe",
+    languages: ["pt", "en"],
+  })(handlers, { keywords: ["Claude", "pull request"] });
+  t.after(() => transcriber.close());
+  await until(() => events.length === 1);
+  assert.deepEqual(events, [["ready"]]);
+
+  transcriber.append(audio(300));
+  transcriber.append(audio(200));
+  transcriptions.answers.push({ status: 200, body: { text: "Ask Claude." } });
+  assert.equal(transcriptions.forms.length, 0);
+  transcriber.commit();
+  await until(() => events.length === 2);
+
+  const [form] = transcriptions.forms;
+  assert.ok(form);
+  assert.equal(form.get("model"), "gpt-transcribe");
+  assert.deepEqual(form.getAll("keywords[]"), ["Claude", "pull request"]);
+  assert.deepEqual(form.getAll("languages[]"), ["pt", "en"]);
+  const file = form.get("file");
+  assert.ok(file instanceof File);
+  assert.equal(file.name, "recording.wav");
+  const bytes = Buffer.from(await file.arrayBuffer());
+  assert.equal(bytes.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(bytes.length, 44 + audio(500).length);
+  assert.deepEqual(events[1], ["final", 0, "Ask Claude."]);
+});
+
+test("the recording transcriber tries again without hints OpenAI refuses", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAIRecordingTranscriber(client, { model: "m", languages: [] })(
+    handlers,
+    { keywords: ["Claude"] },
+  );
+  t.after(() => transcriber.close());
+  transcriptions.answers.push(
+    {
+      status: 400,
+      body: {
+        error: {
+          message: "Unsupported keywords",
+          type: "invalid_request_error",
+          param: "keywords",
+          code: "invalid_value",
+        },
+      },
+    },
+    { status: 200, body: { text: "Hi." } },
+  );
+  transcriber.append(audio(500));
+  transcriber.commit();
+  await until(() => events.length === 3);
+
+  assert.deepEqual(events, [
+    ["ready"],
+    ["hintsRejected", "invalid_value", "keywords"],
+    ["final", 0, "Hi."],
+  ]);
+  assert.deepEqual(transcriptions.forms[0]?.getAll("keywords[]"), ["Claude"]);
+  assert.deepEqual(transcriptions.forms[1]?.getAll("keywords[]"), []);
+});
+
+test("the recording transcriber completes a turn too short to send, and reports failures", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAIRecordingTranscriber(client, { model: "m", languages: [] })(
+    handlers,
+  );
+  t.after(() => transcriber.close());
+  transcriber.append(audio(50));
+  transcriber.commit();
+  transcriptions.answers.push({
+    status: 400,
+    body: { error: { message: "Audio file is corrupted", type: "invalid_request_error" } },
+  });
+  transcriber.append(audio(500));
+  transcriber.commit();
+  await until(() => events.length === 3);
+
+  assert.deepEqual(events.slice(1, 2), [["final", 0, ""]]);
+  assert.equal(transcriptions.forms.length, 1);
+  assert.match(String((events[2] as unknown[])[1]), /Audio file is corrupted/);
 });
 
 test("the refiner connects ahead, then asks for the transcript to be rewritten", async (t) => {

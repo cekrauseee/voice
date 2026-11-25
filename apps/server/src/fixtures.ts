@@ -12,13 +12,23 @@ export function audio(ms: number): Buffer {
 export class FakeTranscriber {
   events!: TranscriberEvents;
   hints: TranscriptionHints | undefined;
+  /** Whether the transcriber made last transcribes while the speaker talks. */
+  live: boolean | undefined;
   bytes = 0;
   commits = 0;
   closed = false;
 
-  readonly create: CreateTranscriber = (events, hints) => {
+  readonly create: CreateTranscriber = (events, hints) => this.make(events, hints, false);
+  readonly createLive: CreateTranscriber = (events, hints) => this.make(events, hints, true);
+
+  private make(
+    events: TranscriberEvents,
+    hints: TranscriptionHints | undefined,
+    live: boolean,
+  ): ReturnType<CreateTranscriber> {
     this.events = events;
     this.hints = hints;
+    this.live = live;
     return {
       append: (pcm) => {
         this.bytes += pcm.length;
@@ -30,7 +40,7 @@ export class FakeTranscriber {
         this.closed = true;
       },
     };
-  };
+  }
 }
 
 /** A refiner whose calls resolve when the test says so. */
@@ -66,8 +76,16 @@ export class FakeRefiner {
   };
 }
 
-/** Prices that make round numbers: a cent a second, and a dollar or two a thousand tokens. */
-export const prices: Prices = { transcribeMinute: 0.6, refineInput: 1000, refineOutput: 2000 };
+/**
+ * Prices that make round numbers: a cent a second live, half that for a recording, and a
+ * dollar or two a thousand tokens.
+ */
+export const prices: Prices = {
+  transcribeMinute: 0.3,
+  liveTranscribeMinute: 0.6,
+  refineInput: 1000,
+  refineOutput: 2000,
+};
 
 /** A dictation that used nothing. */
 export const unused: Usage = { audio_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0 };

@@ -23,8 +23,10 @@ export interface Usage {
 
 /** What OpenAI charges, in US dollars. */
 export interface Prices {
-  /** For a minute of audio transcribed. */
+  /** For a minute of audio transcribed once it is recorded. */
   transcribeMinute: number;
+  /** For a minute of audio transcribed live, while the speaker talks. */
+  liveTranscribeMinute: number;
   /** For a million tokens the refinement reads. */
   refineInput: number;
   /** For a million tokens the refinement writes. */
@@ -54,15 +56,17 @@ export type ServerMessage =
   | { type: "done"; text: string; usage: Usage }
   | { type: "error"; code: ErrorCode; message: string };
 
-export type ClientMessage =
-  | {
-      type: "start";
-      instructions: string;
-      translateTo: string;
-      vocabulary: string[];
-      context: string;
-    }
-  | { type: "stop" };
+/** What the client opens a dictation with. */
+export interface Start {
+  instructions: string;
+  translateTo: string;
+  vocabulary: string[];
+  context: string;
+  /** Whether the audio is transcribed while the speaker talks, with the text heard sent as it comes. */
+  live: boolean;
+}
+
+export type ClientMessage = ({ type: "start" } & Start) | { type: "stop" };
 
 export function parseClientMessage(raw: string): ClientMessage | undefined {
   const value = parseJson(raw);
@@ -73,14 +77,16 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
     const translateTo = value.translate_to ?? "";
     const vocabulary = value.vocabulary ?? [];
     const context = value.context ?? "";
+    const live = value.live ?? false;
     if (
       typeof instructions === "string" &&
       typeof translateTo === "string" &&
       Array.isArray(vocabulary) &&
       vocabulary.every((term) => typeof term === "string") &&
-      typeof context === "string"
+      typeof context === "string" &&
+      typeof live === "boolean"
     ) {
-      return { type: "start", instructions, translateTo, vocabulary, context };
+      return { type: "start", instructions, translateTo, vocabulary, context, live };
     }
   }
   return undefined;

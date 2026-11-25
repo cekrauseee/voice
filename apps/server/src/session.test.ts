@@ -12,6 +12,7 @@ function setup(log = silent) {
   let ended = false;
   const session = new DictationSession({
     createTranscriber: transcriber.create,
+    createLiveTranscriber: transcriber.createLive,
     createRefiner: refiner.create,
     prices,
     send: (message) => messages.push(message),
@@ -25,7 +26,7 @@ function setup(log = silent) {
 
 test("a dictation passes on the text heard, then ends with the refined text", async () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   transcriber.events.ready();
   session.audio(audio(500));
   transcriber.events.delta(0, " hello");
@@ -61,7 +62,7 @@ test("a dictation passes on the text heard, then ends with the refined text", as
 
 test("the audio is one turn: it is committed once, when the speaker stops", () => {
   const { session, transcriber } = setup();
-  session.start("");
+  session.start({ live: true });
   session.audio(audio(2000));
   session.audio(audio(2000));
   assert.equal(transcriber.commits, 0);
@@ -76,7 +77,12 @@ test("the audio is one turn: it is committed once, when the speaker stops", () =
 
 test("the refiner is prepared when the dictation starts, and gets what the speaker asked for", () => {
   const { session, transcriber, refiner } = setup();
-  session.start("Write formally.", "Spanish", [], "Hola Ana,");
+  session.start({
+    instructions: "Write formally.",
+    translateTo: "Spanish",
+    context: "Hola Ana,",
+    live: true,
+  });
   assert.equal(refiner.created, 1);
 
   session.stop();
@@ -92,7 +98,7 @@ test("the refiner is prepared when the dictation starts, and gets what the speak
 
 test("a dictation that continues the text before the cursor is spaced from it", async () => {
   const { session, transcriber, refiner, messages } = setup();
-  session.start("", "", [], "Thanks for the update");
+  session.start({ context: "Thanks for the update", live: true });
   session.stop();
   transcriber.events.final(0, "and see you friday");
   refiner.calls[0]?.resolve("and see you Friday.");
@@ -102,7 +108,7 @@ test("a dictation that continues the text before the cursor is spaced from it", 
 
 test("the transcript a failed refinement falls back to is spaced from the context too", async () => {
   const { session, transcriber, refiner, messages } = setup();
-  session.start("", "", [], "Thanks");
+  session.start({ context: "Thanks", live: true });
   session.stop();
   transcriber.events.final(0, "keep me");
   refiner.calls[0]?.reject(new Error("boom"));
@@ -113,10 +119,11 @@ test("the transcript a failed refinement falls back to is spaced from the contex
 test("the context is logged by its length only", (t) => {
   const info = t.mock.fn(silent.info);
   const { session } = setup({ ...silent, info });
-  session.start("", "", [], "Private words");
+  session.start({ context: "Private words", live: true });
   const started = info.mock.calls.find((call) => call.arguments[0] === "started");
   assert.deepEqual(started?.arguments[1], {
     instructions_chars: 0,
+    live: true,
     translates: false,
     vocabulary_terms: 0,
     context_chars: 13,
@@ -125,7 +132,7 @@ test("the context is logged by its length only", (t) => {
 
 test("the speaker's vocabulary goes to the transcriber and the refiner, cleaned up", () => {
   const { session, transcriber, refiner } = setup();
-  session.start("", "", [" Claude ", "claude", "", "Supa\nbase", "<Voice>"]);
+  session.start({ vocabulary: [" Claude ", "claude", "", "Supa\nbase", "<Voice>"], live: true });
   assert.deepEqual(transcriber.hints, { keywords: ["Claude", "Supa base", "Voice"] });
 
   session.stop();
@@ -135,7 +142,7 @@ test("the speaker's vocabulary goes to the transcriber and the refiner, cleaned 
 
 test("a failed refinement falls back to the transcript", async () => {
   const { session, transcriber, refiner, messages } = setup();
-  session.start("");
+  session.start({ live: true });
   session.stop();
   transcriber.events.final(0, "keep me");
   refiner.calls[0]?.reject(new Error("boom"));
@@ -146,7 +153,7 @@ test("a failed refinement falls back to the transcript", async () => {
 test("a failed translation falls back to the transcript and counts the rewrite's tokens", async (t) => {
   const warn = t.mock.fn(silent.warn);
   const { session, transcriber, refiner, messages } = setup({ ...silent, warn });
-  session.start("", "Spanish");
+  session.start({ translateTo: "Spanish", live: true });
   session.stop();
   transcriber.events.final(0, "um keep me");
   refiner.calls[0]?.reject(
@@ -167,7 +174,7 @@ test("a failed translation falls back to the transcript and counts the rewrite's
 
 test("an empty refinement falls back to the transcript", async () => {
   const { session, transcriber, refiner, messages } = setup();
-  session.start("");
+  session.start({ live: true });
   session.stop();
   transcriber.events.final(0, "keep me");
   refiner.calls[0]?.resolve("", [4, 0]);
@@ -184,7 +191,7 @@ test("an empty refinement falls back to the transcript", async () => {
 
 test("a dictation without words ends without refining", async () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("", "", [], "Text before");
+  session.start({ context: "Text before", live: true });
   session.audio(audio(1000));
   session.stop();
   transcriber.events.final(0, " ");
@@ -203,7 +210,7 @@ test("a dictation without words ends without refining", async () => {
 test("a transcript that does not complete is replaced by the text heard", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, transcriber, refiner, messages } = setup();
-  session.start("");
+  session.start({ live: true });
   transcriber.events.ready();
   transcriber.events.delta(0, " so far");
   transcriber.events.delta(0, " so good");
@@ -222,7 +229,7 @@ test("a transcript that does not complete is replaced by the text heard", async 
 test("a dictation that hears nothing and gets no transcript times out", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, transcriber, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   transcriber.events.ready();
   session.audio(audio(1000));
   session.stop();
@@ -237,7 +244,7 @@ test("a dictation that hears nothing and gets no transcript times out", (t) => {
 test("text that keeps coming after the stop keeps the transcript awaited", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, transcriber, refiner } = setup();
-  session.start("");
+  session.start({ live: true });
   transcriber.events.ready();
   session.stop();
   for (const word of [" a", " long", " recording"]) {
@@ -253,7 +260,7 @@ test("text that keeps coming after the stop keeps the transcript awaited", async
 test("a speaker who stops before transcription is ready is waited for", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   session.audio(audio(1000));
   session.stop();
   assert.equal(transcriber.commits, 1);
@@ -274,7 +281,7 @@ test("a speaker who stops before transcription is ready is waited for", async (t
 test("transcription that does not get ready times out", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { session, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   session.audio(audio(1000));
   t.mock.timers.tick(10_000);
   assert.deepEqual(messages, [
@@ -285,7 +292,7 @@ test("transcription that does not get ready times out", (t) => {
 
 test("a transcription error ends the session", () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   transcriber.events.error(new Error("upstream"));
   assert.deepEqual(messages, [
     { type: "error", code: "transcription_failed", message: "Transcription failed" },
@@ -300,7 +307,7 @@ test("a transcription error ends the session", () => {
 
 test("a transcription error after the transcript is complete changes nothing", async () => {
   const { session, transcriber, refiner, messages } = setup();
-  session.start("");
+  session.start({ live: true });
   session.stop();
   transcriber.events.final(0, "text");
   transcriber.events.error(new Error("connection closed"));
@@ -314,8 +321,8 @@ test("audio or stop before start, or a second start, is rejected", () => {
     (session: DictationSession) => session.audio(audio(100)),
     (session: DictationSession) => session.stop(),
     (session: DictationSession) => {
-      session.start("");
-      session.start("");
+      session.start({ live: true });
+      session.start({ live: true });
     },
   ]) {
     const { session, messages, ended } = setup();
@@ -329,7 +336,7 @@ test("audio or stop before start, or a second start, is rejected", () => {
 
 test("closing drops the session without a message", async () => {
   const { session, transcriber, refiner, messages, ended } = setup();
-  session.start("");
+  session.start({ live: true });
   session.stop();
   transcriber.events.final(0, "text");
   session.close();
@@ -341,4 +348,53 @@ test("closing drops the session without a message", async () => {
   assert.ok(ended());
   assert.ok(transcriber.closed);
   assert.ok(refiner.closed);
+});
+
+test("a dictation that is not live is transcribed once recorded, at the recording's price", async () => {
+  const { session, transcriber, refiner, messages } = setup();
+  session.start();
+  assert.equal(transcriber.live, false);
+  transcriber.events.ready();
+  session.audio(audio(1000));
+  session.stop();
+  transcriber.events.final(0, "hello");
+  refiner.calls[0]?.resolve("Hello.");
+  await settle();
+  assert.deepEqual(messages, [
+    { type: "ready" },
+    {
+      type: "done",
+      text: "Hello.",
+      // A second of audio at half a cent a second.
+      usage: { audio_seconds: 1, input_tokens: 0, output_tokens: 0, cost: 0.005 },
+    },
+  ]);
+});
+
+test("a recording has longer than live text to be transcribed", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session, transcriber, messages } = setup();
+  session.start();
+  transcriber.events.ready();
+  session.audio(audio(500));
+  session.stop();
+  t.mock.timers.tick(30_000);
+  assert.deepEqual(messages, [{ type: "ready" }]);
+  t.mock.timers.tick(30_000);
+  assert.deepEqual(messages, [
+    { type: "ready" },
+    { type: "error", code: "timeout", message: "Transcription timed out" },
+  ]);
+});
+
+test("rejected hints are logged, and the dictation goes on", (t) => {
+  const warn = t.mock.fn(silent.warn);
+  const { session, transcriber, messages } = setup({ ...silent, warn });
+  session.start({ vocabulary: ["Claude"] });
+  transcriber.events.hintsRejected({ code: "invalid_value", param: "keywords" });
+  assert.deepEqual(warn.mock.calls[0]?.arguments, [
+    "transcription hints rejected",
+    { code: "invalid_value", param: "keywords", hint: "the dictation goes on without them" },
+  ]);
+  assert.deepEqual(messages, []);
 });
