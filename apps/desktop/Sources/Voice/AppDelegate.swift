@@ -155,11 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
       menu.addItem(.separator())
     }
-    let (transcriptions, statistics, settings) = (
-      AppSection.transcriptions, AppSection.statistics, AppSection.settings
+    let (transcriptions, dictionary, statistics, settings) = (
+      AppSection.transcriptions, AppSection.dictionary, AppSection.statistics, AppSection.settings
     )
     menu.addItem(
       item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
+    menu.addItem(item(dictionary.title, #selector(openDictionary), symbol: dictionary.symbol))
     menu.addItem(item(statistics.title, #selector(openStatistics), symbol: statistics.symbol))
     menu.addItem(
       item("\(settings.title)…", #selector(openSettings), key: ",", symbol: settings.symbol))
@@ -215,6 +216,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openTranscriptions() {
     open(.transcriptions)
+  }
+
+  @objc private func openDictionary() {
+    open(.dictionary)
   }
 
   @objc private func openStatistics() {

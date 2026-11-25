@@ -35,10 +35,14 @@ import Testing
     #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
     #expect(
       ClientMessage.start(instructions: "").json
-        == #"{"instructions":"","translate_to":"","type":"start"}"#)
+        == #"{"instructions":"","translate_to":"","type":"start","vocabulary":[]}"#)
     #expect(
-      ClientMessage.start(instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish").json
-        == #"{"instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start"}"#)
+      ClientMessage.start(
+        instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish",
+        vocabulary: ["Claude", "R&D"]
+      ).json
+        == #"{"instructions":"Say \"hi\".\nUse a/b.","translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
+    )
   }
 }
 

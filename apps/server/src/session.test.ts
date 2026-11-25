@@ -36,6 +36,7 @@ test("a dictation passes on the text heard, then ends with the refined text", as
     text: "hello world",
     instructions: "",
     translateTo: "",
+    vocabulary: [],
   });
 
   refiner.calls[0]?.resolve("Hello, world.", [3, 2]);
@@ -83,7 +84,18 @@ test("the refiner is prepared when the dictation starts, and gets what the speak
     text: "hey there",
     instructions: "Write formally.",
     translateTo: "Spanish",
+    vocabulary: [],
   });
+});
+
+test("the speaker's vocabulary goes to the transcriber and the refiner, cleaned up", () => {
+  const { session, transcriber, refiner } = setup();
+  session.start("", "", [" Claude ", "claude", "", "Supa\nbase", "<Voice>"]);
+  assert.deepEqual(transcriber.hints, { keywords: ["Claude", "Supa base", "Voice"] });
+
+  session.stop();
+  transcriber.events.final(0, "ask cloud");
+  assert.deepEqual(refiner.calls[0]?.input.vocabulary, ["Claude", "Supa base", "Voice"]);
 });
 
 test("a failed refinement falls back to the transcript", async () => {

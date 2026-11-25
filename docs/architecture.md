@@ -34,6 +34,8 @@ The [transcriber](../apps/server/src/transcriber.ts) streams all the audio to an
 
 `gpt-live-transcribe` writes text while it listens, a little behind the voice, and that text only grows. Because the whole dictation is one turn, the model hears each sentence together with what comes next. It punctuates across pauses, and it recognizes words better than it does on audio cut into pieces: a pause in the middle of a sentence does not end the sentence.
 
+The speaker's dictionary, the names and terms they use, goes to the session as keywords to listen for. They are hints: a word that only sounds like one can still be written as heard, and the refinement looks again.
+
 After the commit the model returns the complete transcript. If the model goes silent for 5 s before it comes, the text heard so far stands in for it.
 
 Recording never waits for a connection. The app records from the moment the shortcut is pressed and sends the audio as it comes. Audio that arrives before the transcription session is ready waits for it, and a speaker who stops before then is waited for too: the audio is transcribed once the session is ready, up to 10 s after the start.
@@ -44,6 +46,7 @@ The refiner sends the complete transcript to a language model to remove fillers 
 
 - **One rewrite.** The model sees the whole text, so the result reads as one piece.
 - **The speaker's instructions.** The app can send instructions with the dictation, such as a tone. They are added to the translation request if there is one, or to the rewrite otherwise, and take precedence over the server's instructions.
+- **The speaker's dictionary.** The app keeps a list of the speaker's names and terms, and sends it with each dictation. The rewrite is given it to tell what a misheard word was: a word that sounds like a term becomes the term where the context fits, such as "cloud" for "Claude" in a sentence about a model, and stays as it is where it means something else. The translation is told to keep the terms as written.
 - **Translation.** The app can ask for the text in another language. That takes a second request, after the first: the model is given the rewritten text, and told to write what the speaker meant the way a native writer would, with that language's own idioms and expressions, and not word for word. Asked to rewrite and translate at once, it follows the speaker's words too closely. The speaker waits for both requests, and both are counted in what the dictation cost.
 - **Over a WebSocket.** The requests go through the Responses API on a WebSocket that the server opens when the dictation starts. When the speaker stops, the connection is already there, and the answers stream back on it.
 - **It cannot lose text.** Refinement has 60 s in all. In each request, the model has 5 s to send its next event. If either limit is reached, the model fails, or a request returns nothing, the transcript is typed as it was heard, untranslated.

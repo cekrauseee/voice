@@ -8,6 +8,7 @@ import {
 } from "./protocol.ts";
 import { type CreateRefiner, type Refinement, RefinementError, type Refiner } from "./refiner.ts";
 import type { CreateTranscriber, Transcriber } from "./transcriber.ts";
+import { normalizeVocabulary } from "./vocabulary.ts";
 
 /** How long transcription may take to be ready for audio. */
 const READY_TIMEOUT_MS = 10_000;
@@ -35,6 +36,8 @@ interface Started {
   instructions: string;
   /** The language to write the text in. Empty to keep the speaker's. */
   translateTo: string;
+  /** Names and terms the speaker uses, as they spell them. */
+  vocabulary: string[];
 }
 
 /**
@@ -65,23 +68,31 @@ export class DictationSession {
     this.deps = deps;
   }
 
-  /** The client opens the dictation, with how and in what language the speaker wants the text. */
-  start(instructions: string, translateTo = ""): void {
+  /**
+   * The client opens the dictation, with how and in what language the speaker wants the text,
+   * and the names and terms they use.
+   */
+  start(instructions: string, translateTo = "", terms: readonly string[] = []): void {
     if (this.ended) return;
     if (this.started) {
       this.reject();
       return;
     }
+    const vocabulary = normalizeVocabulary(terms);
     this.started = {
-      transcriber: this.deps.createTranscriber({
-        ready: () => this.onReady(),
-        delta: (_turn, text) => this.onDelta(text),
-        final: (_turn, text) => this.onFinal(text),
-        error: (error) => this.onError(error),
-      }),
+      transcriber: this.deps.createTranscriber(
+        {
+          ready: () => this.onReady(),
+          delta: (_turn, text) => this.onDelta(text),
+          final: (_turn, text) => this.onFinal(text),
+          error: (error) => this.onError(error),
+        },
+        { keywords: vocabulary },
+      ),
       refiner: this.deps.createRefiner(),
       instructions,
       translateTo,
+      vocabulary,
     };
     this.readyTimer = setTimeout(() => {
       this.deps.log.error("transcription not ready", { timeout_ms: READY_TIMEOUT_MS });
@@ -90,6 +101,7 @@ export class DictationSession {
     this.deps.log.info("started", {
       instructions_chars: instructions.trim().length,
       translates: translateTo.trim() !== "",
+      vocabulary_terms: vocabulary.length,
     });
   }
 
@@ -200,13 +212,16 @@ export class DictationSession {
    */
   private async refine(
     transcript: string,
-    { refiner, instructions, translateTo }: Started,
+    { refiner, instructions, translateTo, vocabulary }: Started,
   ): Promise<Refinement> {
     const log = this.deps.log;
     const startedAt = Date.now();
     const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(REFINE_TIMEOUT_MS)]);
     try {
-      const refined = await refiner.refine({ text: transcript, instructions, translateTo }, signal);
+      const refined = await refiner.refine(
+        { text: transcript, instructions, translateTo, vocabulary },
+        signal,
+      );
       if (refined.text !== "") {
         log.info("refined", { refine_ms: Date.now() - startedAt, chars: refined.text.length });
         return refined;

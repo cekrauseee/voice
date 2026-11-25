@@ -1,7 +1,7 @@
 import { createLogger } from "@voice/log";
 import { type Prices, SAMPLE_RATE, type Usage } from "./protocol.ts";
 import type { CreateRefiner, RefineInput, Refinement } from "./refiner.ts";
-import type { CreateTranscriber, TranscriberEvents } from "./transcriber.ts";
+import type { CreateTranscriber, TranscriberEvents, TranscriptionHints } from "./transcriber.ts";
 
 /** Audio of a given length. */
 export function audio(ms: number): Buffer {
@@ -11,12 +11,14 @@ export function audio(ms: number): Buffer {
 /** A transcriber driven by the test: it records what it receives and emits what it is told. */
 export class FakeTranscriber {
   events!: TranscriberEvents;
+  hints: TranscriptionHints | undefined;
   bytes = 0;
   commits = 0;
   closed = false;
 
-  readonly create: CreateTranscriber = (events) => {
+  readonly create: CreateTranscriber = (events, hints) => {
     this.events = events;
+    this.hints = hints;
     return {
       append: (pcm) => {
         this.bytes += pcm.length;

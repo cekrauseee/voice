@@ -53,24 +53,25 @@ The server has no authentication and listens on the loopback address only. Do no
 The server logs [structured records](../../docs/logging.md): in columns in a terminal, and as one JSON object per line anywhere else, which is what a service manager or a log collector sees.
 
 ```
-16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0 translates=false
+16:24:10.120 INFO  dictation   started dictation=1 instructions_chars=0 translates=false vocabulary_terms=12
 16:24:20.462 INFO  dictation   transcribed dictation=1 transcript_ms=684 chars=340
 16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
 16:24:21.642 INFO  dictation   used dictation=1 audio_seconds=10.3 input_tokens=318 output_tokens=71 cost=0.002986
 16:24:21.643 INFO  dictation   ended dictation=1 outcome=done duration_ms=11523
 ```
 
-Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions, and `translates` whether the text is written in another language. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `instructions_chars` is the length of the speaker's own instructions, `translates` whether the text is written in another language, and `vocabulary_terms` how many names and terms of the speaker's dictionary the models were given. The terms themselves are not logged. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
 
 ## Tuning
 
 The behavior of the pipeline is set by constants in the source:
 
-| What                                                 | Where                                                                                  |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| What the refiner is told to do                       | `REWRITE_INSTRUCTIONS` and `translationInstructions` in [`refiner.ts`](src/refiner.ts) |
-| How long the model may go silent during a refinement | `STALL_MS` in [`responses.ts`](src/responses.ts)                                       |
-| Readiness, transcript, and refinement timeouts       | The constants at the top of [`session.ts`](src/session.ts)                             |
+| What                                                  | Where                                                                                  |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| What the refiner is told to do                        | `REWRITE_INSTRUCTIONS` and `translationInstructions` in [`refiner.ts`](src/refiner.ts) |
+| How many dictionary terms are passed on, and how long | The constants in [`vocabulary.ts`](src/vocabulary.ts)                                  |
+| How long the model may go silent during a refinement  | `STALL_MS` in [`responses.ts`](src/responses.ts)                                       |
+| Readiness, transcript, and refinement timeouts        | The constants at the top of [`session.ts`](src/session.ts)                             |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 
@@ -78,6 +79,7 @@ To measure a change, replay a recording against the running server. Every messag
 afconvert -f WAVE -d LEI16@24000 -c 1 input.m4a recording.wav
 pnpm dictate recording.wav
 pnpm dictate recording.wav --instructions "Write in a formal tone." --translate-to "Spanish"
+pnpm dictate recording.wav --term Claude --term Supabase
 ```
 
 ```
@@ -88,7 +90,7 @@ pnpm dictate recording.wav --instructions "Write in a formal tone." --translate-
  16012ms  done   "So the plan is simple. We ship on Friday."
 ```
 
-`--instructions` sends the speaker's instructions, and `--translate-to` the language to write the text in, as the app does from its settings.
+`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings.
 
 ## Tests
 

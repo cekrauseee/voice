@@ -56,7 +56,12 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   const { ws, messages, closeCode } = await connect(host);
 
   ws.send(
-    JSON.stringify({ type: "start", instructions: "Write formally.", translate_to: "Spanish" }),
+    JSON.stringify({
+      type: "start",
+      instructions: "Write formally.",
+      translate_to: "Spanish",
+      vocabulary: ["Claude"],
+    }),
   );
   ws.send(audio(500));
   await until(() => transcriber.bytes === audio(500).length);
@@ -70,7 +75,9 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
     text: "hi there",
     instructions: "Write formally.",
     translateTo: "Spanish",
+    vocabulary: ["Claude"],
   });
+  assert.deepEqual(transcriber.hints, { keywords: ["Claude"] });
   refiner.calls[0]?.resolve("Hi there.");
   await until(() => closeCode() !== undefined);
 
@@ -87,7 +94,7 @@ test("a dictation streams audio in and text out, then closes", async (t) => {
   assert.ok(transcriber.closed);
 });
 
-test("start needs no instructions or language", async (t) => {
+test("start needs no instructions, language, or vocabulary", async (t) => {
   const { host, transcriber, refiner } = await start(t);
   const { ws } = await connect(host);
   ws.send(JSON.stringify({ type: "start" }));
@@ -97,6 +104,7 @@ test("start needs no instructions or language", async (t) => {
   await until(() => refiner.calls.length === 1);
   assert.equal(refiner.calls[0]?.input.instructions, "");
   assert.equal(refiner.calls[0]?.input.translateTo, "");
+  assert.deepEqual(refiner.calls[0]?.input.vocabulary, []);
   ws.close();
   await until(() => transcriber.closed);
 });
@@ -108,6 +116,8 @@ test("a message that is not part of the protocol ends the dictation with an erro
     '{"type":"other"}',
     '{"type":"start","instructions":7}',
     '{"type":"start","translate_to":7}',
+    '{"type":"start","vocabulary":"Claude"}',
+    '{"type":"start","vocabulary":["Claude",7]}',
   ]) {
     const { ws, messages, closeCode } = await connect(host);
     ws.send(message);
