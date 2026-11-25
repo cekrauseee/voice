@@ -61,29 +61,35 @@ public enum ServerMessage: Equatable, Sendable {
 /// A message to the dictation server.
 public enum ClientMessage: Equatable, Sendable {
   /// Opens the dictation, with how the speaker wants the text written, the language to write
-  /// it in when it is not the one spoken, and the names and terms the speaker uses.
-  case start(instructions: String, translateTo: String = "", vocabulary: [String] = [])
+  /// it in when it is not the one spoken, the names and terms the speaker uses, and the text
+  /// before the cursor in the field.
+  case start(
+    instructions: String, translateTo: String = "", vocabulary: [String] = [],
+    context: String = "")
   /// The speaker is done.
   case stop
 
   public var json: String {
     switch self {
-    case .start(let instructions, let translateTo, let vocabulary):
+    case .start(let instructions, let translateTo, let vocabulary, let context):
       struct Wire: Encodable {
         var type = "start"
         var instructions: String
         var translateTo: String
         var vocabulary: [String]
+        var context: String
 
         enum CodingKeys: String, CodingKey {
-          case type, instructions, vocabulary
+          case type, instructions, vocabulary, context
           case translateTo = "translate_to"
         }
       }
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
       let data = try? encoder.encode(
-        Wire(instructions: instructions, translateTo: translateTo, vocabulary: vocabulary))
+        Wire(
+          instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
+          context: context))
       return data.map { String(decoding: $0, as: UTF8.self) } ?? #"{"type":"start"}"#
     case .stop:
       return #"{"type":"stop"}"#

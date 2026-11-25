@@ -45,6 +45,12 @@ final class Settings {
     didSet { defaults.set(vocabulary, forKey: "vocabulary") }
   }
 
+  /// Whether the text before the cursor in the focused field is sent with each dictation, so
+  /// the dictation fits it. On by default.
+  var usesFieldText: Bool {
+    didSet { defaults.set(usesFieldText, forKey: "usesFieldText") }
+  }
+
   var enterBehavior: EnterBehavior {
     didSet { defaults.set(enterBehavior.rawValue, forKey: "enterBehavior") }
   }
@@ -112,6 +118,7 @@ final class Settings {
     translates = defaults.bool(forKey: "translates")
     translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
     vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []
+    usesFieldText = defaults.object(forKey: "usesFieldText") as? Bool ?? true
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     mediaBehavior = defaults.string(forKey: "mediaBehavior").flatMap(MediaBehavior.init) ?? .pause

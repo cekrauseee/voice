@@ -8,6 +8,7 @@ final class DictationSession {
   private let instructions: String
   private let translateTo: String
   private let vocabulary: [String]
+  private let context: String
   private(set) var transcript = Transcript()
   /// The audio that was sent: 16-bit mono PCM at 24 kHz.
   private(set) var recording = Data()
@@ -25,21 +26,30 @@ final class DictationSession {
   var onReady: () -> Void = {}
   /// The transcript changed.
   var onChange: () -> Void = {}
-  /// The dictation has its text, which is empty when it failed before any word came back.
+  /// The dictation has its text to type, which is empty when it failed before any word came
+  /// back. Refined, it may begin with a space that joins it to the text before the cursor.
   var onText: (String, DictationError?) -> Void = { _, _ in }
   /// The dictation is over, with the reason when it failed.
   var onEnd: (DictationError?) -> Void = { _ in }
 
-  init(server: URL, instructions: String, translateTo: String, vocabulary: [String]) {
+  /// `context` is the text before the cursor in the field the text goes into, if known.
+  init(
+    server: URL, instructions: String, translateTo: String, vocabulary: [String],
+    context: String = ""
+  ) {
     socket = URLSession.shared.webSocketTask(with: server.appending(path: ServerMessage.path))
     self.instructions = instructions
     self.translateTo = translateTo
     self.vocabulary = vocabulary
+    self.context = context
   }
 
   func start() {
     socket.resume()
-    send(.start(instructions: instructions, translateTo: translateTo, vocabulary: vocabulary))
+    send(
+      .start(
+        instructions: instructions, translateTo: translateTo, vocabulary: vocabulary,
+        context: context))
     Task { await receive() }
   }
 
@@ -99,7 +109,7 @@ final class DictationSession {
     isOver = true
     socket.cancel(with: .normalClosure, reason: nil)
     // Refined when the dictation finished, as heard when it failed: what was said is not lost.
-    onText(transcript.text.trimmingCharacters(in: .whitespacesAndNewlines), error)
+    onText(transcript.typed, error)
     onEnd(error)
   }
 }

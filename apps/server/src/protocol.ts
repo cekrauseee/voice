@@ -55,7 +55,13 @@ export type ServerMessage =
   | { type: "error"; code: ErrorCode; message: string };
 
 export type ClientMessage =
-  | { type: "start"; instructions: string; translateTo: string; vocabulary: string[] }
+  | {
+      type: "start";
+      instructions: string;
+      translateTo: string;
+      vocabulary: string[];
+      context: string;
+    }
   | { type: "stop" };
 
 export function parseClientMessage(raw: string): ClientMessage | undefined {
@@ -66,13 +72,15 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
     const instructions = value.instructions ?? "";
     const translateTo = value.translate_to ?? "";
     const vocabulary = value.vocabulary ?? [];
+    const context = value.context ?? "";
     if (
       typeof instructions === "string" &&
       typeof translateTo === "string" &&
       Array.isArray(vocabulary) &&
-      vocabulary.every((term) => typeof term === "string")
+      vocabulary.every((term) => typeof term === "string") &&
+      typeof context === "string"
     ) {
-      return { type: "start", instructions, translateTo, vocabulary };
+      return { type: "start", instructions, translateTo, vocabulary, context };
     }
   }
   return undefined;

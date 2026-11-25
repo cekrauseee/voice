@@ -28,6 +28,8 @@ final class Retry {
     running.insert(id)
     log.info("started", ["seconds": Int(Double(pcm.count) / 2 / AudioFormat.sampleRate)])
 
+    // Without the field's text: the field focused now is not the one dictated into, and the
+    // text is not typed anywhere.
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary)

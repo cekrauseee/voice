@@ -51,10 +51,10 @@ defaults write eu.cekrause.voice serverURL wss://voice.example.com
 
 The app needs two permissions:
 
-| Permission    | Why                                                  |
-| ------------- | ---------------------------------------------------- |
-| Accessibility | To see the shortcuts in any app and to type the text |
-| Microphone    | To record                                            |
+| Permission    | Why                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| Accessibility | To see the shortcuts in any app, to type the text, and to read the text before the cursor |
+| Microphone    | To record                                                                                 |
 
 A third one, System Audio Recording, is optional, and the app never asks for it by itself. With it, the app mutes the other apps alone while a dictation records. Without it, the Mute setting mutes the Mac's output instead, and the Pause setting pauses the media and leaves the other apps playing. The settings ask for it only when Mute is chosen and the output cannot be muted, as with most displays: the Media row then shows Allow.
 
@@ -139,6 +139,7 @@ Settings:
 - **Shortcuts**: click a shortcut, then press the new one. A shortcut is a key with at least one modifier, a function key, or a single modifier key pressed alone.
 - **Media**: what happens to the media playing on the Mac while you record. Pause, the default, pauses it and resumes it after. Mute lets it play on, unheard. Lower lets it play on at a part of the volume, from 10% to 50%, chosen next to it: 30% unless you change it. Keep playing leaves it alone. See [Microphone and media](#microphone-and-media).
 - **Translate**: writes what you say in another language. Turn it on and type the language, such as Spanish. The translation follows the meaning, not the words, so expressions come out the way that language says them. The language stays when you turn it off. Off by default.
+- **Use text in the field**: sends the text before the cursor in the focused field with each dictation, up to about 2000 characters, so the dictation fits it: the names and terms in it are spelled the same way, the tone matches, and a sentence left unfinished goes on without a capital letter and with the right space before it. The app reads it with the Accessibility permission, never from a password field, and goes on without it when the app does not say, as many web and Electron apps do not. That text goes to OpenAI with the dictation, and may hold other people's words: turn this off to keep it on the Mac. On by default.
 - **Keep on clipboard**: leaves the pasted transcription on the clipboard, replacing its previous contents. Off by default.
 - **Press Enter**: Never, the default; With Shift, when Shift is held as you stop recording; or Always. Enter follows the paste. The choice is remembered for that dictation, so Shift can be released while the text is being refined. A failed or empty dictation never presses Enter. These preferences apply to new dictations.
 - **Instructions**: how to write what you say, such as a tone, a language, or words to keep. They are added to the server's built-in instructions and take precedence over them. Empty by default.
@@ -202,7 +203,7 @@ pnpm format        # rewrites the Swift sources
 pnpm check-types   # type-checks the scripts
 ```
 
-The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, when media is paused and resumed, how an output is kept quiet, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
+The tests cover `VoiceCore`, which holds the logic that does not touch the system: shortcut matching, the transcript, the protocol, the setup steps, the choice of microphone, audio chunking, how the text streams in, the history, the statistics, the text read from the focused field, when media is paused and resumed, how an output is kept quiet, and how the app runs its server. The app target is thin glue over system APIs and is checked by building it and by hand.
 
 ## Layout
 
@@ -227,6 +228,7 @@ The tests cover `VoiceCore`, which holds the logic that does not touch the syste
 | `Sources/Voice/MediaControl.swift`                                  | Asks what media is playing, and pauses and resumes it            |
 | `Sources/Voice/OtherAudio.swift`, `AudioDevice.swift`               | Mutes the other apps, or the output, and turns it down           |
 | `Sources/Voice/TextInserter.swift`                                  | Types text into the focused field                                |
+| `Sources/Voice/FocusedField.swift`                                  | Reads the text before the cursor in the focused field            |
 | `Sources/Voice/ServerProcess.swift`                                 | Runs the server for the production app                           |
 | `Sources/Voice/PillPanel.swift`, `PillView.swift`, `Waveform.swift` | The pill                                                         |
 | `Sources/Voice/TranscriptView.swift`                                | The text in the detailed pill, streaming in                      |
