@@ -6,6 +6,7 @@ import VoiceCore
 /// A section of the app's window.
 enum AppSection: String, CaseIterable, Identifiable {
   case transcriptions
+  case dictionary
   case statistics
   case settings
 
@@ -14,6 +15,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .transcriptions: "Transcriptions"
+    case .dictionary: "Dictionary"
     case .statistics: "Statistics"
     case .settings: "Settings"
     }
@@ -22,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .transcriptions: "text.quote"
+    case .dictionary: "character.book.closed"
     case .statistics: "chart.bar"
     case .settings: "gearshape"
     }
@@ -72,6 +75,7 @@ struct MainView: View {
           Group {
             switch navigation.section {
             case .transcriptions: transcriptions
+            case .dictionary: DictionaryView(terms: $settings.vocabulary)
             case .statistics:
               StatisticsView(statistics: statistics.statistics, period: period)
             case .settings:

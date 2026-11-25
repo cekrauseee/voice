@@ -21,12 +21,19 @@ The client opens the socket when recording starts, sends `start`, and may send a
 A text message, and the first message of the dictation.
 
 ```json
-{ "type": "start", "instructions": "Write in a formal tone.", "translate_to": "Spanish" }
+{
+  "type": "start",
+  "instructions": "Write in a formal tone.",
+  "translate_to": "Spanish",
+  "vocabulary": ["Claude", "Supabase"]
+}
 ```
 
 `instructions` says how the speaker wants the text written. The server adds it to its own instructions for the translation if one is requested, or for the rewrite otherwise. It takes precedence over the server's instructions. It is optional: without it, or when it is empty, the server refines its default way.
 
 `translate_to` is the language to write the text in, as the speaker typed it, such as `Spanish` or `Brazilian Portuguese`. The refinement then translates what was said, by meaning and not word for word. It is optional: without it, or when it is empty, the text stays in the language spoken.
+
+`vocabulary` is the speaker's dictionary: names and terms they use, spelled the way they write them. The transcription listens for them, the rewrite writes a word that was misheard as one of them as the term, where the context fits, and a translation keeps them as written. It is optional. The server puts each term on one line, takes out `<` and `>`, and leaves out blanks, terms longer than 100 characters, and terms already listed in another case. It passes on the first 500.
 
 ### Audio
 

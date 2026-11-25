@@ -23,7 +23,16 @@ export interface Transcriber {
   close(): void;
 }
 
-export type CreateTranscriber = (events: TranscriberEvents) => Transcriber;
+/** What the transcriber is told about the audio it will hear. */
+export interface TranscriptionHints {
+  /** Names and terms that may be said, as they are spelled. */
+  keywords: readonly string[];
+}
+
+export type CreateTranscriber = (
+  events: TranscriberEvents,
+  hints?: TranscriptionHints,
+) => Transcriber;
 
 export interface OpenAITranscriberOptions {
   model: string;
@@ -44,7 +53,7 @@ export function createOpenAITranscriber(
   client: OpenAI,
   options: OpenAITranscriberOptions,
 ): CreateTranscriber {
-  return (events) => {
+  return (events, { keywords } = { keywords: [] }) => {
     const realtime = new OpenAIRealtimeWS({ intent: "transcription" }, client);
     // Item ids in order of first appearance. Each commit makes one item, so the index of
     // an item is its turn.
@@ -79,6 +88,7 @@ export function createOpenAITranscriber(
               transcription: {
                 model: options.model,
                 ...(options.languages.length > 0 && { languages: options.languages }),
+                ...(keywords.length > 0 && { keywords: [...keywords] }),
               },
               turn_detection: null,
             },

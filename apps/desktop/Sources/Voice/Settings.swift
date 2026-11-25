@@ -40,6 +40,11 @@ final class Settings {
     Translation.target(isOn: translates, language: translationLanguage)
   }
 
+  /// The user's dictionary: names and terms they use, newest first.
+  var vocabulary: [String] {
+    didSet { defaults.set(vocabulary, forKey: "vocabulary") }
+  }
+
   var enterBehavior: EnterBehavior {
     didSet { defaults.set(enterBehavior.rawValue, forKey: "enterBehavior") }
   }
@@ -106,6 +111,7 @@ final class Settings {
     instructions = defaults.string(forKey: "instructions") ?? ""
     translates = defaults.bool(forKey: "translates")
     translationLanguage = defaults.string(forKey: "translationLanguage") ?? ""
+    vocabulary = defaults.stringArray(forKey: "vocabulary") ?? []
     keepOnClipboard = defaults.bool(forKey: "keepOnClipboard")
     enterBehavior = defaults.string(forKey: "enterBehavior").flatMap(EnterBehavior.init) ?? .never
     mediaBehavior = defaults.string(forKey: "mediaBehavior").flatMap(MediaBehavior.init) ?? .pause

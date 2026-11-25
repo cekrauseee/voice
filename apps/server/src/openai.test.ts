@@ -131,6 +131,30 @@ test("the transcriber configures a transcription session before sending audio", 
   assert.ok(ready);
 });
 
+test("the transcriber listens for the speaker's keywords", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })(
+    { ready() {}, delta() {}, final() {}, error() {} },
+    { keywords: ["Claude", "Supabase"] },
+  );
+  t.after(() => transcriber.close());
+  await until(() => realtime.received.length === 1);
+
+  assert.deepEqual(realtime.received[0], {
+    type: "session.update",
+    session: {
+      type: "transcription",
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: 24000 },
+          transcription: { model: "m", keywords: ["Claude", "Supabase"] },
+          turn_detection: null,
+        },
+      },
+    },
+  });
+});
+
 test("the transcriber passes on the text heard, the transcript, and failures", async (t) => {
   const { realtime, client } = await fakeOpenAI(t);
   const events: unknown[] = [];
@@ -209,7 +233,7 @@ test("the refiner connects ahead, then asks for the transcript to be rewritten",
   assert.equal(responses.received.length, 0);
 
   const refined = refiner.refine(
-    { text: "hello world", instructions: "", translateTo: "" },
+    { text: "hello world", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -247,6 +271,7 @@ test("the refiner rewrites the transcript, then translates what it wrote", async
       text: "oi tudo bom",
       instructions: "Write formally.",
       translateTo: " Brazilian\nPortuguese ",
+      vocabulary: [],
     },
     AbortSignal.timeout(2000),
   );
@@ -286,7 +311,7 @@ test("the refiner does not translate a transcript it rewrote to nothing", async 
   t.after(() => refiner.close());
 
   const refined = refiner.refine(
-    { text: "um", instructions: "", translateTo: "Spanish" },
+    { text: "um", instructions: "", translateTo: "Spanish", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -301,7 +326,7 @@ test("a translation that fails rejects with the rewrite's token usage", async (t
   t.after(() => refiner.close());
 
   const refined = refiner.refine(
-    { text: "hola", instructions: "", translateTo: "English" },
+    { text: "hola", instructions: "", translateTo: "English", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -327,7 +352,7 @@ test("the refiner puts the speaker's instructions after its own", async (t) => {
   t.after(() => refiner.close());
 
   const refined = refiner.refine(
-    { text: "hi", instructions: " Write formally. ", translateTo: "" },
+    { text: "hi", instructions: " Write formally. ", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -339,13 +364,63 @@ test("the refiner puts the speaker's instructions after its own", async (t) => {
   assert.deepEqual(await refined, { text: "", inputTokens: 0, outputTokens: 0 });
 });
 
+test("the refiner gives the speaker's vocabulary to the rewrite and the translation", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const refiner = createOpenAIRefiner(client, { model: "m" })();
+  t.after(() => refiner.close());
+
+  const refined = refiner.refine(
+    {
+      text: "pergunta pro cloud",
+      instructions: "Write formally.",
+      translateTo: "English",
+      vocabulary: ["Claude", "Supabase"],
+    },
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  const rewrite = String(responses.received[0]?.instructions);
+  assert.match(rewrite, /the speech recognizer misheard it: write the term as given/);
+  assert.ok(rewrite.endsWith("<vocabulary>\nClaude\nSupabase\n</vocabulary>"));
+
+  responses.emit({ type: "response.output_text.delta", delta: "Pergunta pro Claude." });
+  responses.emit({ type: "response.completed", response: {} });
+  await until(() => responses.received.length === 2);
+  const translate = String(responses.received[1]?.instructions);
+  assert.match(translate, /keep it as written: do not translate or respell it/);
+  // The speaker's instructions still come last.
+  assert.match(
+    translate,
+    /<vocabulary>\nClaude\nSupabase\n<\/vocabulary>\n\n.*\n<instructions>\nWrite formally\.\n<\/instructions>$/,
+  );
+
+  responses.emit({ type: "response.output_text.delta", delta: "Ask Claude." });
+  responses.emit({ type: "response.completed", response: {} });
+  assert.equal((await refined).text, "Ask Claude.");
+});
+
+test("the refiner leaves out the vocabulary when the speaker has none", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const refiner = createOpenAIRefiner(client, { model: "m" })();
+  t.after(() => refiner.close());
+
+  const refined = refiner.refine(
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  assert.doesNotMatch(String(responses.received[0]?.instructions), /vocabulary/);
+  responses.emit({ type: "response.completed", response: {} });
+  await refined;
+});
+
 test("the refiner gives up on a model that stops answering", async (t) => {
   const { responses, client } = await fakeOpenAI(t);
   const refiner = createOpenAIRefiner(client, { model: "m", stallMs: 40 })();
   t.after(() => refiner.close());
 
   const refined = refiner.refine(
-    { text: "hi", instructions: "", translateTo: "" },
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -359,7 +434,7 @@ test("the refiner reports a response that fails", async (t) => {
   t.after(() => refiner.close());
 
   const failed = refiner.refine(
-    { text: "hi", instructions: "", translateTo: "" },
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -367,7 +442,7 @@ test("the refiner reports a response that fails", async (t) => {
   await assert.rejects(failed, /model overloaded/);
 
   const refused = refiner.refine(
-    { text: "hi", instructions: "", translateTo: "" },
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 2);
@@ -386,7 +461,7 @@ test("the refiner connects again when its connection is gone", async (t) => {
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   const refined = refiner.refine(
-    { text: "hi", instructions: "", translateTo: "" },
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);
@@ -401,7 +476,7 @@ test("closing the refiner ends the request in progress", async (t) => {
   const refiner = createOpenAIRefiner(client, { model: "m" })();
 
   const refined = refiner.refine(
-    { text: "hi", instructions: "", translateTo: "" },
+    { text: "hi", instructions: "", translateTo: "", vocabulary: [] },
     AbortSignal.timeout(2000),
   );
   await until(() => responses.received.length === 1);

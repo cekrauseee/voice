@@ -30,7 +30,7 @@ final class Retry {
 
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
-      translateTo: settings.translateTo)
+      translateTo: settings.translateTo, vocabulary: settings.vocabulary)
     session.onText = { [weak session, history, statistics, log] text, error in
       if let session, let usage = session.usage {
         statistics.record(text: text, seconds: session.recorded, usage: usage)
