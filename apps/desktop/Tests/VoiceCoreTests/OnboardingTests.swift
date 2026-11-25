@@ -19,7 +19,25 @@ import Testing
     #expect(onboarding.canFinish)
 
     onboarding.hasDictated = true
+    #expect(onboarding.current == .profile)
+
+    onboarding.hasProfile = true
     #expect(onboarding.current == nil)
+  }
+
+  @Test func theOptionalStepsCanBeTakenInEitherOrder() {
+    var onboarding = Onboarding(accessibility: false, microphone: false)
+    #expect(onboarding.state(of: .profile) == .upcoming)
+
+    onboarding.accessibility = true
+    onboarding.microphone = true
+    #expect(onboarding.state(of: .tryIt) == .current)
+    #expect(onboarding.state(of: .profile) == .current)
+
+    onboarding.hasProfile = true
+    #expect(onboarding.state(of: .profile) == .done)
+    #expect(onboarding.current == .tryIt)
+    #expect(onboarding.canFinish)
   }
 
   @Test func aStepDoneOutOfOrderStaysDone() {

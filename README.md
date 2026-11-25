@@ -30,7 +30,7 @@ Each app has its own log in the terminal, as [structured records](docs/logging.m
 
 Running it again changes nothing you have set: variables added to `.env.example` later are added to your `.env`, and existing values are kept.
 
-On first launch the app opens a setup window that takes you through the two permissions it needs and lets you try a dictation: see [the desktop README](apps/desktop/README.md#setup).
+On first launch the app opens a setup window that takes you through the two permissions it needs, lets you try a dictation, and offers to tell Voice about yourself: see [the desktop README](apps/desktop/README.md#setup).
 
 Then dictate:
 
@@ -42,7 +42,7 @@ Then dictate:
 
 While holding push to talk, press Space to keep recording after you release the shortcut. Use Toggle recording to stop, or esc to cancel.
 
-The menu bar menu opens the app's window, with the past transcriptions, the statistics of what was dictated and what it cost, and the settings.
+The menu bar menu opens the app's window, with the past transcriptions, your profile and your dictionary, the statistics of what was dictated and what it cost, and the settings. The profile is what the models know about you: on its page, you talk with an agent about who you are, what you talk about, and how you write, with the same shortcuts, and it writes the instructions and hints every dictation gets.
 
 ## Using it every day
 

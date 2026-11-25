@@ -9,6 +9,7 @@ import { type TestContext, test } from "node:test";
 import tls from "node:tls";
 import OpenAI from "openai";
 import { type WebSocket, WebSocketServer } from "ws";
+import { AGENT_INSTRUCTIONS, ANSWER_SCHEMA, createOpenAIAgent } from "./agent.ts";
 import { audio, until } from "./fixtures.ts";
 import { createOpenAIRecordingTranscriber } from "./recording.ts";
 import { createOpenAIRefiner, RefinementError } from "./refiner.ts";
@@ -182,6 +183,105 @@ test("the transcriber listens for the speaker's keywords", async (t) => {
   });
 });
 
+/** The transcription settings of a session update the stand-in received. */
+function transcriptionOf(event: unknown): unknown {
+  return (event as { session: { audio: { input: { transcription: unknown } } } }).session.audio
+    .input.transcription;
+}
+
+test("the transcriber describes the recording, in the speaker's languages", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const transcriber = createOpenAITranscriber(client, { model: "m", languages: ["en", "fr"] })(
+    recorder().handlers,
+    { keywords: ["merge"], prompt: "A developer speaking Portuguese.", languages: ["pt", "en"] },
+  );
+  t.after(() => transcriber.close());
+  await until(() => realtime.received.length === 1);
+
+  assert.deepEqual(transcriptionOf(realtime.received[0]), {
+    model: "m",
+    languages: ["pt", "en"],
+    keywords: ["merge"],
+    prompt: "A developer speaking Portuguese.",
+  });
+});
+
+test("the transcriber falls back on the server's languages, and leaves out an empty prompt", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const transcriber = createOpenAITranscriber(client, { model: "m", languages: ["en"] })(
+    recorder().handlers,
+    { keywords: [], prompt: "", languages: [] },
+  );
+  t.after(() => transcriber.close());
+  await until(() => realtime.received.length === 1);
+
+  assert.deepEqual(transcriptionOf(realtime.received[0]), { model: "m", languages: ["en"] });
+});
+
+test("a session refused with the hints is configured again without them, with the server's languages", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAITranscriber(client, { model: "m", languages: ["en"] })(handlers, {
+    keywords: ["merge"],
+    prompt: "x".repeat(2000),
+  });
+  t.after(() => transcriber.close());
+  transcriber.append(audio(200));
+  await until(() => realtime.received.length === 1);
+
+  realtime.emit({
+    type: "error",
+    error: {
+      type: "invalid_request_error",
+      code: "string_above_max_length",
+      message: "Invalid 'session.audio.input.transcription.prompt': string too long.",
+      param: "session.audio.input.transcription.prompt",
+      event_id: null,
+    },
+  });
+  await until(() => realtime.received.length === 2);
+  // The server's own languages stay: only the hints of this transcription go.
+  assert.deepEqual(transcriptionOf(realtime.received[1]), { model: "m", languages: ["en"] });
+  assert.deepEqual(events, [
+    ["hintsRejected", "string_above_max_length", "session.audio.input.transcription.prompt"],
+  ]);
+
+  // The audio waits for the session that works, and the dictation goes on.
+  realtime.emit({ type: "session.updated", session: {} });
+  await until(() => realtime.received.length === 3);
+  assert.equal(realtime.received[2]?.type, "input_audio_buffer.append");
+  assert.deepEqual(events.at(-1), ["ready"]);
+});
+
+test("a session refused without hints, or twice, fails", async (t) => {
+  const { realtime, client } = await fakeOpenAI(t);
+  const refusal = { type: "error", error: { type: "invalid_request_error", message: "no" } };
+
+  const bare = recorder();
+  const plain = createOpenAITranscriber(client, { model: "m", languages: [] })(bare.handlers);
+  t.after(() => plain.close());
+  await until(() => realtime.received.length === 1);
+  realtime.emit(refusal);
+  await until(() => bare.events.length === 1);
+  assert.match(String((bare.events[0] as unknown[])[0]), /error/);
+  assert.equal(realtime.received.length, 1);
+
+  realtime.received.length = 0;
+  const hinted = recorder();
+  const transcriber = createOpenAITranscriber(client, { model: "m", languages: [] })(
+    hinted.handlers,
+    { keywords: ["merge"] },
+  );
+  t.after(() => transcriber.close());
+  await until(() => realtime.received.length === 1);
+  realtime.emit(refusal);
+  await until(() => realtime.received.length === 2);
+  realtime.emit(refusal);
+  await until(() => hinted.events.length === 2);
+  assert.equal((hinted.events[0] as unknown[])[0], "hintsRejected");
+  assert.equal((hinted.events[1] as unknown[])[0], "error");
+});
+
 test("the transcriber passes on the text heard, the transcript, and failures", async (t) => {
   const { realtime, client } = await fakeOpenAI(t);
   const events: unknown[] = [];
@@ -343,6 +443,29 @@ test("the recording transcriber sends the whole turn as one file, with the hints
   assert.deepEqual(events[1], ["final", 0, "Ask Claude."]);
 });
 
+test("the recording transcriber gets the hints the live one does, in place of the server's languages", async (t) => {
+  const { transcriptions, client } = await fakeOpenAI(t);
+  const { events, handlers } = recorder();
+  const transcriber = createOpenAIRecordingTranscriber(client, {
+    model: "gpt-transcribe",
+    languages: ["en"],
+  })(handlers, {
+    keywords: ["merge"],
+    prompt: "A developer speaking Portuguese about Git.",
+    languages: ["pt", "en"],
+  });
+  t.after(() => transcriber.close());
+  transcriptions.answers.push({ status: 200, body: { text: "Fiz o merge." } });
+  transcriber.append(audio(500));
+  transcriber.commit();
+  await until(() => events.length === 2);
+
+  const [form] = transcriptions.forms;
+  assert.equal(form?.get("prompt"), "A developer speaking Portuguese about Git.");
+  assert.deepEqual(form?.getAll("languages[]"), ["pt", "en"]);
+  assert.deepEqual(form?.getAll("keywords[]"), ["merge"]);
+});
+
 test("the recording transcriber sends a long turn in parts, and joins them in order", async (t) => {
   const { transcriptions, client } = await fakeOpenAI(t);
   const { events, handlers } = recorder();
@@ -350,7 +473,7 @@ test("the recording transcriber sends a long turn in parts, and joins them in or
     model: "m",
     languages: [],
     partSeconds: 1,
-  })(handlers, { keywords: ["Claude"] });
+  })(handlers, { keywords: ["Claude"], prompt: "A developer.", languages: ["pt"] });
   t.after(() => transcriber.close());
   // Each part is answered with its length, the later one first.
   transcriptions.respond = async (form) => {
@@ -365,15 +488,20 @@ test("the recording transcriber sends a long turn in parts, and joins them in or
   // A second of silence, cut a frame's half before its end, then the rest.
   assert.deepEqual(events[1], ["final", 0, `${44 + 45_600} ${44 + 36_000}`]);
   assert.equal(transcriptions.forms.length, 2);
-  for (const form of transcriptions.forms) assert.deepEqual(form.getAll("keywords[]"), ["Claude"]);
+  // Every part has every hint.
+  for (const form of transcriptions.forms) {
+    assert.deepEqual(form.getAll("keywords[]"), ["Claude"]);
+    assert.equal(form.get("prompt"), "A developer.");
+    assert.deepEqual(form.getAll("languages[]"), ["pt"]);
+  }
 });
 
-test("the recording transcriber tries again without hints OpenAI refuses", async (t) => {
+test("the recording transcriber tries again without hints OpenAI refuses, with the server's languages", async (t) => {
   const { transcriptions, client } = await fakeOpenAI(t);
   const { events, handlers } = recorder();
-  const transcriber = createOpenAIRecordingTranscriber(client, { model: "m", languages: [] })(
+  const transcriber = createOpenAIRecordingTranscriber(client, { model: "m", languages: ["en"] })(
     handlers,
-    { keywords: ["Claude"] },
+    { keywords: ["Claude"], prompt: "A developer.", languages: ["pt"] },
   );
   t.after(() => transcriber.close());
   transcriptions.answers.push(
@@ -400,7 +528,11 @@ test("the recording transcriber tries again without hints OpenAI refuses", async
     ["final", 0, "Hi."],
   ]);
   assert.deepEqual(transcriptions.forms[0]?.getAll("keywords[]"), ["Claude"]);
+  assert.deepEqual(transcriptions.forms[0]?.getAll("languages[]"), ["pt"]);
+  // The hints go, and the server's own languages stay.
   assert.deepEqual(transcriptions.forms[1]?.getAll("keywords[]"), []);
+  assert.equal(transcriptions.forms[1]?.get("prompt"), null);
+  assert.deepEqual(transcriptions.forms[1]?.getAll("languages[]"), ["en"]);
 });
 
 test("the recording transcriber completes a turn too short to send, and reports failures", async (t) => {
@@ -523,7 +655,8 @@ test("the refiner rewrites the transcript, then translates what it wrote", async
   assert.match(rewrite, /^You turn dictated speech into written text\./);
   assert.match(rewrite, /Keep the speaker's own words, tone, and language/);
   assert.doesNotMatch(rewrite, /Brazilian Portuguese/);
-  assert.doesNotMatch(rewrite, /<instructions>/);
+  // The rewrite is given the speaker's instructions too, to tell a misheard term.
+  assert.ok(rewrite.endsWith("<instructions>\nWrite formally.\n</instructions>"));
   assert.equal(responses.received[0]?.input, "<transcript>\noi tudo bom\n</transcript>");
 
   responses.emit({ type: "response.output_text.delta", delta: "Oi, tudo bom?" });
@@ -625,7 +758,11 @@ test("the refiner gives the speaker's vocabulary to the rewrite and the translat
   await until(() => responses.received.length === 1);
   const rewrite = String(responses.received[0]?.instructions);
   assert.match(rewrite, /the speech recognizer misheard it: write the term as given/);
-  assert.ok(rewrite.endsWith("<vocabulary>\nClaude\nSupabase\n</vocabulary>"));
+  // The speaker's instructions come last in both requests.
+  assert.match(
+    rewrite,
+    /<vocabulary>\nClaude\nSupabase\n<\/vocabulary>\n\n.*\n<instructions>\nWrite formally\.\n<\/instructions>$/,
+  );
 
   responses.emit({ type: "response.output_text.delta", delta: "Pergunta pro Claude." });
   responses.emit({ type: "response.completed", response: {} });
@@ -789,4 +926,151 @@ test("closing the refiner ends the request in progress", async (t) => {
   refiner.close();
   await assert.rejects(refined, /closed/);
   await until(() => responses.socket?.readyState === 3);
+});
+
+test("the agent is asked for its answer as JSON, with the conversation so far", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const agent = createOpenAIAgent(client, { model: "gpt-6-luna" })();
+  t.after(() => agent.close());
+  await until(() => responses.socket !== undefined);
+
+  const profile = {
+    instructions: "Mantenha os termos de Git.",
+    transcriptionPrompt: "Desenvolvedor.",
+    languages: ["pt"],
+    terms: ["rebase"],
+  };
+  const replies: string[] = [];
+  const answered = agent.answer(
+    {
+      history: [
+        { role: "assistant", text: "O que você faz?" },
+        { role: "user", text: "Sou desenvolvedor." },
+        { role: "assistant", text: "Que termos você usa?", profile },
+      ],
+      said: "Merge e rebase.",
+      profile,
+      vocabulary: [" Claude "],
+    },
+    (reply) => replies.push(reply),
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  const [first] = responses.received;
+  assert.ok(first);
+  const { instructions, ...request } = first;
+  assert.deepEqual(request, {
+    type: "response.create",
+    model: "gpt-6-luna",
+    input: [
+      { role: "assistant", content: '{"reply":"O que você faz?","profile":null,"add_terms":[]}' },
+      { role: "user", content: "Sou desenvolvedor." },
+      {
+        role: "assistant",
+        content:
+          '{"reply":"Que termos você usa?","profile":{"instructions":"Mantenha os termos de Git.","transcription_prompt":"Desenvolvedor.","languages":["pt"],"terms":["rebase"]},"add_terms":[]}',
+      },
+      { role: "user", content: "Merge e rebase." },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "answer",
+        schema: JSON.parse(JSON.stringify(ANSWER_SCHEMA)),
+        strict: true,
+      },
+    },
+    reasoning: { effort: "none" },
+    store: false,
+  });
+  assert.ok(String(instructions).startsWith(AGENT_INSTRUCTIONS));
+  assert.match(String(instructions), /<profile>\n\{"instructions":"Mantenha os termos de Git\."/);
+  assert.ok(String(instructions).endsWith("<vocabulary>\nClaude\n</vocabulary>"));
+
+  // The reply is passed on as it is written, before the rest of the answer.
+  responses.emit({ type: "response.output_text.delta", delta: '{"reply":"Certo, ' });
+  responses.emit({ type: "response.output_text.delta", delta: 'anotei \\"merge\\".","profile":' });
+  await until(() => replies.length === 2);
+  assert.deepEqual(replies, ["Certo, ", 'anotei "merge".']);
+  responses.emit({
+    type: "response.output_text.delta",
+    delta:
+      '{"instructions":" Mantenha merge e rebase. ","transcription_prompt":"Desenvolvedor\\nfalando de Git.","languages":["pt","en"],"terms":["merge","Claude","rebase"]},"add_terms":["Git"]}',
+  });
+  responses.emit({
+    type: "response.completed",
+    response: { usage: { input_tokens: 1500, output_tokens: 200, total_tokens: 1700 } },
+  });
+  assert.deepEqual(await answered, {
+    reply: 'Certo, anotei "merge".',
+    profile: {
+      instructions: "Mantenha merge e rebase.",
+      transcriptionPrompt: "Desenvolvedor falando de Git.",
+      languages: ["pt", "en"],
+      // Claude is in the dictionary already.
+      terms: ["merge", "rebase"],
+    },
+    addTerms: ["Git"],
+    inputTokens: 1500,
+    outputTokens: 200,
+  });
+  assert.equal(responses.connections, 1);
+});
+
+test("the agent is told when there is no profile yet, and may leave it as it is", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const agent = createOpenAIAgent(client, { model: "m", reasoning: "low" })();
+  t.after(() => agent.close());
+
+  const answered = agent.answer(
+    {
+      history: [],
+      said: "Oi.",
+      profile: { instructions: "", transcriptionPrompt: "", languages: [], terms: [] },
+      vocabulary: [],
+    },
+    () => {},
+    AbortSignal.timeout(2000),
+  );
+  await until(() => responses.received.length === 1);
+  const instructions = String(responses.received[0]?.instructions);
+  assert.ok(instructions.endsWith("The person has no profile yet."));
+  assert.deepEqual(responses.received[0]?.reasoning, { effort: "low" });
+
+  responses.emit({
+    type: "response.output_text.delta",
+    delta: '{"reply":"Oi! O que você faz?","profile":null,"add_terms":[]}',
+  });
+  responses.emit({ type: "response.completed", response: {} });
+  const answer = await answered;
+  assert.equal(answer.profile, undefined);
+  assert.equal(answer.reply, "Oi! O que você faz?");
+});
+
+test("an answer that is not what was asked for fails, without quoting it", async (t) => {
+  const { responses, client } = await fakeOpenAI(t);
+  const agent = createOpenAIAgent(client, { model: "m" })();
+  t.after(() => agent.close());
+
+  for (const [text, message] of [
+    ["Sou desenvolvedor e falo", "Answer is not JSON"],
+    ['{"reply":"Oi"}', "Answer is missing a part"],
+    ['{"reply":"Oi","profile":{"instructions":"x"},"add_terms":[]}', "Profile is missing a part"],
+  ] as const) {
+    const answered = agent.answer(
+      {
+        history: [],
+        said: "Oi.",
+        profile: { instructions: "", transcriptionPrompt: "", languages: [], terms: [] },
+        vocabulary: [],
+      },
+      () => {},
+      AbortSignal.timeout(2000),
+    );
+    const sent = responses.received.length;
+    await until(() => responses.received.length === sent + 1);
+    responses.emit({ type: "response.output_text.delta", delta: text });
+    responses.emit({ type: "response.completed", response: {} });
+    await assert.rejects(answered, { message });
+  }
 });

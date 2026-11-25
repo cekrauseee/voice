@@ -34,7 +34,7 @@ final class PillPanel {
 
   func start() {
     track { [controller] in
-      controller.pill
+      controller.shownPill
     } onChange: { [weak self] state in
       self?.update(state)
     }

@@ -2,8 +2,9 @@ import AVFoundation
 import SwiftUI
 import VoiceCore
 
-/// The setup window: the two permissions the app needs, then a place to try it. Under
-/// them is the choice of opening the app at login, which is not a step: it can be left.
+/// The setup window: the two permissions the app needs, then a place to try it, and a place
+/// to say what you talk about, which can be left. Under them is the choice of opening the app
+/// at login, which is not a step: it can be left too.
 struct OnboardingView: View {
   let onboarding: Onboarding
   let pushToTalk: Shortcut
@@ -15,6 +16,8 @@ struct OnboardingView: View {
   @Binding var opensAtLogin: Bool
   let allowAccessibility: () -> Void
   let allowMicrophone: () -> Void
+  /// Opens the profile page, to talk to the agent there.
+  let openProfile: () -> Void
   let done: () -> Void
 
   @FocusState private var isSampleFocused: Bool
@@ -26,7 +29,7 @@ struct OnboardingView: View {
           .font(.system(size: 28, weight: .medium))
         Text("Welcome to Voice")
           .font(.title2.bold())
-        Text("Three steps, then dictate into any app.")
+        Text("A few steps, then dictate into any app.")
           .foregroundStyle(.secondary)
       }
 
@@ -70,6 +73,17 @@ struct OnboardingView: View {
             }
             .padding(.top, 4)
             .disabled(!onboarding.canFinish)
+        }
+        Divider()
+        StepRow(
+          number: 4, title: "About you", state: onboarding.state(of: .profile),
+          actionTitle: onboarding.canFinish ? "Open Profile" : nil, action: openProfile
+        ) {
+          Text(
+            onboarding.hasProfile
+              ? "Your profile is ready. Change it any time in Profile."
+              : "Optional. Talk to Voice about what you dictate, so your words come out right."
+          )
         }
       }
       .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
@@ -161,6 +175,7 @@ struct OnboardingContainer: View {
   let permissions: Permissions
   let settings: Settings
   let loginItem: LoginItem
+  let openProfile: () -> Void
   let done: () -> Void
 
   @State private var sample = ""
@@ -172,7 +187,7 @@ struct OnboardingContainer: View {
     let onboarding = Onboarding(
       accessibility: permissions.accessibility,
       microphone: permissions.microphone == .authorized,
-      hasDictated: !sample.isEmpty)
+      hasDictated: !sample.isEmpty, hasProfile: settings.profile.isWritten)
 
     OnboardingView(
       onboarding: onboarding, pushToTalk: settings.pushToTalk,
@@ -187,7 +202,7 @@ struct OnboardingContainer: View {
         isWaitingForAccessibility = true
         permissions.requestAccessibility()
       },
-      allowMicrophone: permissions.requestMicrophone, done: done
+      allowMicrophone: permissions.requestMicrophone, openProfile: openProfile, done: done
     )
     .onChange(of: onboarding.current, initial: true) {
       log.info("step", ["current": onboarding.current.map { "\($0)" } ?? "none"])

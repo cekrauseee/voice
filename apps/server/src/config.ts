@@ -1,4 +1,5 @@
 import type { Prices } from "./protocol.ts";
+import type { ReasoningEffort } from "./responses.ts";
 
 /** A configuration problem, with what to do about it. */
 export class ConfigError extends Error {
@@ -20,9 +21,25 @@ export interface Config {
   liveTranscribeModel: string;
   transcribeLanguages: string[];
   refineModel: string;
+  /** How much the refinement model reasons before it answers in the profile conversation. */
+  profileReasoning: ReasoningEffort;
   prices: Prices;
   /** Stop when the program that started the server ends, such as the app. */
   stopWithParent: boolean;
+}
+
+const EFFORTS: readonly ReasoningEffort[] = ["none", "low", "medium", "high"];
+
+function reasoning(value: string | undefined): ReasoningEffort {
+  if (!value) return "none";
+  const effort = EFFORTS.find((effort) => effort === value);
+  if (!effort) {
+    throw new ConfigError(
+      `PROFILE_REASONING is not a reasoning effort: ${value}`,
+      `set it to ${EFFORTS.join(", ")}`,
+    );
+  }
+  return effort;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -55,6 +72,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map((language) => language.trim())
       .filter((language) => language !== ""),
     refineModel: env.REFINE_MODEL || "gpt-6-luna",
+    profileReasoning: reasoning(env.PROFILE_REASONING),
     // OpenAI's prices for the default models, as published in November 2026.
     prices: {
       transcribeMinute: price("TRANSCRIBE_PRICE_PER_MINUTE", 0.0045),

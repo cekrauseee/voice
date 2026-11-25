@@ -33,7 +33,7 @@ final class Retry {
     // text is not typed anywhere.
     // Not live: nothing shows the words of a retry as they are heard.
     let session = DictationSession(
-      server: settings.serverURL, instructions: settings.instructions,
+      server: settings.serverURL, profile: settings.profile,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary)
     session.onEnd = { [weak self, weak session] end in
       self?.running.remove(id)

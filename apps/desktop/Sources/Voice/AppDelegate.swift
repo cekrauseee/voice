@@ -11,8 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let navigation = Navigation()
   private let loginItem = LoginItem()
   private lazy var server = ServerProcess()
+  private lazy var conversation = ProfileConversation(settings: settings)
   private lazy var controller = DictationController(
-    settings: settings, permissions: permissions, history: history, statistics: statistics)
+    settings: settings, permissions: permissions, history: history, statistics: statistics,
+    conversation: conversation)
   private lazy var retry = Retry(settings: settings, history: history, statistics: statistics)
   private lazy var hotkeys = HotkeyTap(settings: settings, controller: controller)
   private lazy var pill = PillPanel(controller: controller, settings: settings)
@@ -21,11 +23,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     style: .main(size: NSSize(width: 680, height: 460)),
     content: MainView(
       navigation: navigation, history: history, statistics: statistics, retry: retry,
-      loginItem: loginItem, permissions: permissions, settings: settings))
+      loginItem: loginItem, permissions: permissions, conversation: conversation,
+      controller: controller, settings: settings))
   private lazy var setupWindow = AppWindow(
     title: AppInfo.name,
     content: OnboardingContainer(
-      permissions: permissions, settings: settings, loginItem: loginItem
+      permissions: permissions, settings: settings, loginItem: loginItem,
+      openProfile: { [weak self] in self?.open(.profile) }
     ) { [weak self] in
       self?.finishSetup()
     })
@@ -48,6 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     statusItem.menu = NSMenu()
     statusItem.menu?.delegate = self
+
+    // On the profile page, in front, the shortcuts talk to the agent.
+    controller.route = { [weak self] in
+      guard let self else { return .dictation }
+      return ShortcutTarget.forRecording(
+        isAppActive: NSApp.isActive, isWindowKey: NSApp.isActive && mainWindow.window.isKeyWindow,
+        showsProfile: navigation.section == .profile, canTalk: conversation.canTalk)
+    }
 
     track { [settings] in
       settings.theme
@@ -155,11 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(item("Finish Setup…", #selector(openSetup), symbol: "checklist"))
       menu.addItem(.separator())
     }
-    let (transcriptions, dictionary, statistics, settings) = (
-      AppSection.transcriptions, AppSection.dictionary, AppSection.statistics, AppSection.settings
+    let (transcriptions, profile, dictionary, statistics, settings) = (
+      AppSection.transcriptions, AppSection.profile, AppSection.dictionary,
+      AppSection.statistics, AppSection.settings
     )
     menu.addItem(
       item(transcriptions.title, #selector(openTranscriptions), symbol: transcriptions.symbol))
+    menu.addItem(item(profile.title, #selector(openProfile), symbol: profile.symbol))
     menu.addItem(item(dictionary.title, #selector(openDictionary), symbol: dictionary.symbol))
     menu.addItem(item(statistics.title, #selector(openStatistics), symbol: statistics.symbol))
     menu.addItem(
@@ -216,6 +230,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openTranscriptions() {
     open(.transcriptions)
+  }
+
+  @objc private func openProfile() {
+    open(.profile)
   }
 
   @objc private func openDictionary() {

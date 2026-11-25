@@ -38,3 +38,15 @@ test("a price that is not a number is a configuration problem", () => {
     ConfigError,
   );
 });
+
+test("the profile conversation answers without reasoning, unless set to", () => {
+  assert.equal(loadConfig({ OPENAI_API_KEY: "key" }).profileReasoning, "none");
+  assert.equal(
+    loadConfig({ OPENAI_API_KEY: "key", PROFILE_REASONING: "low" }).profileReasoning,
+    "low",
+  );
+  assert.throws(
+    () => loadConfig({ OPENAI_API_KEY: "key", PROFILE_REASONING: "lots" }),
+    ConfigError,
+  );
+});

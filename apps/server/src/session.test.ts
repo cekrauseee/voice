@@ -128,17 +128,59 @@ test("the context is logged by its length only", (t) => {
     translates: false,
     vocabulary_terms: 0,
     context_chars: 13,
+    prompt_chars: 0,
+    languages: 0,
   });
 });
 
 test("the speaker's vocabulary goes to the transcriber and the refiner, cleaned up", () => {
   const { session, transcriber, refiner } = setup();
   session.start({ vocabulary: [" Claude ", "claude", "", "Supa\nbase", "<Voice>"], live: true });
-  assert.deepEqual(transcriber.hints, { keywords: ["Claude", "Supa base", "Voice"] });
+  assert.deepEqual(transcriber.hints, {
+    keywords: ["Claude", "Supa base", "Voice"],
+    prompt: "",
+    languages: [],
+  });
 
   session.stop();
   transcriber.events.final(0, "ask cloud");
   assert.deepEqual(refiner.calls[0]?.input.vocabulary, ["Claude", "Supa base", "Voice"]);
+});
+
+test("the transcriber is told what the recordings are like, cleaned up", () => {
+  const { session, transcriber, refiner } = setup();
+  session.start({
+    transcriptionPrompt: " A developer\ntalking about\tGit. ",
+    languages: ["pt-BR", "EN", "pt", "portuguese", ""],
+  });
+  // A dictation transcribed once it ends gets them as a live one does.
+  assert.equal(transcriber.live, false);
+  assert.deepEqual(transcriber.hints, {
+    keywords: [],
+    prompt: "A developer talking about Git.",
+    languages: ["pt", "en"],
+  });
+
+  // The refinement is not told: the prompt describes audio, not text.
+  session.stop();
+  transcriber.events.final(0, "faz o merge");
+  assert.deepEqual(Object.keys(refiner.calls[0]?.input ?? {}).sort(), [
+    "context",
+    "instructions",
+    "text",
+    "translateTo",
+    "vocabulary",
+  ]);
+});
+
+test("a prompt is cut to what the transcription takes, and logged by its length only", (t) => {
+  const info = t.mock.fn(silent.info);
+  const { session, transcriber } = setup({ ...silent, info });
+  session.start({ transcriptionPrompt: "word ".repeat(400), languages: ["pt", "en"] });
+  assert.ok((transcriber.hints?.prompt?.length ?? 0) <= 1000);
+  const started = info.mock.calls.find((call) => call.arguments[0] === "started");
+  assert.equal(started?.arguments[1]?.prompt_chars, transcriber.hints?.prompt?.length);
+  assert.equal(started?.arguments[1]?.languages, 2);
 });
 
 test("a failed refinement falls back to the transcript", async () => {
@@ -411,7 +453,7 @@ test("rejected hints are logged, and the dictation goes on", (t) => {
   transcriber.events.hintsRejected({ code: "invalid_value", param: "keywords" });
   assert.deepEqual(warn.mock.calls[0]?.arguments, [
     "transcription hints rejected",
-    { code: "invalid_value", param: "keywords", hint: "the dictation goes on without them" },
+    { code: "invalid_value", param: "keywords", hint: "the transcription goes on without them" },
   ]);
   assert.deepEqual(messages, []);
 });

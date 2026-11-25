@@ -224,3 +224,52 @@ struct Segmented<Value: Hashable>: View {
     .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 }
+
+/// A place to type a few lines, with what to type in it while it is empty.
+struct TextArea: View {
+  @Binding var text: String
+  let placeholder: String
+  var height = 64.0
+
+  var body: some View {
+    TextEditor(text: $text)
+      .font(.voiceBody)
+      .scrollContentBackground(.hidden)
+      .frame(height: height)
+      .overlay(alignment: .topLeading) {
+        if text.isEmpty {
+          Text(placeholder)
+            .font(.voiceBody)
+            .foregroundStyle(.tertiary)
+            .padding(.leading, 5)
+            .allowsHitTesting(false)
+        }
+      }
+      .padding(.horizontal, Design.small - 5)
+      .padding(.vertical, Design.small)
+      .background(
+        Design.surface,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius, style: .continuous)
+      )
+  }
+}
+
+/// A button that is a word, filled like a control.
+struct TextButton: View {
+  let title: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(title, action: action)
+      .buttonStyle(.plain)
+      .font(.voiceLabel)
+      .padding(.horizontal, 10)
+      .frame(height: 26)
+      .background(
+        Design.surface,
+        in: RoundedRectangle(cornerRadius: Design.controlRadius + 1, style: .continuous)
+      )
+      .contentShape(Rectangle())
+      .pointer()
+  }
+}

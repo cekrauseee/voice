@@ -1,4 +1,5 @@
 import { createLogger } from "@voice/log";
+import type { AgentAnswer, AgentInput, CreateAgent } from "./agent.ts";
 import { type Prices, SAMPLE_RATE, type Usage } from "./protocol.ts";
 import type { CreateRefiner, RefineInput, Refinement } from "./refiner.ts";
 import type { CreateTranscriber, TranscriberEvents, TranscriptionHints } from "./transcriber.ts";
@@ -65,6 +66,48 @@ export class FakeRefiner {
           signal,
           resolve: (text, [inputTokens, outputTokens] = [0, 0]) =>
             resolve({ text, inputTokens, outputTokens }),
+          reject,
+        });
+        return promise;
+      },
+      close: () => {
+        this.closed = true;
+      },
+    };
+  };
+}
+
+/** An agent whose answers come when the test says so. */
+export class FakeAgent {
+  readonly calls: {
+    input: AgentInput;
+    signal: AbortSignal;
+    /** Writes part of the reply. */
+    reply(text: string): void;
+    resolve(answer: Partial<AgentAnswer>): void;
+    reject(error: Error): void;
+  }[] = [];
+  created = 0;
+  closed = false;
+
+  readonly create: CreateAgent = () => {
+    this.created += 1;
+    return {
+      answer: (input, onReply, signal) => {
+        const { promise, resolve, reject } = Promise.withResolvers<AgentAnswer>();
+        this.calls.push({
+          input,
+          signal,
+          reply: onReply,
+          resolve: (answer) =>
+            resolve({
+              reply: "",
+              profile: undefined,
+              addTerms: [],
+              inputTokens: 0,
+              outputTokens: 0,
+              ...answer,
+            }),
           reject,
         });
         return promise;

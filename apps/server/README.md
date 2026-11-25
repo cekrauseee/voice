@@ -36,8 +36,9 @@ Environment variables, read from `.env`. `pnpm start` also runs without the file
 | `PORT`                             | `8787`                              | The port to listen on                                                                                                                            |
 | `TRANSCRIBE_MODEL`                 | `gpt-transcribe`                    | The model that transcribes a recording once the speaker stops                                                                                    |
 | `LIVE_TRANSCRIBE_MODEL`            | `gpt-live-transcribe`               | The realtime model that transcribes while the speaker talks, when the app asks for live transcription                                            |
-| `TRANSCRIBE_LANGUAGES`             | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy                                          |
+| `TRANSCRIBE_LANGUAGES`             | none                                | Comma-separated ISO 639-1 codes of the languages spoken, such as `en,pt`. Naming them improves accuracy. A profile's languages take their place  |
 | `REFINE_MODEL`                     | `gpt-6-luna`                        | The model that refines the transcript. It must support running without reasoning                                                                 |
+| `PROFILE_REASONING`                | `none`                              | How much the refinement model reasons before it answers in the profile conversation: `none`, `low`, `medium`, or `high`                          |
 | `TRANSCRIBE_PRICE_PER_MINUTE`      | `0.0045`                            | What OpenAI charges for a minute of audio transcribed once recorded, in US dollars                                                               |
 | `LIVE_TRANSCRIBE_PRICE_PER_MINUTE` | `0.017`                             | What OpenAI charges for a minute of audio transcribed live, in US dollars                                                                        |
 | `REFINE_PRICE_PER_MILLION_INPUT`   | `0.10`                              | What OpenAI charges for a million tokens the refinement reads, in US dollars                                                                     |
@@ -48,32 +49,45 @@ Environment variables, read from `.env`. `pnpm start` also runs without the file
 
 The prices are what the server estimates the cost of a dictation with, for the app's statistics. OpenAI reports what a dictation used, not what it costs. The defaults are [OpenAI's prices](https://developers.openai.com/api/docs/pricing) for the default models in November 2026: set them when you change a model, or when the prices change.
 
-The server has no authentication and listens on the loopback address only. Do not set `HOST` to a public address without an authenticating proxy in front: anyone who can reach the server can spend your OpenAI credit.
+The server has no authentication and listens on the loopback address only. Do not set `HOST` to a public address without an authenticating proxy in front: anyone who can reach the server can spend your OpenAI credit. Both WebSockets also refuse a handshake from a web page, which a browser marks with an `Origin` header, so a page open in a browser cannot use the server through the loopback address.
 
 ## Logs
 
 The server logs [structured records](../../docs/logging.md): in columns in a terminal, and as one JSON object per line anywhere else, which is what a service manager or a log collector sees.
 
 ```
-16:24:10.120 INFO  dictation   started dictation=1 live=false instructions_chars=0 translates=false vocabulary_terms=12
+16:24:10.120 INFO  dictation   started dictation=1 live=false instructions_chars=632 translates=false vocabulary_terms=12 context_chars=0 prompt_chars=242 languages=2
 16:24:20.462 INFO  dictation   transcribed dictation=1 transcript_ms=684 chars=340
 16:24:21.642 INFO  dictation   refined dictation=1 refine_ms=1180 chars=298
 16:24:21.642 INFO  dictation   used dictation=1 audio_seconds=10.3 input_tokens=318 output_tokens=71 cost=0.002986
 16:24:21.643 INFO  dictation   ended dictation=1 outcome=done duration_ms=11523
 ```
 
-Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `live` is whether the dictation is transcribed while the speaker talks. `instructions_chars` is the length of the speaker's own instructions, `translates` whether the text is written in another language, and `vocabulary_terms` how many names and terms of the speaker's dictionary the models were given. The terms themselves are not logged. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+Each dictation has a number, on every record about it. `transcript_ms` is the time from the stop to the complete transcript, and `refine_ms` the time the refinement then took: together they are how long the speaker waits for the text. `live` is whether the dictation is transcribed while the speaker talks. `instructions_chars` is the length of the speaker's own instructions, `translates` whether the text is written in another language, `vocabulary_terms` how many names and terms of the speaker's dictionary the models were given, `prompt_chars` the length of the description of their recordings, and `languages` how many languages they named. The terms and the description themselves are not logged. When OpenAI refuses those hints, `transcription hints rejected` says which one in `param`, and the dictation goes on without them. `used` is what the dictation took and the estimate of its cost in US dollars, as sent to the app. `outcome` is `done`, `cancelled`, or the error code sent to the app.
+
+Each turn of the profile conversation has a number too. Its records say how much conversation it was given, how long the agent took to answer and to write the first words of its reply, and what changed. What the speaker said and the profile are not logged, only their lengths and counts:
+
+```
+16:30:02.120 INFO  profile     started turn=3 history_messages=5 history_chars=412 instructions_chars=548 prompt_chars=180 languages=2 terms=8 vocabulary_terms=1
+16:30:06.388 INFO  profile     transcribed turn=3 transcript_ms=576 chars=95
+16:30:08.731 INFO  profile     answered turn=3 answer_ms=2342 first_reply_ms=993 reply_chars=104 profile_changed=true terms=8 add_terms=2
+16:30:08.731 INFO  profile     used turn=3 audio_seconds=7.1 input_tokens=2190 output_tokens=276 cost=0.002358
+16:30:08.732 INFO  profile     ended turn=3 outcome=done duration_ms=9612
+```
 
 ## Tuning
 
 The behavior of the pipeline is set by constants in the source:
 
-| What                                                  | Where                                                                                  |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| What the refiner is told to do                        | `REWRITE_INSTRUCTIONS` and `translationInstructions` in [`refiner.ts`](src/refiner.ts) |
-| How many dictionary terms are passed on, and how long | The constants in [`vocabulary.ts`](src/vocabulary.ts)                                  |
-| How long the model may go silent during a refinement  | `STALL_MS` in [`responses.ts`](src/responses.ts)                                       |
-| Readiness, transcript, and refinement timeouts        | The constants at the top of [`session.ts`](src/session.ts)                             |
+| What                                                   | Where                                                                                        |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| What the refiner is told to do                         | `REWRITE_INSTRUCTIONS` and `translationInstructions` in [`refiner.ts`](src/refiner.ts)       |
+| What the profile agent is told, and how it answers     | `AGENT_INSTRUCTIONS` and `ANSWER_SCHEMA` in [`agent.ts`](src/agent.ts)                       |
+| How many dictionary terms are passed on, and how long  | The constants in [`vocabulary.ts`](src/vocabulary.ts)                                        |
+| How long a transcription prompt is, how many languages | The constants in [`hints.ts`](src/hints.ts)                                                  |
+| How long the model may go silent during a request      | `STALL_MS` in [`responses.ts`](src/responses.ts)                                             |
+| Readiness and transcript timeouts                      | The constants at the top of [`turn.ts`](src/turn.ts)                                         |
+| Refinement and answer timeouts                         | The constants in [`session.ts`](src/session.ts) and [`conversation.ts`](src/conversation.ts) |
 
 To measure a change, replay a recording against the running server. Every message is printed with the time it arrived, and the server logs how long the transcript and the refinement took.
 
@@ -82,6 +96,10 @@ afconvert -f WAVE -d LEI16@24000 -c 1 input.m4a recording.wav
 pnpm dictate recording.wav
 pnpm dictate recording.wav --instructions "Write in a formal tone." --translate-to "Spanish"
 pnpm dictate recording.wav --term Claude --term Supabase
+pnpm dictate recording.wav --live
+pnpm dictate recording.wav --prompt "A developer speaking Portuguese about Git." --language pt --language en
+pnpm dictate recording.wav --profile profile.json
+pnpm converse turn1.wav turn2.wav turn3.wav --opening "Oi! O que você faz?" --out profile.json
 ```
 
 ```
@@ -92,7 +110,11 @@ pnpm dictate recording.wav --term Claude --term Supabase
  16012ms  done   "So the plan is simple. We ship on Friday."
 ```
 
-`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings. `--context` sends text as if it were before the cursor in the field, as the app does from the focused field. `--live` transcribes while the recording plays, as the app does with live transcription on.
+`--instructions` sends the speaker's instructions, `--translate-to` the language to write the text in, and each `--term` a name or term of the speaker's dictionary, as the app does from its settings. `--context` sends text as if it were before the cursor in the field, as the app does from the focused field. `--live` transcribes while the recording plays, as the app does with live transcription on. `--prompt` describes the recording to the transcription, and each `--language` is a language spoken.
+
+`--profile` sends a profile as the profile conversation writes it: its instructions, prompt, and languages, and its terms as if they were all accepted.
+
+`pnpm converse` holds a profile conversation: each recording is one turn, and the conversation so far goes with the next, as the app keeps it. Terms the agent adds go to the dictionary the next turns are sent. It prints what was heard, the agent's reply as it comes, and how long each took after the stop. `--opening` is the question the conversation opens with, `--profile` the profile to start from, and `--out` where to write the profile it ends with, for `pnpm dictate --profile`.
 
 ## Tests
 
@@ -104,15 +126,21 @@ The tests run the real server, session, transcriber, and refiner. The OpenAI API
 
 ## Layout
 
-| File                 | Responsibility                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `src/main.ts`        | Reads the configuration, checks OpenAI, starts the server                            |
-| `src/server.ts`      | HTTP and WebSocket endpoints. One connection is one session                          |
-| `src/session.ts`     | One dictation: drives the transcriber and the refiner, and falls back when one fails |
-| `src/transcriber.ts` | The OpenAI realtime transcription session                                            |
-| `src/responses.ts`   | A request to the Responses API over a WebSocket                                      |
-| `src/refiner.ts`     | The refinement prompt                                                                |
-| `src/joining.ts`     | Whether the text needs a space to follow the text before the cursor                  |
-| `src/protocol.ts`    | The messages exchanged with the app                                                  |
-| `scripts/dictate.ts` | Replays a recording against a running server                                         |
-| `scripts/env.ts`     | Prepares `.env` for `pnpm dev`                                                       |
+| File                  | Responsibility                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| `src/main.ts`         | Reads the configuration, checks OpenAI, starts the server                          |
+| `src/server.ts`       | HTTP and WebSocket endpoints: one connection is one dictation, or one profile turn |
+| `src/turn.ts`         | One turn of speech: the transcription, its timeouts, and the answer that ends it   |
+| `src/session.ts`      | One dictation: refines the transcript, and falls back when that fails              |
+| `src/conversation.ts` | One turn of the profile conversation: the agent answers what was heard             |
+| `src/recording.ts`    | Transcribes a recording once it ends, in parts cut at pauses when it is long       |
+| `src/transcriber.ts`  | The OpenAI realtime transcription session, for live transcription                  |
+| `src/responses.ts`    | A request to the Responses API over a WebSocket                                    |
+| `src/refiner.ts`      | The refinement prompt                                                              |
+| `src/agent.ts`        | The profile agent: what it is told, its answer's schema, and its reply as it comes |
+| `src/hints.ts`        | What the transcription is told about the recording, made safe to send              |
+| `src/joining.ts`      | Whether the text needs a space to follow the text before the cursor                |
+| `src/protocol.ts`     | The messages exchanged with the app                                                |
+| `scripts/dictate.ts`  | Replays a recording against a running server                                       |
+| `scripts/converse.ts` | Holds a profile conversation with a running server, from recordings                |
+| `scripts/env.ts`      | Prepares `.env` for `pnpm dev`                                                     |

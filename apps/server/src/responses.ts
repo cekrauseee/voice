@@ -1,13 +1,21 @@
 import type OpenAI from "openai";
 import { ResponsesWS } from "openai/resources/responses/ws";
 
+/** A message of a conversation the model is given. */
+export interface InputMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface ResponsesRequest {
   /** The system prompt. */
   instructions: string;
-  /** The user message. */
-  input: string;
+  /** The user message, or the conversation so far. */
+  input: string | readonly InputMessage[];
   /** A JSON schema the answer must follow, by name. Without it, the answer is free text. */
   format?: { name: string; schema: Record<string, unknown> };
+  /** Receives the answer as it is written. */
+  onDelta?: (delta: string) => void;
 }
 
 /** The model's answer, and the tokens it took. */
@@ -26,8 +34,13 @@ export interface Responses {
 
 export type CreateResponses = () => Responses;
 
+/** How much the model reasons before it answers. */
+export type ReasoningEffort = "none" | "low" | "medium" | "high";
+
 export interface OpenAIResponsesOptions {
   model: string;
+  /** How much the model reasons first. `none` by default: it answers at once. */
+  reasoning?: ReasoningEffort;
   /** How long the model may go without sending anything before the request is given up. */
   stallMs?: number;
 }
@@ -42,19 +55,21 @@ const STALL_MS = 5_000;
  */
 export function createOpenAIResponses(
   client: OpenAI,
-  { model, stallMs = STALL_MS }: OpenAIResponsesOptions,
+  { model, reasoning = "none", stallMs = STALL_MS }: OpenAIResponsesOptions,
 ): CreateResponses {
   return () => {
     let socket: ResponsesWS | undefined;
     // The request in progress: how to end it, and the text received so far.
     let settle: ((result: ResponsesOutput | Error) => void) | undefined;
     let output = "";
+    let onDelta: ((delta: string) => void) | undefined;
     let stall: NodeJS.Timeout | undefined;
 
     const finish = (result: ResponsesOutput | Error) => {
       clearTimeout(stall);
       settle?.(result);
       settle = undefined;
+      onDelta = undefined;
     };
     /** Gives the model a fresh `stallMs` to send its next event. */
     const watch = () => {
@@ -74,6 +89,7 @@ export function createOpenAIResponses(
       ws.on("event", watch);
       ws.on("response.output_text.delta", (event) => {
         output += event.delta;
+        if (settle) onDelta?.(event.delta);
       });
       ws.on("response.completed", (event) => {
         const { input_tokens = 0, output_tokens = 0 } = event.response.usage ?? {};
@@ -88,7 +104,7 @@ export function createOpenAIResponses(
     socket = connect();
 
     return {
-      request({ instructions, input, format }, signal) {
+      request({ instructions, input, format, onDelta: receive }, signal) {
         return new Promise((resolve, reject) => {
           signal.throwIfAborted();
           const abort = () => {
@@ -101,13 +117,14 @@ export function createOpenAIResponses(
             else resolve(result);
           };
           output = "";
+          onDelta = receive;
           // The connection opened at the start may be gone by now.
           socket ??= connect();
           socket.send({
             type: "response.create",
             model,
             instructions,
-            input,
+            input: typeof input === "string" ? input : [...input],
             ...(format && {
               text: {
                 format: {
@@ -118,7 +135,7 @@ export function createOpenAIResponses(
                 },
               },
             }),
-            reasoning: { effort: "none" },
+            reasoning: { effort: reasoning },
             store: false,
           });
           watch();

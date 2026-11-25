@@ -33,25 +33,31 @@ const PARALLEL_PARTS = 4;
  * A turn is sent as one file, or, when it is long, as parts cut at pauses, transcribed side
  * by side and put back together in order.
  *
- * The hints are the ones the live transcriber gets, and every part gets them. When OpenAI
- * refuses them, the part is transcribed again without them, and so are the parts after it.
+ * The hints are the ones the live transcriber gets, and every part gets them: the names and
+ * terms, the description of the recording, and the languages spoken, in place of the
+ * server's. When OpenAI refuses them, the part is transcribed again without them, with the
+ * server's own languages, and so are the parts after it.
  */
 export function createOpenAIRecordingTranscriber(
   client: OpenAI,
   options: OpenAIRecordingTranscriberOptions,
 ): CreateTranscriber {
-  return (events, { keywords } = { keywords: [] }) => {
+  return (events, { keywords = [], prompt = "", languages = [] } = {}) => {
     const abort = new AbortController();
     /** Audio of the open turn. */
     let chunks: Buffer[] = [];
     let turns = 0;
     let closed = false;
 
+    // The server's own languages are its configuration, not a hint: they stay when the hints go.
+    const configured = options.languages.length > 0 ? { languages: options.languages } : {};
     const hints = {
-      ...(options.languages.length > 0 && { languages: options.languages }),
+      ...configured,
+      ...(languages.length > 0 && { languages: [...languages] }),
       ...(keywords.length > 0 && { keywords: [...keywords] }),
+      ...(prompt !== "" && { prompt }),
     };
-    let hinted = Object.keys(hints).length > 0;
+    let hinted = languages.length > 0 || keywords.length > 0 || prompt !== "";
     const partBytes = (options.partSeconds ?? PART_SECONDS) * BYTES_PER_SECOND;
 
     const request = async (pcm: Buffer, hinted: boolean) => {
@@ -59,7 +65,7 @@ export function createOpenAIRecordingTranscriber(
         {
           file: await toFile(wav(pcm), "recording.wav", { type: "audio/wav" }),
           model: options.model,
-          ...(hinted && hints),
+          ...(hinted ? hints : configured),
         },
         { signal: abort.signal },
       );

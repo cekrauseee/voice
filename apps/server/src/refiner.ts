@@ -132,7 +132,8 @@ export function createOpenAIRefiner(client: OpenAI, options: OpenAIRefinerOption
  *
  * A translation takes two requests, one after the other. The first rewrites the transcript
  * in the speaker's language, and the second writes that in the other one. Asked for both at
- * once, the model follows the speaker's words too closely.
+ * once, the model follows the speaker's words too closely. Both are given the speaker's
+ * instructions.
  */
 export function createRefiner(createResponses: CreateResponses): CreateRefiner {
   return () => {
@@ -144,10 +145,11 @@ export function createRefiner(createResponses: CreateResponses): CreateRefiner {
           withVocabulary(REWRITE_INSTRUCTIONS, REWRITE_VOCABULARY, vocabulary),
           context,
         );
+        // The speaker's instructions go to both requests: the rewrite needs what they say about
+        // the speaker to tell a misheard term, and the translation how they want it written.
         const rewritten = await responses.request(
           {
-            instructions:
-              language === "" ? withSpeakerInstructions(rewrite, instructions) : rewrite,
+            instructions: withSpeakerInstructions(rewrite, instructions),
             input: refineInput("transcript", text, context),
           },
           signal,

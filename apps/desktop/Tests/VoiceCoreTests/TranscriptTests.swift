@@ -35,22 +35,29 @@ import Testing
     #expect(ClientMessage.stop.json == #"{"type":"stop"}"#)
     #expect(
       ClientMessage.start(instructions: "").json
-        == #"{"context":"","instructions":"","live":false,"translate_to":"","type":"start","vocabulary":[]}"#
+        == #"{"context":"","instructions":"","languages":[],"live":false,"transcription_prompt":"","translate_to":"","type":"start","vocabulary":[]}"#
     )
     #expect(
       ClientMessage.start(
         instructions: "Say \"hi\".\nUse a/b.", translateTo: "Spanish",
         vocabulary: ["Claude", "R&D"]
       ).json
-        == #"{"context":"","instructions":"Say \"hi\".\nUse a/b.","live":false,"translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
+        == #"{"context":"","instructions":"Say \"hi\".\nUse a/b.","languages":[],"live":false,"transcription_prompt":"","translate_to":"Spanish","type":"start","vocabulary":["Claude","R&D"]}"#
     )
     #expect(
       ClientMessage.start(instructions: "", context: "Dear Ana,\n").json
-        == #"{"context":"Dear Ana,\n","instructions":"","live":false,"translate_to":"","type":"start","vocabulary":[]}"#
+        == #"{"context":"Dear Ana,\n","instructions":"","languages":[],"live":false,"transcription_prompt":"","translate_to":"","type":"start","vocabulary":[]}"#
     )
     #expect(
       ClientMessage.start(instructions: "", live: true).json
-        == #"{"context":"","instructions":"","live":true,"translate_to":"","type":"start","vocabulary":[]}"#
+        == #"{"context":"","instructions":"","languages":[],"live":true,"transcription_prompt":"","translate_to":"","type":"start","vocabulary":[]}"#
+    )
+    #expect(
+      ClientMessage.start(
+        instructions: "Keep Git terms in English.",
+        transcriptionPrompt: "A developer speaking Portuguese about Git.", languages: ["pt", "en"]
+      ).json
+        == #"{"context":"","instructions":"Keep Git terms in English.","languages":["pt","en"],"live":false,"transcription_prompt":"A developer speaking Portuguese about Git.","translate_to":"","type":"start","vocabulary":[]}"#
     )
   }
 }
