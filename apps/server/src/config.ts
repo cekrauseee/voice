@@ -14,7 +14,10 @@ export interface Config {
   apiKey: string;
   host: string;
   port: number;
+  /** The model that transcribes a recording once the speaker stops. */
   transcribeModel: string;
+  /** The model that transcribes while the speaker talks. */
+  liveTranscribeModel: string;
   transcribeLanguages: string[];
   refineModel: string;
   prices: Prices;
@@ -45,7 +48,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     apiKey,
     host: env.HOST || "127.0.0.1",
     port,
-    transcribeModel: env.TRANSCRIBE_MODEL || "gpt-live-transcribe",
+    transcribeModel: env.TRANSCRIBE_MODEL || "gpt-transcribe",
+    liveTranscribeModel: env.LIVE_TRANSCRIBE_MODEL || "gpt-live-transcribe",
     transcribeLanguages: (env.TRANSCRIBE_LANGUAGES ?? "")
       .split(",")
       .map((language) => language.trim())
@@ -53,7 +57,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     refineModel: env.REFINE_MODEL || "gpt-6-luna",
     // OpenAI's prices for the default models, as published in November 2026.
     prices: {
-      transcribeMinute: price("TRANSCRIBE_PRICE_PER_MINUTE", 0.017),
+      transcribeMinute: price("TRANSCRIBE_PRICE_PER_MINUTE", 0.0045),
+      liveTranscribeMinute: price("LIVE_TRANSCRIBE_PRICE_PER_MINUTE", 0.017),
       refineInput: price("REFINE_PRICE_PER_MILLION_INPUT", 0.1),
       refineOutput: price("REFINE_PRICE_PER_MILLION_OUTPUT", 0.5),
     },

@@ -4,7 +4,8 @@ import { ConfigError, loadConfig } from "./config.ts";
 
 test("the prices default to what OpenAI charges for the default models", () => {
   assert.deepEqual(loadConfig({ OPENAI_API_KEY: "key" }).prices, {
-    transcribeMinute: 0.017,
+    transcribeMinute: 0.0045,
+    liveTranscribeMinute: 0.017,
     refineInput: 0.1,
     refineOutput: 0.5,
   });
@@ -14,10 +15,16 @@ test("the prices can be set", () => {
   const { prices } = loadConfig({
     OPENAI_API_KEY: "key",
     TRANSCRIBE_PRICE_PER_MINUTE: "0.006",
+    LIVE_TRANSCRIBE_PRICE_PER_MINUTE: "0.02",
     REFINE_PRICE_PER_MILLION_INPUT: "0.2",
     REFINE_PRICE_PER_MILLION_OUTPUT: "1",
   });
-  assert.deepEqual(prices, { transcribeMinute: 0.006, refineInput: 0.2, refineOutput: 1 });
+  assert.deepEqual(prices, {
+    transcribeMinute: 0.006,
+    liveTranscribeMinute: 0.02,
+    refineInput: 0.2,
+    refineOutput: 1,
+  });
 });
 
 test("the server stops with the program that started it only when asked to", () => {

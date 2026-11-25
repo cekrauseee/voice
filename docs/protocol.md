@@ -26,7 +26,8 @@ A text message, and the first message of the dictation.
   "instructions": "Write in a formal tone.",
   "translate_to": "Spanish",
   "vocabulary": ["Claude", "Supabase"],
-  "context": "Hi Ana,\n\nThanks for the update"
+  "context": "Hi Ana,\n\nThanks for the update",
+  "live": false
 }
 ```
 
@@ -37,6 +38,8 @@ A text message, and the first message of the dictation.
 `vocabulary` is the speaker's dictionary: names and terms they use, spelled the way they write them. The transcription listens for them, the rewrite writes a word that was misheard as one of them as the term, where the context fits, and a translation keeps them as written. It is optional. The server puts each term on one line, takes out `<` and `>`, and leaves out blanks, terms longer than 100 characters, and terms already listed in another case. It passes on the first 500.
 
 `context` is the text before the cursor in the field the dictation goes into, as the app read it: the end of it, up to about 2000 characters. The refinement uses it to spell names and terms the same way, match its register, and continue a sentence it leaves unfinished. It is never part of the text: the model does not rewrite or repeat it, nor follow instructions in it. It also decides whether `done` begins with a space. It is optional: without it, or when it is empty, the dictation is written on its own. The transcription does not get it.
+
+`live` says whether the audio is transcribed while the speaker talks. With `true`, the server sends `delta` messages as it hears the words. Without it, or with `false`, the audio is transcribed once the speaker stops, and no `delta` comes: the first text is `done`. Both get the same hints from `vocabulary`.
 
 ### Audio
 
@@ -62,14 +65,14 @@ All server messages are JSON text.
 
 | Message                                                                        | Meaning                                                                                 |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `{ "type": "ready" }`                                                          | Transcription is running.                                                               |
-| `{ "type": "delta", "text": " plan is" }`                                      | More text, heard while the speaker talks. Append it to the text so far.                 |
+| `{ "type": "ready" }`                                                          | Transcription is running. Without `live`, it comes at once.                             |
+| `{ "type": "delta", "text": " plan is" }`                                      | More text, heard while the speaker talks. Append it to the text so far. Only `live`.    |
 | `{ "type": "done", "text": "So the plan is simple.", "usage": { … } }`         | The text of the dictation, to be typed, and what it used. The server closes the socket. |
 | `{ "type": "error", "code": "timeout", "message": "Transcription timed out" }` | The dictation failed. The server closes the socket.                                     |
 
 ### Text
 
-- The `delta` messages, appended in order, are the text heard so far. It is a draft to show, not to type: it has no leading whitespace, and it keeps arriving for a moment after `stop`.
+- The `delta` messages, appended in order, are the text heard so far. They only come when `start` asked for `live` transcription. It is a draft to show, not to type: it has no leading whitespace, and it keeps arriving for a moment after `stop`.
 - `done` carries the whole text of the dictation once, refined. It replaces the draft and has no trailing whitespace. It is empty when nothing was said.
 - `done` has no leading whitespace either, unless it follows a `context` and needs a space to be separated from it: then it begins with one space. That is when the context ends in a word or in punctuation such as `.` or `,`, and the text does not begin with punctuation that attaches to what is before it, such as `,` or `)`. A context that ends in whitespace, in an opening bracket or quote, or in a language written without spaces, such as Chinese or Japanese, gets none. Type the text as it is, space included.
 - When the refinement fails, `done` carries the transcript as it was heard, with the same space before it. A dictation that reaches `done` never loses what was said.
@@ -94,13 +97,13 @@ The cost is an estimate. OpenAI reports the tokens but not the price, so the ser
 
 ### Errors
 
-| Code                   | Meaning                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `bad_request`          | The client sent a message that is not part of the protocol, or out of order.                                                     |
-| `transcription_failed` | The transcription provider failed or disconnected.                                                                               |
-| `timeout`              | Transcription was not ready within 10 s of `start`. Or nothing was heard, and the transcriber sent nothing for 5 s after `stop`. |
+| Code                   | Meaning                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bad_request`          | The client sent a message that is not part of the protocol, or out of order.                                                                          |
+| `transcription_failed` | The transcription provider failed or disconnected.                                                                                                    |
+| `timeout`              | Transcription was not ready within 10 s of `start`. Or nothing was heard, and the transcriber sent nothing for 5 s after `stop`, 60 s without `live`. |
 
-An error ends the dictation without a `done`. The client still has the draft from the `delta` messages.
+An error ends the dictation without a `done`. The client still has the draft from the `delta` messages, if any came.
 
 ## Example
 

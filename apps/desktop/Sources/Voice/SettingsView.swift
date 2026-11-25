@@ -100,6 +100,11 @@ struct SettingsView: View {
             Switch(title: "Use text in the field", isOn: $settings.usesFieldText)
           }
           SettingRow(
+            title: "Live transcription", detail: "Shows your words in the pill as you speak"
+          ) {
+            Switch(title: "Live transcription", isOn: $settings.transcribesLive)
+          }
+          SettingRow(
             title: "Keep on clipboard", detail: "Replaces the previous clipboard contents"
           ) {
             Switch(title: "Keep on clipboard", isOn: $settings.keepOnClipboard)

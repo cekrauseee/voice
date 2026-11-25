@@ -30,6 +30,7 @@ final class Retry {
 
     // Without the field's text: the field focused now is not the one dictated into, and the
     // text is not typed anywhere.
+    // Not live: nothing shows the words of a retry as they are heard.
     let session = DictationSession(
       server: settings.serverURL, instructions: settings.instructions,
       translateTo: settings.translateTo, vocabulary: settings.vocabulary)

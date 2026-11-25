@@ -7,7 +7,10 @@ import { DictationSession } from "./session.ts";
 import type { CreateTranscriber } from "./transcriber.ts";
 
 export interface ServerDeps {
+  /** Transcribes the recording once the speaker stops. */
   createTranscriber: CreateTranscriber;
+  /** Transcribes while the speaker talks, for a dictation that asks for it. */
+  createLiveTranscriber: CreateTranscriber;
   createRefiner: CreateRefiner;
   prices: Prices;
   log: Logger;
@@ -59,7 +62,7 @@ function dictation(ws: WebSocket, deps: ServerDeps, number: number): void {
     }
     const message = parseClientMessage(toBuffer(data).toString("utf8"));
     if (message?.type === "start") {
-      session.start(message.instructions, message.translateTo, message.vocabulary, message.context);
+      session.start(message);
     } else if (message?.type === "stop") session.stop();
     else session.reject();
   });
